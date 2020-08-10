@@ -3,6 +3,8 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <iostream>
+#include <cmath>
 
 enum class ast_type {
                      DOUBLE_LITERAL = 1,
@@ -20,6 +22,9 @@ enum class ast_type {
                      CMP,
                      EQU,
                      NEQ,
+                     ABS,
+                     TEMP,
+                     POW,
 };
 
 enum class value_type {
@@ -89,6 +94,7 @@ public:
 class expr_value {
 public:
   virtual ~expr_value() {};
+  virtual expr_value* clone() = 0;
   value_type type;
 };
 
@@ -103,6 +109,11 @@ public:
   ~expr_value_double() {}
 
   double d;
+  
+  expr_value *clone()
+  {
+    return new expr_value_double{d};
+  }
 };
 
 class object_double : public obj {
@@ -132,6 +143,11 @@ public:
 
   expr_value_lval(obj *obj)
     : object(obj) { type = value_type::LVAL; }
+
+  expr_value *clone()
+  {
+    return new expr_value_lval{object};
+  }
 };
 
 /* Base class for a node in the abstract syntax tree. */
@@ -325,6 +341,71 @@ public:
   ast_node *sec;
 };
 
+class ast_node_pow : public ast_node {
+public:
+  ast_node_pow() : ast_node_pow(nullptr, nullptr) {}
+  ast_node_pow(ast_node *first, ast_node *sec) :
+    first(first) , sec(sec) { type = ast_type::POW;}
+  
+  ~ast_node_pow()
+  {
+    if (first) delete first;
+    if (sec) delete sec;
+  }
+
+  expr_value *eval()
+  {
+    auto fv = first->eval();
+    auto sv = sec->eval();
+
+    if (fv->type == value_type::DOUBLE
+        && sv->type == value_type::DOUBLE) {
+          auto d_fv = static_cast<expr_value_double*>(fv);
+          auto d_sv = static_cast<expr_value_double*>(sv);    
+
+          double ans = pow(d_fv->d , d_sv->d);
+
+          delete fv;
+          delete sv;
+
+          return new expr_value_double{ans};
+    } else {
+      delete fv;
+      delete sv;
+      throw std::runtime_error("AST node pow:  types not implemented");
+    }
+
+  }
+  
+  ast_node *first;
+  ast_node *sec;
+};
+
+
+class ast_node_abs : public ast_node {
+public:
+  ast_node_abs(ast_node *first) :
+    first(first) {type = ast_type::ABS; }
+  ~ast_node_abs()
+  { if (first) delete first; }
+
+  ast_node *first;
+  
+  expr_value *eval()
+  {
+    auto fv = first->eval();
+
+    if (fv->type == value_type::DOUBLE) {
+          auto d_fv = static_cast<expr_value_double*>(fv);
+  
+          double ans = d_fv->d < 0 ? -d_fv->d : d_fv->d;
+
+          return new expr_value_double{ans};
+    } else
+      throw std::runtime_error("AST node unary minus types not implemented");
+  }
+};
+
 class ast_node_uminus : public ast_node {
 public:
   ast_node_uminus() : ast_node_uminus(nullptr) {}
@@ -480,17 +561,90 @@ public:
   ast_node *sec;
 };
 
-class ast_node_chaincmp : public ast_node {
+
+class ast_node_temporary : public ast_node {
+public:
+  ast_node *first;
+  expr_value *val = nullptr;
+
+  ast_node_temporary(ast_node *first) : first(first) {}
+  ~ast_node_temporary() { if (val) delete val; }
+
+  expr_value *eval()
+  {
+    if (!val)
+      val = first->eval();
+    if (!val)
+      throw std::runtime_error("temp bugg null val");
+    return val->clone();
+  }
+  
+};
+
+class ast_node_chainable : public ast_node {
 public:
   ast_node *first;
   ast_node *sec;
 };
 
-class ast_node_les : public ast_node_chaincmp {
+
+class ast_node_andchain : public ast_node {
+public:
+  ast_node_chainable *first;
+  ast_node *tail;
+  ast_node_andchain *next = nullptr;
+
+  ast_node_andchain(ast_node_chainable *first)
+    : first(first), tail(first->sec) {}
+  ~ast_node_andchain()
+  {
+    if (first) delete first;
+    if (next) {
+      next->first->first = 0;
+      delete next;
+    }
+  }
+
+  void append_next(ast_node_andchain *node)
+  {
+    auto p = &next;
+    while(*p)
+      p = &((*p)->next);
+    *p = node;
+    tail = node->first->sec;
+    if (!tail)
+      throw std::runtime_error("Bugg");
+  }
+  
+  expr_value *eval()
+  {
+    bool ans = and_eval(true);
+    return new expr_value_double{(double)ans};
+  }
+
+  bool and_eval(bool result)
+  {
+    auto e = first->eval();
+    if (e->type != value_type::DOUBLE)
+      throw std::runtime_error("andchain Type not implemented");
+    auto ed = static_cast<expr_value_double*>(e);
+
+    bool b = !(ed->d == 0) && result;
+
+    delete e;
+    
+    if (!next)
+      return b;
+    return next->and_eval(b);
+  }
+};
+
+
+class ast_node_les : public ast_node_chainable {
 public:
   ast_node_les() : ast_node_les(nullptr, nullptr) {}
-  ast_node_les(ast_node *first, ast_node *sec) :
-    first(first) , sec(sec) { type = ast_type::LES;}
+  ast_node_les(ast_node *first, ast_node *sec)
+  { this->first = first; this->sec = sec; type = ast_type::LES;}
   
   ~ast_node_les()
   {
@@ -524,16 +678,13 @@ public:
     }
 
   }
-  
-  ast_node *first;
-  ast_node *sec;
 };
 
-class ast_node_gre : public ast_node_chaincmp {
+class ast_node_gre : public ast_node_chainable {
 public:
   ast_node_gre() : ast_node_gre(nullptr, nullptr) {}
-  ast_node_gre(ast_node *first, ast_node *sec) :
-    first(first) , sec(sec) { type = ast_type::GRE;}
+  ast_node_gre(ast_node *first, ast_node *sec)
+    { this->first = first; this->sec = sec; type = ast_type::GRE;}
   
   ~ast_node_gre()
   {
@@ -567,17 +718,14 @@ public:
     }
 
   }
-  
-  ast_node *first;
-  ast_node *sec;
 };
 
 
-class ast_node_equ : public ast_node_chaincmp {
+class ast_node_equ : public ast_node_chainable {
 public:
   ast_node_equ() : ast_node_equ(nullptr, nullptr) {}
-  ast_node_equ(ast_node *first, ast_node *sec) :
-    first(first) , sec(sec) { type = ast_type::EQU;}
+  ast_node_equ(ast_node *first, ast_node *sec)
+    { this->first = first; this->sec = sec; type = ast_type::EQU;}
   
   ~ast_node_equ()
   {
@@ -611,16 +759,13 @@ public:
     }
 
   }
-  
-  ast_node *first;
-  ast_node *sec;
 };
 
-class ast_node_leq : public ast_node_chaincmp {
+class ast_node_leq : public ast_node_chainable {
 public:
   ast_node_leq() : ast_node_leq(nullptr, nullptr) {}
-  ast_node_leq(ast_node *first, ast_node *sec) :
-    first(first) , sec(sec) { type = ast_type::LEQ;}
+  ast_node_leq(ast_node *first, ast_node *sec)
+    { this->first = first; this->sec = sec; type = ast_type::LEQ;}
   
   ~ast_node_leq()
   {
@@ -654,17 +799,14 @@ public:
     }
 
   }
-  
-  ast_node *first;
-  ast_node *sec;
 };
 
 
-class ast_node_geq : public ast_node_chaincmp {
+class ast_node_geq : public ast_node_chainable {
 public:
   ast_node_geq() : ast_node_geq(nullptr, nullptr) {}
-  ast_node_geq(ast_node *first, ast_node *sec) :
-    first(first) , sec(sec) { type = ast_type::GEQ;}
+  ast_node_geq(ast_node *first, ast_node *sec)
+   { this->first = first; this->sec = sec; type = ast_type::GEQ;}
   
   ~ast_node_geq()
   {
@@ -698,16 +840,13 @@ public:
     }
 
   }
-  
-  ast_node *first;
-  ast_node *sec;
 };
 
-class ast_node_neq : public ast_node_chaincmp {
+class ast_node_neq : public ast_node_chainable {
 public:
   ast_node_neq() : ast_node_neq(nullptr, nullptr) {}
-  ast_node_neq(ast_node *first, ast_node *sec) :
-    first(first) , sec(sec) { type = ast_type::NEQ;}
+  ast_node_neq(ast_node *first, ast_node *sec)
+   { this->first = first; this->sec = sec; type = ast_type::NEQ;}
   
   ~ast_node_neq()
   {
@@ -741,7 +880,4 @@ public:
     }
 
   }
-  
-  ast_node *first;
-  ast_node *sec;
 };

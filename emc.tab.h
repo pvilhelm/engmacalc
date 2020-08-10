@@ -51,13 +51,14 @@ extern int yydebug;
   {
     NUMBER = 258,
     NAME = 259,
-    EOL = 260,
-    CMP = 261,
-    LEQ = 262,
-    GEQ = 263,
-    EQU = 264,
-    NEQ = 265,
-    UMINUS = 266
+    TYPENAME = 260,
+    EOL = 261,
+    CMP = 262,
+    LEQ = 263,
+    GEQ = 264,
+    EQU = 265,
+    NEQ = 266,
+    UMINUS = 267
   };
 #endif
 
@@ -70,7 +71,7 @@ union YYSTYPE
     ast_node *node;
     std::string *s;
 
-#line 74 "emc.tab.h"
+#line 75 "emc.tab.h"
 
 };
 typedef union YYSTYPE YYSTYPE;
