@@ -25,20 +25,24 @@ enum class ast_type {
                      ABS,
                      TEMP,
                      POW,
+                     EXPLIST,
 };
 
 enum class value_type {
                             DOUBLE = 1,
                             RVAL,
                             LVAL,
+                            LIST
 };
 
 enum class object_type {
                         DOUBLE = 1,
+                        FUNC,
 };
 
+/* Forward declarations. */
 class scope;
-
+class ast_node;
 class expr_value;
 class expr_value_double;
 
@@ -69,8 +73,8 @@ class scope {
 public:
   ~scope()
   {
-    for (auto p : vec_objs)
-      delete p;
+    // for (auto p : vec_objs)
+    //  if(p) delete p;
   }
   void push_object(obj *obj)
   {
@@ -80,7 +84,7 @@ public:
     vec_objs.push_back(obj);
   }
   void pop_object() { vec_objs.pop_back(); }
-  obj*find_object(std::string name, std::string nspace)
+  obj *find_object(std::string name, std::string nspace)
   {
     for (auto p : vec_objs)
       if (p->name == name && p->nspace == nspace)
@@ -96,6 +100,23 @@ public:
   virtual ~expr_value() {};
   virtual expr_value* clone() = 0;
   value_type type;
+};
+
+class expr_value_list : public expr_value {
+public:
+  expr_value_list() { type = value_type::LIST; }
+  ~expr_value_list() { for (auto p : v_val) delete p; }
+  /* The expression value list takes ownership of the pointer. */
+  void append_value(expr_value *val) { v_val.push_back(val); }
+  
+  expr_value *clone()
+  {
+    auto ret = new expr_value_list;
+    for (auto &e : v_val)
+      ret->v_val.push_back(e->clone());
+    return ret;
+  }
+  std::vector<expr_value*> v_val;
 };
 
 class expr_value_double : public expr_value {
@@ -116,6 +137,7 @@ public:
   }
 };
 
+
 class object_double : public obj {
 public:
   ~object_double(){};
@@ -134,6 +156,23 @@ public:
   }
   
   double d;
+};
+
+class object_func : public obj {
+public:
+  ~object_func(){}
+  object_func(ast_node *root, std::string name,
+              std::string nspace, ast_node *para_list)
+    : root(root) , para_list(para_list)
+  { type = object_type::FUNC; this->name = name; this->nspace = nspace;}
+
+  /* The ast node funcdec owns this pointer. */
+  ast_node *root;
+  ast_node *para_list;
+  expr_value *eval() { throw std::runtime_error("func eval");}
+
+  /* Evaluate the function. */
+  expr_value *feval(expr_value_list *arg_value_list);
 };
 
 class expr_value_lval : public expr_value {
@@ -200,8 +239,8 @@ public:
 
     if (fv->type == value_type::DOUBLE
         && sv->type == value_type::DOUBLE) {
-          auto d_fv = static_cast<expr_value_double*>(fv);
-          auto d_sv = static_cast<expr_value_double*>(sv);    
+          auto d_fv = dynamic_cast<expr_value_double*>(fv);
+          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
 
           double ans = d_fv->d + d_sv->d;
 
@@ -240,8 +279,8 @@ public:
 
     if (fv->type == value_type::DOUBLE
         && sv->type == value_type::DOUBLE) {
-          auto d_fv = static_cast<expr_value_double*>(fv);
-          auto d_sv = static_cast<expr_value_double*>(sv);    
+          auto d_fv = dynamic_cast<expr_value_double*>(fv);
+          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
 
           double ans = d_fv->d - d_sv->d;
 
@@ -280,8 +319,8 @@ public:
 
     if (fv->type == value_type::DOUBLE
         && sv->type == value_type::DOUBLE) {
-          auto d_fv = static_cast<expr_value_double*>(fv);
-          auto d_sv = static_cast<expr_value_double*>(sv);    
+          auto d_fv = dynamic_cast<expr_value_double*>(fv);
+          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
 
           double ans = d_fv->d * d_sv->d;
 
@@ -320,8 +359,8 @@ public:
 
     if (fv->type == value_type::DOUBLE
         && sv->type == value_type::DOUBLE) {
-          auto d_fv = static_cast<expr_value_double*>(fv);
-          auto d_sv = static_cast<expr_value_double*>(sv);    
+          auto d_fv = dynamic_cast<expr_value_double*>(fv);
+          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
 
           double ans = d_fv->d / d_sv->d;
 
@@ -360,8 +399,8 @@ public:
 
     if (fv->type == value_type::DOUBLE
         && sv->type == value_type::DOUBLE) {
-          auto d_fv = static_cast<expr_value_double*>(fv);
-          auto d_sv = static_cast<expr_value_double*>(sv);    
+          auto d_fv = dynamic_cast<expr_value_double*>(fv);
+          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
 
           double ans = pow(d_fv->d , d_sv->d);
 
@@ -396,7 +435,7 @@ public:
     auto fv = first->eval();
 
     if (fv->type == value_type::DOUBLE) {
-          auto d_fv = static_cast<expr_value_double*>(fv);
+          auto d_fv = dynamic_cast<expr_value_double*>(fv);
   
           double ans = d_fv->d < 0 ? -d_fv->d : d_fv->d;
 
@@ -422,7 +461,7 @@ public:
     auto fv = first->eval();
 
     if (fv->type == value_type::DOUBLE) {
-          auto d_fv = static_cast<expr_value_double*>(fv);
+          auto d_fv = dynamic_cast<expr_value_double*>(fv);
   
           double ans = -d_fv->d;
 
@@ -480,11 +519,11 @@ public:
   {
     if (first->type != ast_type::VAR)
       throw std::runtime_error("Left hand of assigned not lvalue");
-    auto lvar = static_cast<ast_node_var*>(first);
+    auto lvar = dynamic_cast<ast_node_var*>(first);
     expr_value *lval_ = lvar->leval();
     if (lval_ == nullptr || lval_->type != value_type::LVAL)
       throw std::runtime_error("ast_node_assign bugg");
-    auto lval = static_cast<expr_value_lval*>(lval_);
+    auto lval = dynamic_cast<expr_value_lval*>(lval_);
 
     /* If the obj doesnt exist we create it. */
     if (!lval->object) {
@@ -502,8 +541,8 @@ public:
     if (lval->object->type != object_type::DOUBLE)
       throw std::runtime_error("ast_node_assign Left type not implemented");
 
-    auto rvald = static_cast<expr_value_double*>(rval);
-    auto objd = static_cast<object_double*>(lval->object);
+    auto rvald = dynamic_cast<expr_value_double*>(rval);
+    auto objd = dynamic_cast<object_double*>(lval->object);
     objd->d = rvald->d;
     
     delete rval;
@@ -535,8 +574,8 @@ public:
 
     if (fv->type == value_type::DOUBLE
         && sv->type == value_type::DOUBLE) {
-          auto d_fv = static_cast<expr_value_double*>(fv);
-          auto d_sv = static_cast<expr_value_double*>(sv);    
+          auto d_fv = dynamic_cast<expr_value_double*>(fv);
+          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
           double ans;
           if (d_fv->d < d_sv->d)
             ans = -1;
@@ -579,6 +618,201 @@ public:
     return val->clone();
   }
   
+};
+
+class ast_node_explist : public ast_node {
+public:
+  ast_node_explist(ast_node *first)
+  {
+    v_nodes.push_back(first);
+    type = ast_type::EXPLIST;
+  }
+  ~ast_node_explist()
+  {
+    for (auto e : v_nodes)
+      delete e;
+  }
+  void append_node(ast_node *first)
+  {
+    v_nodes.push_back(first);
+  }
+
+  expr_value *eval()
+  {
+    expr_value *ans = 0;
+    for (auto p : v_nodes)
+      ans = p->eval();
+    return ans;
+  }
+  
+  std::vector<ast_node*> v_nodes;
+};
+
+class ast_node_doblock : public ast_node {
+public:
+  ast_node *first;
+
+  ast_node_doblock(ast_node *first) : first(first) {}
+  ~ast_node_doblock() { if (first) delete first; }
+
+  expr_value *eval()
+  {
+    extern scope_stack scopes;
+    
+    scopes.push_new_scope();
+    auto val = first->eval();
+    scopes.pop_scope();
+    return val;
+  }
+};
+
+class ast_node_if : public ast_node {
+public:
+  ast_node *cond_e;
+  ast_node *if_el;
+  ast_node *else_el;
+  ast_node_if(ast_node *cond_e, ast_node *if_el) :
+    ast_node_if(cond_e, if_el, nullptr) {}
+  ast_node_if(ast_node *cond_e, ast_node *if_el, ast_node *else_el):
+    cond_e(cond_e), if_el(if_el), else_el(else_el) {}
+  ~ast_node_if()
+  {
+    if (cond_e) delete cond_e;
+    if (if_el) delete if_el;
+    if (else_el) delete else_el;
+  }
+
+  expr_value *eval()
+  {
+    extern scope_stack scopes;
+    
+    auto ev_cond = cond_e->eval();
+    if (ev_cond->type != value_type::DOUBLE)
+      throw std::runtime_error("ast_node_if Cond type not implemented");
+    auto ed = dynamic_cast<expr_value_double*>(ev_cond);
+
+    expr_value *ans;
+    
+    if (ed->d) {
+      scopes.push_new_scope();
+      ans = if_el->eval();
+      scopes.pop_scope();
+    } else if (else_el) {
+      scopes.push_new_scope();      
+      ans = else_el->eval();
+      scopes.pop_scope();
+    } else
+      ans = new expr_value_double{0.};
+
+    delete ev_cond;
+
+    return ans;
+  }
+};
+
+class func_para {
+public:
+  ~func_para(){ if (val) delete val;}
+  func_para(std::string name) : name(name) {}
+  std::string name;
+  expr_value *val = 0;
+};
+
+/* Class for a list of named definitions in a function definition. */
+class ast_node_parlist : public ast_node {
+public:
+  ast_node_parlist() {}
+
+  void append_parameter(func_para para)
+  { v_func_paras.push_back(para); }
+
+  /* Parameters, the defintion of the call signature. */
+  std::vector<func_para> v_func_paras;
+ 
+  expr_value *eval()
+  { 
+    throw std::runtime_error("Can't eval arglist.");
+  }
+};
+
+class ast_node_arglist : public ast_node {
+public:
+  ast_node_arglist() {}
+  ~ast_node_arglist()
+  {
+    for (auto p : v_ast_args)
+      delete p;
+  }
+  void append_arg(ast_node *arg) { v_ast_args.push_back(arg);}
+
+  expr_value *eval()
+  {
+    auto val_list = new expr_value_list;
+    for (auto node : v_ast_args)
+      val_list->v_val.push_back(node->eval());
+    return val_list;
+  }
+  
+  std::vector<ast_node*> v_ast_args;
+};
+
+class ast_node_funcdec : public ast_node {
+public:
+  ast_node_funcdec(ast_node *parlist, ast_node *code_block,
+                   std::string name, std::string nspace)
+    : parlist(parlist), code_block(code_block),
+      name(name), nspace(nspace)
+  {
+   
+  }
+  /* fobj äger ast_noderna kanske är dumt? */
+  ~ast_node_funcdec() { delete code_block; delete parlist; }
+
+  expr_value *eval()
+  {
+    auto aa = dynamic_cast<ast_node_parlist*>(parlist);
+    if (!aa)
+      throw std::runtime_error("qweqweqweqweqweesasdfdsasdffd");
+    extern scope_stack scopes;
+    auto fobj = new object_func{code_block, name, nspace, parlist};
+    scopes.get_top_scope().push_object(fobj);
+
+    return new expr_value_double{0.};
+  }
+  
+  ast_node *code_block;
+  ast_node *parlist;
+  std::string name;
+  std::string nspace;
+};
+
+class ast_node_funccall : public ast_node {
+public:
+  ast_node_funccall(std::string nspace, std::string name, ast_node* arg_list) :
+    nspace(nspace), arg_list(arg_list), name(name) {}
+  std::string name;
+  std::string nspace;
+  ast_node *arg_list;
+
+  expr_value *eval()
+  {
+     extern scope_stack scopes;
+
+     auto obj = scopes.find_object(name, nspace);
+     if (!obj)
+       throw std::runtime_error("Could not find function " + nspace + " " + name);
+     if (obj->type != object_type::FUNC)
+       throw std::runtime_error("Symbol " + nspace + " " + name + " not a function.");
+
+     auto fobj = dynamic_cast<object_func*>(obj);
+
+     /* The expr_value_list from eval() owns the 
+      * pointers to the corresponding expr_value:s. */
+     auto val = dynamic_cast<expr_value_list*>(arg_list->eval());
+     if (!val)
+       throw std::runtime_error("feval kan inte göras med null obj");
+     return fobj->feval(val);
+  }
 };
 
 class ast_node_chainable : public ast_node {
@@ -627,7 +861,7 @@ public:
     auto e = first->eval();
     if (e->type != value_type::DOUBLE)
       throw std::runtime_error("andchain Type not implemented");
-    auto ed = static_cast<expr_value_double*>(e);
+    auto ed = dynamic_cast<expr_value_double*>(e);
 
     bool b = !(ed->d == 0) && result;
 
@@ -659,8 +893,8 @@ public:
 
     if (fv->type == value_type::DOUBLE
         && sv->type == value_type::DOUBLE) {
-          auto d_fv = static_cast<expr_value_double*>(fv);
-          auto d_sv = static_cast<expr_value_double*>(sv);    
+          auto d_fv = dynamic_cast<expr_value_double*>(fv);
+          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
           double ans;
           if (d_fv->d < d_sv->d)
             ans = 1;
@@ -699,8 +933,8 @@ public:
 
     if (fv->type == value_type::DOUBLE
         && sv->type == value_type::DOUBLE) {
-          auto d_fv = static_cast<expr_value_double*>(fv);
-          auto d_sv = static_cast<expr_value_double*>(sv);    
+          auto d_fv = dynamic_cast<expr_value_double*>(fv);
+          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
           double ans;
           if (d_fv->d > d_sv->d)
             ans = 1;
@@ -740,8 +974,8 @@ public:
 
     if (fv->type == value_type::DOUBLE
         && sv->type == value_type::DOUBLE) {
-          auto d_fv = static_cast<expr_value_double*>(fv);
-          auto d_sv = static_cast<expr_value_double*>(sv);    
+          auto d_fv = dynamic_cast<expr_value_double*>(fv);
+          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
           double ans;
           if (d_fv->d == d_sv->d)
             ans = 1;
@@ -780,8 +1014,8 @@ public:
 
     if (fv->type == value_type::DOUBLE
         && sv->type == value_type::DOUBLE) {
-          auto d_fv = static_cast<expr_value_double*>(fv);
-          auto d_sv = static_cast<expr_value_double*>(sv);    
+          auto d_fv = dynamic_cast<expr_value_double*>(fv);
+          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
           double ans;
           if (d_fv->d <= d_sv->d)
             ans = 1;
@@ -821,8 +1055,8 @@ public:
 
     if (fv->type == value_type::DOUBLE
         && sv->type == value_type::DOUBLE) {
-          auto d_fv = static_cast<expr_value_double*>(fv);
-          auto d_sv = static_cast<expr_value_double*>(sv);    
+          auto d_fv = dynamic_cast<expr_value_double*>(fv);
+          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
           double ans;
           if (d_fv->d >= d_sv->d)
             ans = 1;
@@ -861,8 +1095,8 @@ public:
 
     if (fv->type == value_type::DOUBLE
         && sv->type == value_type::DOUBLE) {
-          auto d_fv = static_cast<expr_value_double*>(fv);
-          auto d_sv = static_cast<expr_value_double*>(sv);    
+          auto d_fv = dynamic_cast<expr_value_double*>(fv);
+          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
           double ans;
           if (d_fv->d != d_sv->d)
             ans = 1;

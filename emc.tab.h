@@ -38,7 +38,7 @@
 # define YY_YY_EMC_TAB_H_INCLUDED
 /* Debug traces.  */
 #ifndef YYDEBUG
-# define YYDEBUG 0
+# define YYDEBUG 1
 #endif
 #if YYDEBUG
 extern int yydebug;
@@ -53,12 +53,19 @@ extern int yydebug;
     NAME = 259,
     TYPENAME = 260,
     EOL = 261,
-    CMP = 262,
-    LEQ = 263,
-    GEQ = 264,
-    EQU = 265,
-    NEQ = 266,
-    UMINUS = 267
+    IF = 262,
+    DO = 263,
+    END = 264,
+    ELSE = 265,
+    WHILE = 266,
+    ENDOFFILE = 267,
+    FUNC = 268,
+    CMP = 269,
+    LEQ = 270,
+    GEQ = 271,
+    EQU = 272,
+    NEQ = 273,
+    UMINUS = 274
   };
 #endif
 
@@ -71,7 +78,7 @@ union YYSTYPE
     ast_node *node;
     std::string *s;
 
-#line 75 "emc.tab.h"
+#line 82 "emc.tab.h"
 
 };
 typedef union YYSTYPE YYSTYPE;

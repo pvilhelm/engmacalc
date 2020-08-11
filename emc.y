@@ -19,39 +19,90 @@ void yyerror(const char *s);
 %token <s> NAME
 %token <s> TYPENAME
 
-%token EOL IF DO END ELSE
+%token EOL IF DO END ELSE WHILE ENDOFFILE FUNC
 
 %right '='
 %left CMP LEQ GEQ EQU NEQ '>' '<'
 %left '+' '-'
 %left '*' '/'
 %right '^'
+
+%nonassoc DO
+%nonassoc END        
 %nonassoc '|' UMINUS
 
+%start program
 
-%type <node> exp cmp_exp e se
+%type <node> exp cmp_exp e se exp_list code_block arg_list param_list
 
+%define parse.trace
+    
 %%
 
-    /* List of expressions */
-exp_list:
-     | exp_list EOL 
-     | exp_list e EOL {
+program:               
+     | program EOL
+     | program exp_list EOL
+                        { 
                             auto val = $2->eval();
-                            delete $2;
+                            //delete $2;
                             if (val->type == value_type::DOUBLE) {
                                auto vald = static_cast<expr_value_double*>(val);
-                               std::cout << "> " << vald->d << std::endl;
+                               std::cout << vald->d << std::endl;
                             } else
-                               std::cout << "> Inte D" << std::endl;
-                            delete val;
+                                throw std::runtime_error("Not implemented qweqe");
+                            //delete val;
+                            //return 1;
                         }
+     | program ENDOFFILE { return 1;}
+     ;
 
+    /* List of expressions */
+exp_list: se           {$$ = new ast_node_explist{$1};}
+     | exp_list EOL se {
+                            auto p_exl = static_cast<ast_node_explist*>($1);
+                            p_exl->append_node($3); std::cout << "appended node\n";
+                            $$ = $1; 
+                        }
+     ;                       
 
+ /* Statement expression */
+se: e
+    | IF e DO EOL exp_list EOL END { $$ = new ast_node_if{$2, $5};}
+    | IF e DO exp_list END { $$ = new ast_node_if{$2, $4};}
+
+    | IF e DO     exp_list     ELSE     exp_list     END
+                        { $$ = new ast_node_if{$2, $4, $6};}
+    | IF e DO EOL exp_list EOL ELSE EOL exp_list EOL END 
+                        { $$ = new ast_node_if{$2, $5, $9};}                        
+    | code_block
+    | FUNC NAME '(' param_list ')' code_block
+                {
+                    auto p = new ast_node_funcdec{$4, $6, *$2, ""};
+                    delete $2;
+                    $$ = p;
+                }
+    ;
+
+code_block: DO exp_list END             { $$ = new ast_node_doblock{$2};}
+          | DO EOL exp_list EOL END     { $$ = new ast_node_doblock{$3};}
+
+param_list: NAME                     {auto p = new ast_node_parlist;
+                                      $$ = p;
+                                      p->append_parameter(*$1);
+                                      delete $1;}
+        | param_list ',' NAME        {auto p = static_cast<ast_node_parlist*>($$);
+                                      p->append_parameter(*$3); delete $3;}
+
+arg_list: e                         {auto p = new ast_node_arglist;
+                                     p->append_arg($1); $$ = p;}
+        | arg_list ',' e            {auto p = static_cast<ast_node_arglist*>($$);
+                                     p->append_arg($3);}
+    
  /* Top expression */
 e: exp
    | cmp_exp
    | e '=' e                 {$$ = new ast_node_assign{$1, $3};}
+   ;
 
  /* Not compare or assign expressions */
 exp: exp '+' exp             {$$ = new ast_node_add{$1, $3};}
@@ -65,6 +116,7 @@ exp: exp '+' exp             {$$ = new ast_node_add{$1, $3};}
      | exp '^' exp           {$$ = new ast_node_pow{$1, $3};}
      | NAME                  {$$ = new ast_node_var{*$1, ""}; delete $1;}
      | NUMBER                {$$ = new ast_node_double_literal(*$1); delete $1;}
+     | NAME '(' arg_list ')' {$$ = new ast_node_funccall{"", *$1, $3}; delete $1;}
      ;
   
  /* Compare expressions. */
@@ -141,6 +193,7 @@ scope_stack scopes;
 
 int main()
 {
+    yydebug = 0;
     scopes.push_new_scope();
     return yyparse();
 }

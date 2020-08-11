@@ -44,6 +44,9 @@ WS([ \t])
 "IF" return IF;
 "DO" return DO;
 "END" return END;
+"ELSE" return ELSE;
+"WHILE" return WHILE;
+"FUNC" return FUNC;    
 
  /* Symbol names */
 [a-z][a-z0-9\-_]*    { yylval.s = new std::string{yytext}; return NAME; }
@@ -57,8 +60,9 @@ WS([ \t])
 "//".*
 {WS}                    /* ignore white space */
 \\\n                    /* ignore line continuation */
+ /*^{WS}*\n*/                /* ignore empty new lines */
 "\n"                    { return EOL; }
-
+<<EOF>>                 { return ENDOFFILE; }
 .                       { fprintf(stderr, "Mystery character %c\n", *yytext); }
 
 %%
