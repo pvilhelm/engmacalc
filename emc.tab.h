@@ -52,20 +52,21 @@ extern int yydebug;
     NUMBER = 258,
     NAME = 259,
     TYPENAME = 260,
-    EOL = 261,
-    IF = 262,
-    DO = 263,
-    END = 264,
-    ELSE = 265,
-    WHILE = 266,
-    ENDOFFILE = 267,
-    FUNC = 268,
-    CMP = 269,
-    LEQ = 270,
-    GEQ = 271,
-    EQU = 272,
-    NEQ = 273,
-    UMINUS = 274
+    ESC_STRING = 261,
+    EOL = 262,
+    IF = 263,
+    DO = 264,
+    END = 265,
+    ELSE = 266,
+    WHILE = 267,
+    ENDOFFILE = 268,
+    FUNC = 269,
+    CMP = 270,
+    LEQ = 271,
+    GEQ = 272,
+    EQU = 273,
+    NEQ = 274,
+    UMINUS = 275
   };
 #endif
 
@@ -73,12 +74,12 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 13 "emc.y"
+#line 19 "emc.y"
 
     ast_node *node;
     std::string *s;
 
-#line 82 "emc.tab.h"
+#line 83 "emc.tab.h"
 
 };
 typedef union YYSTYPE YYSTYPE;
@@ -86,9 +87,22 @@ typedef union YYSTYPE YYSTYPE;
 # define YYSTYPE_IS_DECLARED 1
 #endif
 
+/* Location type.  */
+#if ! defined YYLTYPE && ! defined YYLTYPE_IS_DECLARED
+typedef struct YYLTYPE YYLTYPE;
+struct YYLTYPE
+{
+  int first_line;
+  int first_column;
+  int last_line;
+  int last_column;
+};
+# define YYLTYPE_IS_DECLARED 1
+# define YYLTYPE_IS_TRIVIAL 1
+#endif
 
-extern YYSTYPE yylval;
 
-int yyparse (void);
+
+int yyparse (yyscan_t scanner);
 
 #endif /* !YY_YY_EMC_TAB_H_INCLUDED  */

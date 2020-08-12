@@ -5,9 +5,12 @@
 #include <vector>
 #include <iostream>
 #include <cmath>
+#include <memory>
+
 
 enum class ast_type {
                      DOUBLE_LITERAL = 1,
+                     STRING_LITERAL,
                      DOUBLE_ADD,
                      DOUBLE_SUB,
                      DOUBLE_MUL,
@@ -26,18 +29,32 @@ enum class ast_type {
                      TEMP,
                      POW,
                      EXPLIST,
+					 DOBLOCK,
+					 IF,
+					 PARAMETER_LIST, /* Parameters are in the function signature. */
+					 ARGUMENT_LIST,
+					 FUNCTION_DECLARATION,
+					 FUNCTION_CALL,
+					 ANDCHAIN, /* Dummy node for chained comparations. */
+					 WHILE,
+					 DEF,
 };
 
 enum class value_type {
                             DOUBLE = 1,
                             RVAL,
                             LVAL,
-                            LIST
+                            LIST,
+							STRING,
+							INT
 };
 
 enum class object_type {
                         DOUBLE = 1,
                         FUNC,
+						STATIC_CFUNC,
+						STRING,
+						INT
 };
 
 /* Forward declarations. */
@@ -45,7 +62,17 @@ class scope;
 class ast_node;
 class expr_value;
 class expr_value_double;
+class expr_value_list;
 
+using cfunc_callwrapper = expr_value* (*)(expr_value_list *arg_value_list);
+
+/* Functions */
+void init_linked_cfunctions();
+void init_standard_variables();
+void init_builtin_functions();
+
+/* Util functions */
+void deescape_string(std::string &s);
 
 class obj {
 public:
@@ -122,7 +149,7 @@ public:
 class expr_value_double : public expr_value {
 public:
   expr_value_double()
-  { type = value_type::DOUBLE; };
+  { type = value_type::DOUBLE; d = 0;};
   expr_value_double(double dd)
   { type = value_type::DOUBLE; d = dd;}
   expr_value_double(std::string s)
@@ -135,6 +162,56 @@ public:
   {
     return new expr_value_double{d};
   }
+};
+
+class expr_value_int : public expr_value {
+public:
+	expr_value_int()
+  { type = value_type::INT; i = 0;};
+	expr_value_int(int val)
+  { type = value_type::INT; i = val;}
+	expr_value_int(std::string s)
+  { type = value_type::INT; i = stoi(s);}
+  ~expr_value_int() {}
+
+  int i;
+
+  expr_value *clone()
+  {
+    return new expr_value_int{i};
+  }
+};
+
+class expr_value_string : public expr_value {
+public:
+	expr_value_string()
+  { type = value_type::STRING; };
+	expr_value_string(std::string s) : s(s)
+  { type = value_type::STRING; }
+  ~expr_value_string() {}
+
+  std::string s;
+
+  expr_value *clone()
+  {
+    return new expr_value_string{s};
+  }
+};
+
+class object_string : public obj {
+public:
+  ~object_string(){};
+
+  object_string(std::string name, std::string nspace, std::string val)
+    : s(val)
+  { type = object_type::STRING; this->name = name; this->nspace = nspace;};
+
+  expr_value *eval()
+  {
+    return new expr_value_string{s};
+  }
+
+  std::string s;
 };
 
 
@@ -158,7 +235,32 @@ public:
   double d;
 };
 
-class object_func : public obj {
+class object_int : public obj {
+public:
+  ~object_int(){};
+
+  object_int(std::string name, std::string nspace, int val)
+    : i(val)
+  { type = object_type::INT; this->name = name; this->nspace = nspace;};
+  object_int() : i(0.0) {}
+  object_int(std::string name, int val)
+    : object_int(name, "", val) {}
+
+
+  expr_value *eval()
+  {
+    return new expr_value_int{i};
+  }
+
+  int i;
+};
+
+class object_func_base : public obj {
+public:
+	virtual expr_value * feval(expr_value_list *arg_value_list) = 0;
+};
+
+class object_func : public object_func_base {
 public:
   ~object_func(){}
   object_func(ast_node *root, std::string name,
@@ -166,13 +268,30 @@ public:
     : root(root) , para_list(para_list)
   { type = object_type::FUNC; this->name = name; this->nspace = nspace;}
 
-  /* The ast node funcdec owns this pointer. */
   ast_node *root;
   ast_node *para_list;
   expr_value *eval() { throw std::runtime_error("func eval");}
 
   /* Evaluate the function. */
   expr_value *feval(expr_value_list *arg_value_list);
+};
+
+class object_static_cfunc : public object_func_base {
+public:
+	~object_static_cfunc(){}
+	object_static_cfunc(std::string name, cfunc_callwrapper fn_ptr)
+	: fn_ptr(fn_ptr)
+	{ type = object_type::STATIC_CFUNC; this->name = name;}
+
+	cfunc_callwrapper fn_ptr = nullptr;
+
+	/* Evaluate the function. */
+    expr_value *feval(expr_value_list *arg_value_list)
+    {
+    	return fn_ptr(arg_value_list);
+    }
+
+    expr_value *eval() { throw std::runtime_error("cfunc eval");}
 };
 
 class expr_value_lval : public expr_value {
@@ -195,14 +314,14 @@ public:
   virtual ~ast_node() {};
   
   virtual expr_value *eval() = 0;
-
+  virtual ast_node *clone() = 0;
   ast_type type;  
 };
 
 class ast_node_double_literal : public ast_node {
 public:
   ast_node_double_literal()
-  { type = ast_type::DOUBLE_LITERAL; }
+  { type = ast_type::DOUBLE_LITERAL; d = 0;}
   ast_node_double_literal(double d) : d(d)
   { type = ast_type::DOUBLE_LITERAL; }
   ast_node_double_literal(std::string s)
@@ -218,7 +337,34 @@ public:
     return evd;
   }
 
+  ast_node *clone()
+  {
+	  return new ast_node_double_literal{d};
+  }
 };
+
+class ast_node_string_literal : public ast_node {
+public:
+	ast_node_string_literal(std::string s) : s(s)
+  { type = ast_type::STRING_LITERAL; }
+  ~ast_node_string_literal() {}
+
+  std::string s;
+
+  expr_value *eval()
+  {
+    auto evd = new expr_value_string{s};
+
+    return evd;
+  }
+
+  ast_node *clone()
+  {
+	  return new ast_node_string_literal{s};
+  }
+};
+
+
 
 class ast_node_add : public ast_node {
 public:
@@ -228,8 +374,13 @@ public:
   
   ~ast_node_add()
   {
-    if (first) delete first;
-    if (sec) delete sec;
+    delete first;
+    delete sec;
+  }
+
+  ast_node *clone()
+  {
+	  return new ast_node_add{first->clone(), sec->clone()};
   }
 
   expr_value *eval()
@@ -248,7 +399,18 @@ public:
           delete fv;
           
           return new expr_value_double{ans};
-    } else {
+    } else if (fv->type == value_type::STRING
+            && sv->type == value_type::STRING) {
+	  auto s_fv = dynamic_cast<expr_value_string*>(fv);
+	  auto s_sv = dynamic_cast<expr_value_string*>(sv);
+
+	  std::string ans = s_fv->s + s_sv->s;
+
+	  delete sv;
+	  delete fv;
+
+	  return new expr_value_string{ans};
+	}else {
       delete sv;
       delete fv;
       throw std::runtime_error("AST node add:  types not implemented");
@@ -268,8 +430,13 @@ public:
   
   ~ast_node_sub()
   {
-    if (first) delete first;
-    if (sec) delete sec;
+    delete first;
+    delete sec;
+  }
+
+  ast_node *clone()
+  {
+	  return new ast_node_sub{first->clone(), sec->clone()};
   }
 
   expr_value *eval()
@@ -312,6 +479,11 @@ public:
     if (sec) delete sec;
   }
 
+  ast_node *clone()
+  {
+	  return new ast_node_mul{first->clone(), sec->clone()};
+  }
+
   expr_value *eval()
   {
     auto fv = first->eval();
@@ -350,6 +522,11 @@ public:
   {
     if (first) delete first;
     if (sec) delete sec;
+  }
+
+  ast_node *clone()
+  {
+	  return new ast_node_rdiv{first->clone(), sec->clone()};
   }
 
   expr_value *eval()
@@ -392,6 +569,11 @@ public:
     if (sec) delete sec;
   }
 
+  ast_node *clone()
+  {
+	  return new ast_node_pow{first->clone(), sec->clone()};
+  }
+
   expr_value *eval()
   {
     auto fv = first->eval();
@@ -426,10 +608,15 @@ public:
   ast_node_abs(ast_node *first) :
     first(first) {type = ast_type::ABS; }
   ~ast_node_abs()
-  { if (first) delete first; }
+  { delete first; }
 
   ast_node *first;
   
+  ast_node *clone()
+  {
+	  return new ast_node_abs{first->clone()};
+  }
+
   expr_value *eval()
   {
     auto fv = first->eval();
@@ -454,6 +641,11 @@ public:
   ~ast_node_uminus()
   {
     if (first) delete first;
+  }
+
+  ast_node *clone()
+  {
+	  return new ast_node_uminus{first->clone()};
   }
 
   expr_value *eval()
@@ -485,7 +677,10 @@ public:
    : name(name), nspace(nspace) { type = ast_type::VAR; }
   ast_node_var(): ast_node_var("",""){}
  
-  
+  ast_node *clone()
+  {
+	  return new ast_node_var{name, nspace};
+  }
   
   expr_value *eval()
   {
@@ -515,6 +710,11 @@ public:
   ast_node_assign(ast_node *first, ast_node *sec)
     : first(first), sec(sec) { type = ast_type::ASSIGN;}
 
+  ast_node *clone()
+  {
+	  return new ast_node_assign{first, sec};
+  }
+
   expr_value *eval()
   {
     if (first->type != ast_type::VAR)
@@ -525,30 +725,47 @@ public:
       throw std::runtime_error("ast_node_assign bugg");
     auto lval = dynamic_cast<expr_value_lval*>(lval_);
 
-    /* If the obj doesnt exist we create it. */
-    if (!lval->object) {
-      extern scope_stack scopes;
-      
-      auto obj = new object_double{lvar->name, lvar->nspace, 0.};
-      scopes.get_top_scope().push_object(obj);
-      lval->object = obj;
-    } 
-
     auto rval = sec->eval();
 
-    if (rval->type != value_type::DOUBLE)
-      throw std::runtime_error("ast_node_assign Right type not implemented");
-    if (lval->object->type != object_type::DOUBLE)
-      throw std::runtime_error("ast_node_assign Left type not implemented");
+    /* If the obj doesnt exist we create it. */
+	if (!lval->object) {
+	  extern scope_stack scopes;
 
-    auto rvald = dynamic_cast<expr_value_double*>(rval);
-    auto objd = dynamic_cast<object_double*>(lval->object);
-    objd->d = rvald->d;
-    
-    delete rval;
-    delete lval;
+	  if (rval->type == value_type::DOUBLE) {
+		  auto obj = new object_double{lvar->name, lvar->nspace, 0.};
+		  scopes.get_top_scope().push_object(obj);
+		  lval->object = obj;
+	  } else if (rval->type == value_type::STRING) {
+		  auto obj = new object_string{lvar->name, lvar->nspace, ""};
+		  scopes.get_top_scope().push_object(obj);
+		  lval->object = obj;
+	  }
+	}
 
-    return new expr_value_double(objd->d);
+    if (rval->type == value_type::DOUBLE && lval->object->type == object_type::DOUBLE) {
+
+    	auto rvald = dynamic_cast<expr_value_double*>(rval);
+		auto objd = dynamic_cast<object_double*>(lval->object);
+		objd->d = rvald->d;
+
+		delete rval;
+		delete lval;
+
+		return new expr_value_double(objd->d);
+
+    } else if(rval->type == value_type::STRING && lval->object->type == object_type::STRING) {
+
+    	auto rvals = dynamic_cast<expr_value_string*>(rval);
+		auto objs = dynamic_cast<object_string*>(lval->object);
+		objs->s = rvals->s;
+
+		delete rval;
+		delete lval;
+
+		return new expr_value_string(objs->s);
+
+    } else
+    	throw std::runtime_error("ast_node_assign types not implemented");
   }
   
   ast_node *first;
@@ -565,6 +782,11 @@ public:
   {
     if (first) delete first;
     if (sec) delete sec;
+  }
+
+  ast_node *clone()
+  {
+	  return new ast_node_cmp{first, sec};
   }
 
   expr_value *eval()
@@ -606,8 +828,13 @@ public:
   ast_node *first;
   expr_value *val = nullptr;
 
-  ast_node_temporary(ast_node *first) : first(first) {}
-  ~ast_node_temporary() { if (val) delete val; }
+  ast_node_temporary(ast_node *first) : first(first) { type = ast_type::TEMP; }
+  ~ast_node_temporary() { delete val; }
+
+  ast_node *clone()
+  {
+	return new ast_node_temporary{first};
+  }
 
   expr_value *eval()
   {
@@ -627,11 +854,28 @@ public:
     v_nodes.push_back(first);
     type = ast_type::EXPLIST;
   }
+
   ~ast_node_explist()
   {
     for (auto e : v_nodes)
       delete e;
   }
+
+  ast_node *clone()
+  {
+	/* TODO: Fixa så att ctorn inte tar first och att alla element läggs till med append_node */
+	auto iter = v_nodes.begin();
+	if (iter == v_nodes.end())
+		throw std::runtime_error("Bugg ast_node_explist");
+
+	auto pel = new ast_node_explist{(*iter++)->clone()};
+
+	for (; iter != v_nodes.end(); iter++)
+		pel->append_node((*iter)->clone());
+
+	return pel;
+  }
+
   void append_node(ast_node *first)
   {
     v_nodes.push_back(first);
@@ -652,8 +896,13 @@ class ast_node_doblock : public ast_node {
 public:
   ast_node *first;
 
-  ast_node_doblock(ast_node *first) : first(first) {}
+  ast_node_doblock(ast_node *first) : first(first) { type = ast_type::DOBLOCK; }
   ~ast_node_doblock() { if (first) delete first; }
+
+  ast_node *clone()
+  {
+	return new ast_node_doblock{first->clone()};
+  }
 
   expr_value *eval()
   {
@@ -674,22 +923,29 @@ public:
   ast_node_if(ast_node *cond_e, ast_node *if_el) :
     ast_node_if(cond_e, if_el, nullptr) {}
   ast_node_if(ast_node *cond_e, ast_node *if_el, ast_node *else_el):
-    cond_e(cond_e), if_el(if_el), else_el(else_el) {}
+    cond_e(cond_e), if_el(if_el), else_el(else_el) { type = ast_type::IF;}
   ~ast_node_if()
   {
-    if (cond_e) delete cond_e;
-    if (if_el) delete if_el;
-    if (else_el) delete else_el;
+    delete cond_e;
+    delete if_el;
+    delete else_el;
   }
+
+  ast_node *clone()
+  {
+	return new ast_node_if{cond_e->clone(), if_el->clone(), else_el ? else_el->clone() : nullptr};
+  }
+
+
 
   expr_value *eval()
   {
     extern scope_stack scopes;
     
-    auto ev_cond = cond_e->eval();
+    auto ev_cond = std::unique_ptr<expr_value>(cond_e->eval());
     if (ev_cond->type != value_type::DOUBLE)
       throw std::runtime_error("ast_node_if Cond type not implemented");
-    auto ed = dynamic_cast<expr_value_double*>(ev_cond);
+    auto ed = std::unique_ptr<expr_value_double>(dynamic_cast<expr_value_double*>(ev_cond.release()));
 
     expr_value *ans;
     
@@ -704,7 +960,75 @@ public:
     } else
       ans = new expr_value_double{0.};
 
-    delete ev_cond;
+    return ans;
+  }
+};
+
+class ast_node_while : public ast_node {
+public:
+  ast_node *cond_e;
+  ast_node *if_el;
+  ast_node *else_el;
+  ast_node_while(ast_node *cond_e, ast_node *if_el) :
+	  ast_node_while(cond_e, if_el, nullptr) {}
+  ast_node_while(ast_node *cond_e, ast_node *if_el, ast_node *else_el):
+    cond_e(cond_e), if_el(if_el), else_el(else_el) { type = ast_type::WHILE;}
+  ~ast_node_while()
+  {
+    delete cond_e;
+    delete if_el;
+    delete else_el;
+  }
+
+  ast_node *clone()
+  {
+	return new ast_node_while{cond_e->clone(), if_el->clone(), else_el ? else_el->clone() : nullptr};
+  }
+
+
+
+  expr_value *eval()
+  {
+    extern scope_stack scopes;
+
+    auto ev_cond = cond_e->eval();
+    if (ev_cond->type != value_type::DOUBLE)
+      throw std::runtime_error("ast_node_while Cond type not implemented");
+    auto ed = dynamic_cast<expr_value_double*>(ev_cond);
+
+    expr_value *ans;
+
+    bool initial_value = false;
+    if (ed->d) initial_value = true;
+	delete ev_cond;
+
+    if (initial_value) {
+redo:
+    	scopes.push_new_scope();
+    	ans = if_el->eval();
+    	scopes.pop_scope();
+
+    	ev_cond = cond_e->eval();
+		if (ev_cond->type != value_type::DOUBLE)
+		  throw std::runtime_error("ast_node_while Cond type not implemented");
+		ed = dynamic_cast<expr_value_double*>(ev_cond);
+		if (ed->d) {
+			delete ev_cond;
+			delete ans;
+
+			goto redo;
+		}
+    }
+
+    /* See if the else should be executed. */
+    if (!initial_value && else_el) {
+      scopes.push_new_scope();
+      ans = else_el->eval();
+      scopes.pop_scope();
+    } else if (!initial_value) {
+    	/* If the while loop was executed 0 times without a else return empty value. */
+    	ans = new expr_value_double{0.};
+    }
 
     return ans;
   }
@@ -712,16 +1036,23 @@ public:
 
 class func_para {
 public:
-  ~func_para(){ if (val) delete val;}
+  func_para() = default;
   func_para(std::string name) : name(name) {}
   std::string name;
-  expr_value *val = 0;
 };
 
 /* Class for a list of named definitions in a function definition. */
 class ast_node_parlist : public ast_node {
 public:
-  ast_node_parlist() {}
+  ast_node_parlist() { type = ast_type::PARAMETER_LIST; }
+
+  ast_node *clone()
+  {
+	auto pel = new ast_node_parlist{};
+	for (auto e : v_func_paras)
+		pel->append_parameter(e);
+	return pel;
+  }
 
   void append_parameter(func_para para)
   { v_func_paras.push_back(para); }
@@ -737,12 +1068,21 @@ public:
 
 class ast_node_arglist : public ast_node {
 public:
-  ast_node_arglist() {}
+  ast_node_arglist() { type = ast_type::ARGUMENT_LIST; }
   ~ast_node_arglist()
   {
     for (auto p : v_ast_args)
       delete p;
   }
+
+  ast_node *clone()
+  {
+	auto argl = new ast_node_arglist{};
+	for (auto e : v_ast_args)
+		argl->append_arg(e->clone());
+	return argl;
+  }
+
   void append_arg(ast_node *arg) { v_ast_args.push_back(arg);}
 
   expr_value *eval()
@@ -762,19 +1102,27 @@ public:
                    std::string name, std::string nspace)
     : parlist(parlist), code_block(code_block),
       name(name), nspace(nspace)
-  {
-   
-  }
+  { type = ast_type::FUNCTION_DECLARATION; }
   /* fobj äger ast_noderna kanske är dumt? */
   ~ast_node_funcdec() { delete code_block; delete parlist; }
 
+  ast_node *clone()
+  {
+	return new ast_node_funcdec{parlist->clone(),
+								code_block->clone(),
+								name, nspace};
+  }
+
+  /* Evaluating the function declaration creates the function object
+   * and clones the relevant ast nodes.
+   */
   expr_value *eval()
   {
     auto aa = dynamic_cast<ast_node_parlist*>(parlist);
     if (!aa)
       throw std::runtime_error("qweqweqweqweqweesasdfdsasdffd");
     extern scope_stack scopes;
-    auto fobj = new object_func{code_block, name, nspace, parlist};
+    auto fobj = new object_func{code_block->clone(), name, nspace, parlist->clone()};
     scopes.get_top_scope().push_object(fobj);
 
     return new expr_value_double{0.};
@@ -789,10 +1137,17 @@ public:
 class ast_node_funccall : public ast_node {
 public:
   ast_node_funccall(std::string nspace, std::string name, ast_node* arg_list) :
-    nspace(nspace), arg_list(arg_list), name(name) {}
+    nspace(nspace), arg_list(arg_list), name(name) { type = ast_type::FUNCTION_CALL; }
   std::string name;
   std::string nspace;
   ast_node *arg_list;
+
+  ast_node *clone()
+  {
+	return new ast_node_funccall{nspace,
+								 name,
+								 arg_list->clone()};
+  }
 
   expr_value *eval()
   {
@@ -801,10 +1156,10 @@ public:
      auto obj = scopes.find_object(name, nspace);
      if (!obj)
        throw std::runtime_error("Could not find function " + nspace + " " + name);
-     if (obj->type != object_type::FUNC)
+     if (obj->type != object_type::FUNC && obj->type != object_type::STATIC_CFUNC)
        throw std::runtime_error("Symbol " + nspace + " " + name + " not a function.");
 
-     auto fobj = dynamic_cast<object_func*>(obj);
+     auto fobj = dynamic_cast<object_func_base*>(obj);
 
      /* The expr_value_list from eval() owns the 
       * pointers to the corresponding expr_value:s. */
@@ -825,18 +1180,29 @@ public:
 class ast_node_andchain : public ast_node {
 public:
   ast_node_chainable *first;
-  ast_node *tail;
+  ast_node *tail; /* TODO: Remove make vector instead. */
   ast_node_andchain *next = nullptr;
 
   ast_node_andchain(ast_node_chainable *first)
-    : first(first), tail(first->sec) {}
+    : first(first), tail(first->sec) { type = ast_type::ANDCHAIN; }
+
   ~ast_node_andchain()
   {
-    if (first) delete first;
+    delete first;
     if (next) {
-      next->first->first = 0;
-      delete next;
+      next->first->first = 0; /* Chained to this objects first->sec */
+      delete next; /* Recursive */
     }
+  }
+
+  ast_node *clone()
+  {
+	auto p = new ast_node_andchain{dynamic_cast<ast_node_chainable*>(first->clone())};
+	p->tail = nullptr; /* Only used during construction by Bison. */
+
+	if (next)
+		p->next = dynamic_cast<ast_node_andchain*>(next->clone()); /* Recursive */
+	return p;
   }
 
   void append_next(ast_node_andchain *node)
@@ -882,8 +1248,13 @@ public:
   
   ~ast_node_les()
   {
-    if (first) delete first;
-    if (sec) delete sec;
+    delete first;
+    delete sec;
+  }
+
+  ast_node *clone()
+  {
+	return new ast_node_les{first->clone(), sec->clone()};
   }
 
   expr_value *eval()
@@ -924,6 +1295,11 @@ public:
   {
     if (first) delete first;
     if (sec) delete sec;
+  }
+
+  ast_node *clone()
+  {
+	return new ast_node_gre{first->clone(), sec->clone()};
   }
 
   expr_value *eval()
@@ -967,6 +1343,11 @@ public:
     if (sec) delete sec;
   }
 
+  ast_node *clone()
+  {
+	return new ast_node_equ{first->clone(), sec->clone()};
+  }
+
   expr_value *eval()
   {
     auto fv = first->eval();
@@ -1005,6 +1386,11 @@ public:
   {
     if (first) delete first;
     if (sec) delete sec;
+  }
+
+  ast_node *clone()
+  {
+	return new ast_node_leq{first->clone(), sec->clone()};
   }
 
   expr_value *eval()
@@ -1048,6 +1434,11 @@ public:
     if (sec) delete sec;
   }
 
+  ast_node *clone()
+  {
+	return new ast_node_geq{first->clone(), sec->clone()};
+  }
+
   expr_value *eval()
   {
     auto fv = first->eval();
@@ -1088,6 +1479,11 @@ public:
     if (sec) delete sec;
   }
 
+  ast_node *clone()
+  {
+	return new ast_node_neq{first->clone(), sec->clone()};
+  }
+
   expr_value *eval()
   {
     auto fv = first->eval();
@@ -1115,3 +1511,18 @@ public:
 
   }
 };
+
+class ast_node_def : public ast_node {
+public:
+	ast_node_def(std::string type_name, std::string var_name) :
+		type_name(type_name), var_name(var_name)
+		{type = ast_type::DEF;}
+
+	std::string type_name;
+	std::string var_name;
+	ast_node *assign_init = nullptr;
+};
+
+
+
+

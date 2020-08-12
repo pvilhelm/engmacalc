@@ -6,9 +6,15 @@
 
 #include "emc.hh"
 
-int yylex();
-void yyerror(const char *s);
+ast_node *ast_root; /* Bison parser writes answer to this. */
+
+typedef void* yyscan_t;
 }
+
+%define api.pure
+%lex-param {yyscan_t scanner}
+%parse-param {yyscan_t scanner}
+%locations
 
 %union {
     ast_node *node;
@@ -17,7 +23,8 @@ void yyerror(const char *s);
 
 %token <s> NUMBER
 %token <s> NAME
-%token <s> TYPENAME
+%token <s> TYPENAME 
+%token <s> ESC_STRING
 
 %token EOL IF DO END ELSE WHILE ENDOFFILE FUNC
 
@@ -33,41 +40,42 @@ void yyerror(const char *s);
 
 %start program
 
-%type <node> exp cmp_exp e se exp_list code_block arg_list param_list
+%type <node> exp cmp_exp e se exp_list code_block arg_list param_list definion
 
 %define parse.trace
+    
+
+%code {
+int yylex (YYSTYPE * yylval_param, YYLTYPE * yylloc_param , void * yyscanner);
+int yyerror(struct YYLTYPE * yylloc_param, void *scanner, const char *s);
+
+}    
+    
     
 %%
 
 program:               
-     | program EOL
-     | program exp_list EOL
-                        { 
-                            auto val = $2->eval();
-                            //delete $2;
-                            if (val->type == value_type::DOUBLE) {
-                               auto vald = static_cast<expr_value_double*>(val);
-                               std::cout << vald->d << std::endl;
-                            } else
-                                throw std::runtime_error("Not implemented qweqe");
-                            //delete val;
-                            //return 1;
+		| program EOL
+     	| program exp_list EOL
+                        { 	
+                        	ast_root = $2;
+                        	YYACCEPT;
                         }
-     | program ENDOFFILE { return 1;}
-     ;
+     	| program ENDOFFILE { ast_root = nullptr; YYACCEPT;}
+     	;
 
     /* List of expressions */
-exp_list: se           {$$ = new ast_node_explist{$1};}
-     | exp_list EOL se {
-                            auto p_exl = static_cast<ast_node_explist*>($1);
-                            p_exl->append_node($3); std::cout << "appended node\n";
-                            $$ = $1; 
-                        }
-     ;                       
+exp_list: se           		{$$ = new ast_node_explist{$1};}
+     	| exp_list EOL se 	{
+	                            auto p_exl = static_cast<ast_node_explist*>($1);
+	                            p_exl->append_node($3);
+	                            $$ = $1; 
+                        	}
+     	;                       
 
  /* Statement expression */
 se: e
-    | IF e DO EOL exp_list EOL END { $$ = new ast_node_if{$2, $5};}
+	| IF e DO EOL exp_list EOL END { $$ = new ast_node_if{$2, $5};}
     | IF e DO exp_list END { $$ = new ast_node_if{$2, $4};}
 
     | IF e DO     exp_list     ELSE     exp_list     END
@@ -81,7 +89,17 @@ se: e
                     delete $2;
                     $$ = p;
                 }
+    | WHILE e DO exp_list END 
+    						{ $$ = new ast_node_while{$2, $4};}
+    | WHILE e DO exp_list ELSE exp_list END 
+    						{ $$ = new ast_node_while{$2, $4, $6};}
+    | WHILE e DO EOL exp_list EOL END 
+    						{ $$ = new ast_node_while{$2, $5};}
+    | WHILE e DO EOL exp_list EOL ELSE EOL exp_list EOL END 
+    						{ $$ = new ast_node_while{$2, $5, $9};} 
     ;
+    
+definion: TYPENAME NAME 	{$$ = new ast_node_def{*$1, *$2};}    
 
 code_block: DO exp_list END             { $$ = new ast_node_doblock{$2};}
           | DO EOL exp_list EOL END     { $$ = new ast_node_doblock{$3};}
@@ -117,6 +135,7 @@ exp: exp '+' exp             {$$ = new ast_node_add{$1, $3};}
      | NAME                  {$$ = new ast_node_var{*$1, ""}; delete $1;}
      | NUMBER                {$$ = new ast_node_double_literal(*$1); delete $1;}
      | NAME '(' arg_list ')' {$$ = new ast_node_funccall{"", *$1, $3}; delete $1;}
+     | ESC_STRING			 {$$ = new ast_node_string_literal{*$1}; delete $1;}
      ;
   
  /* Compare expressions. */
@@ -189,16 +208,11 @@ cmp_exp:  exp '>' exp        {
 
 %%
 
-scope_stack scopes;
-
-int main()
+int yyerror(struct YYLTYPE * yylloc_param, void *scanner, const char *s)
 {
-    yydebug = 0;
-    scopes.push_new_scope();
-    return yyparse();
-}
-
-void yyerror(const char * s)
-{
-    fprintf(stderr, "%s\n", s);
+    printf("*** Lexical Error %s %d.%d-%d.%d\n", s, 
+         yylloc_param->first_line, yylloc_param->first_column, 
+         yylloc_param->last_line, yylloc_param->last_column);
+         
+    return 0;
 }
