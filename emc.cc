@@ -12,165 +12,255 @@
  */
 void deescape_string(std::string &s)
 {
-	bool is_escaped = false;
-	bool octal_escape = false;
-	bool hex_escape = false;
+    bool is_escaped = false;
+    bool octal_escape = false;
+    bool hex_escape = false;
 
-	for (int i = 0; i < s.size(); i++) {
-		char c = s[i];
-		bool is_last = i + 1 == s.size();
-redo:
-		if (is_escaped) {
-			is_escaped = false;
-			bool hit = true;
+    for (int i = 0; i < s.size(); i++) {
+        char c = s[i];
+        bool is_last = i + 1 == s.size();
+        redo:
+        if (is_escaped) {
+            is_escaped = false;
+            bool hit = true;
+
+            switch (c) {
+            case 'n':
+                s.replace(i - 1, 2, "\n"); break;
+            case 'a':
+                s.replace(i - 1, 2, "\a"); break;
+            case 'v':
+                s.replace(i - 1, 2, "\v"); break;
+            case 't':
+                s.replace(i - 1, 2, "\t"); break;
+            case 'r':
+                s.replace(i - 1, 2, "\r"); break;
+            case '\\':
+                s.replace(i - 1, 2, "\\"); break;
+            case '\'':
+                s.replace(i - 1, 2, "\'"); break;
+            case '\"':
+                s.replace(i - 1, 2, "\""); break;
+            case '\b':
+                s.replace(i - 1, 2, "\b"); break;
+            case '\?':
+                s.replace(i - 1, 2, "\?"); break;
+            default:
+                hit = false;
+            }
+
+            if (hit) {
+                i--;
+                continue;
+            }
+
+            if (std::isdigit(c)) { /* Octal escape sequence. */
+                octal_escape = true;
+                goto redo;
+            }
+
+            if (c == 'x') {
+                hex_escape = true;
+                if (is_last)
+                    throw std::runtime_error(
+                            "Not valid escape in string literal: " + s);
+                continue;
+            }
+
+            throw std::runtime_error(
+                    "Not valid escape in string literal: " + s);
+
+        } else if (octal_escape) {
+            /* s[i] is a digit here */
+            /* At most 3 characters. */
+            for (int j = i; j < s.size() && j < i + 3; j++) {
+                char c = s[j];
+                bool is_last = j + 1 == s.size() || j == i + 2;
+                if (!std::isdigit(c) || is_last) {
+                    int n;
+                    if (is_last && !std::isdigit(c))
+                        n = j - i;
+                    else
+                        n = j - i + 1;
+                    // s[n - 1] == '\\'
+                    unsigned int oct;
+                    try {
+                        oct = std::stoul(s.substr(i, n), 0, 8);
+                    } catch (std::invalid_argument &e) {
+                        throw std::runtime_error(
+                                "Not valid octal escape in string literal: "
+                                        + s);
+                    }
+                    if (oct > 255)
+                        throw std::runtime_error(
+                                "Not valid octal escape in string literal: "
+                                        + s);
+                    s.erase(i - 1, n);
+                    s[i - 1] = oct;
+                    i--;
+                    octal_escape = false;
+                    break;
+                }
+            }
+        } else if (hex_escape) {
+            /* s[i] is a the first digit here */
+            /* At most 2 characters. */
+            std::cout << "i : " << i << std::endl;
+            for (int j = i; (j < s.size()) && (j < i + 2); j++) {
+                std::cout << "inner i : " << i << " j " << j << std::endl;
+                char c = s[j];
+                bool is_last = j + 1 == s.size() || j == i + 1;
+                bool is_hex = std::isdigit(c) || (c <= 'F' && c >= 'A')
+                        || (c <= 'f' && c >= 'a');
+                if (!is_hex || is_last) {
+                    int n;
+                    if (is_last && !is_hex)
+                        n = j - i;
+                    else
+                        n = j - i + 1;
+                    // s[n - 1] == '\\'
+                    unsigned int hex;
+                    try {
+                        std::cout << "Hex: " << s.substr(i, n) << std::endl;
+                        hex = std::stoul(s.substr(i, n), 0, 16);
+                    } catch (std::invalid_argument &e) {
+                        throw std::runtime_error(
+                                "Not valid hex escape in string literal: " + s);
+                    }
+                    if (hex > 255)
+                        throw std::runtime_error(
+                                "Not valid hex escape in string literal: " + s);
+                    s.erase(i - 2, n + 1);
+                    s[i - 2] = hex;
+                    i -= 2;
+                    hex_escape = false;
+                    break;
+                }
+            }
+        } else if (c == '\\') {
+            is_escaped = true;
+        }
+    }
+}
 
 
-			switch(c) {
-			case 'n' : s.replace(i - 1, 2, "\n"); break;
-			case 'a' : s.replace(i - 1, 2, "\a"); break;
-			case 'v' : s.replace(i - 1, 2, "\v"); break;
-			case 't' : s.replace(i - 1, 2, "\t"); break;
-			case 'r' : s.replace(i - 1, 2, "\r"); break;
-			case '\\' : s.replace(i - 1, 2, "\\"); break;
-			case '\'' : s.replace(i - 1, 2, "\'"); break;
-			case '\"' : s.replace(i - 1, 2, "\""); break;
-			case '\b' : s.replace(i - 1, 2, "\b"); break;
-			case '\?' : s.replace(i - 1, 2, "\?"); break;
-			default: hit = false;
-			}
+int cmp_helper(expr_value *fv, expr_value *sv)
+{
+    if (fv->type == value_type::DOUBLE
+            && sv->type == value_type::DOUBLE) {
+        auto d_fv = dynamic_cast<expr_value_double*>(fv);
+        auto d_sv = dynamic_cast<expr_value_double*>(sv);
+        int ans;
+        if (d_fv->d < d_sv->d)
+            return -1;
+        else if (d_fv->d > d_sv->d)
+            return 1;
+        else if (d_fv->d == d_sv->d)
+            return 0;
+        return 3; /* NaN */
 
-			if (hit) {
-				i--;
-				continue;
-			}
+    } else if (fv->type == value_type::INT
+            && sv->type == value_type::DOUBLE) {
+        auto i_fv = dynamic_cast<expr_value_int*>(fv);
+        auto d_sv = dynamic_cast<expr_value_double*>(sv);
+        int ans;
+        if (i_fv->i < d_sv->d)
+            return -1;
+        else if (i_fv->i > d_sv->d)
+            return 1;
+        else if (i_fv->i == d_sv->d)
+            return 0;
+        return 3; /* NaN */
+    } else if (fv->type == value_type::DOUBLE
+            && sv->type == value_type::INT) {
+        auto d_fv = dynamic_cast<expr_value_double*>(fv);
+        auto i_sv = dynamic_cast<expr_value_int*>(sv);
+        if (d_fv->d < i_sv->i)
+            return -1;
+        else if (d_fv->d > i_sv->i)
+            return 1;
+        else if (d_fv->d == i_sv->i)
+            return 0;
+        return 3;
 
-			if (std::isdigit(c)) { /* Octal escape sequence. */
-				octal_escape = true;
-				goto redo;
-			}
+    } else if (fv->type == value_type::INT
+            && sv->type == value_type::INT) {
+        auto i_fv = dynamic_cast<expr_value_int*>(fv);
+        auto i_sv = dynamic_cast<expr_value_int*>(sv);
 
-			if (c == 'x') {
-				hex_escape = true;
-				if (is_last)
-					throw std::runtime_error("Not valid escape in string literal: " + s);
-				continue;
-			}
+        if (i_fv->i < i_sv->i)
+            return -1;
+        else if (i_fv->i > i_sv->i)
+            return 1;
+        else if (i_fv->i == i_sv->i)
+            return 0;
+        return 3;
 
-			throw std::runtime_error("Not valid escape in string literal: " + s);
-
-		} else if (octal_escape) {
-			/* s[i] is a digit here */
-											/* At most 3 characters. */
-			for (int j = i; j < s.size() && j < i + 3; j++) {
-				char c = s[j];
-				bool is_last = j + 1 == s.size() || j == i + 2;
-				if (!std::isdigit(c) || is_last) {
-					int n;
-					if (is_last && !std::isdigit(c))
-						n = j - i;
-					else
-						n = j - i + 1;
-					// s[n - 1] == '\\'
-					unsigned int oct;
-					try {
-						oct = std::stoul(s.substr(i, n), 0, 8);
-					} catch (std::invalid_argument &e) {
-						throw std::runtime_error("Not valid octal escape in string literal: " + s);
-					}
-					if (oct > 255)
-						throw std::runtime_error("Not valid octal escape in string literal: " + s);
-					s.erase(i - 1, n);
-					s[i - 1] = oct;
-					i--;
-					octal_escape = false;
-					break;
-				}
-			}
-		} else if (hex_escape) {
-			/* s[i] is a the first digit here */
-											/* At most 2 characters. */
-			std::cout << "i : " << i << std::endl;
-			for (int j = i; (j < s.size()) && (j < i + 2); j++) {
-				std::cout << "inner i : " << i << " j " << j << std::endl;
-				char c = s[j];
-				bool is_last = j + 1 == s.size() || j == i + 1;
-				bool is_hex = std::isdigit(c) || (c <= 'F' && c >= 'A') || (c <= 'f' && c >= 'a');
-				if (!is_hex || is_last) {
-					int n;
-					if (is_last && !is_hex)
-						n = j - i;
-					else
-						n = j - i + 1;
-					// s[n - 1] == '\\'
-					unsigned int hex;
-					try {
-						std::cout << "Hex: " << s.substr(i, n) << std::endl;
-						hex = std::stoul(s.substr(i, n), 0, 16);
-					} catch (std::invalid_argument &e) {
-						throw std::runtime_error("Not valid hex escape in string literal: " + s);
-					}
-					if (hex > 255)
-						throw std::runtime_error("Not valid hex escape in string literal: " + s);
-					s.erase(i - 2, n + 1);
-					s[i - 2] = hex;
-					i-=2;
-					hex_escape = false;
-					break;
-				}
-			}
-		} else if (c == '\\') {
-			is_escaped = true;
-		}
-	}
+    } else {
+        throw std::runtime_error("AST node cmp:  types not implemented");
+    }
 }
 
 void scope_stack::push_new_scope()
 {
-   scope s;
-   vec_scope.push_back(s);
+    scope s;
+    vec_scope.push_back(s);
 }
 
-obj *scope_stack::find_object(std::string name, std::string  nspace)
+obj* scope_stack::find_object(std::string name, std::string nspace)
 {
-  /* Search backwards so that the top scope matches first. */
-  for (auto it = vec_scope.rbegin(); it != vec_scope.rend(); it++)
+    /* Search backwards so that the top scope matches first. */
+    for (auto it = vec_scope.rbegin(); it != vec_scope.rend(); it++)
     {
-      obj*p = it->find_object(name, nspace);
-      if (p)
-        return p;
+        obj *p = it->find_object(name, nspace);
+        if (p)
+            return p;
     }
 
-  return nullptr;
+    return nullptr;
 }
 
-expr_value *object_func::feval(expr_value_list *arg_value_list)
+type_object* scope_stack::find_type(std::string name)
 {
-  extern scope_stack scopes;
-  scopes.push_new_scope();
-  auto scope = scopes.get_top_scope();
-  if (!para_list)
-    throw std::runtime_error("para_list == null");
-  auto para_listc = dynamic_cast<ast_node_parlist*>(para_list);
-  if (!para_listc)
-    throw std::runtime_error("para_listc == null");
-  auto s1 = arg_value_list->v_val.size();
-  auto s2 = para_listc->v_func_paras.size();
-  if (s1 != s2)
-    throw std::runtime_error("Wrong amount of parameters in function call");
+    /* Search backwards so that the top scope matches first. */
+    for (auto it = vec_scope.rbegin(); it != vec_scope.rend(); it++)
+    {
+        type_object *p = it->find_type(name);
+        if (p)
+            return p;
+    }
 
-  /* Create variables with the arguments' names in the function scope. */
-  for (int i = 0; i < para_listc->v_func_paras.size(); i++) {
-    std::string var_name = para_listc->v_func_paras[i].name;
-    auto val = static_cast<expr_value_double*>(arg_value_list->v_val[i]);
-    auto obj = new object_double{var_name, "", val->d};
-    scopes.get_top_scope().push_object(obj);
-  }
+    return nullptr;
+}
 
-  auto func_value = root->eval();
-  /* Destroy the function scope. */
-  scopes.pop_scope();
+expr_value* object_func::feval(expr_value_list *arg_value_list)
+{
+    extern scope_stack scopes;
+    scopes.push_new_scope();
+    auto scope = scopes.get_top_scope();
+    if (!para_list)
+        throw std::runtime_error("para_list == null");
+    auto para_listc = dynamic_cast<ast_node_parlist*>(para_list);
+    if (!para_listc)
+        throw std::runtime_error("para_listc == null");
+    auto s1 = arg_value_list->v_val.size();
+    auto s2 = para_listc->v_func_paras.size();
+    if (s1 != s2)
+        throw std::runtime_error("Wrong amount of parameters in function call");
 
-  return func_value;
+    /* Create variables with the arguments' names in the function scope. */
+    for (int i = 0; i < para_listc->v_func_paras.size(); i++) {
+        std::string var_name = para_listc->v_func_paras[i].name;
+        auto val = static_cast<expr_value_double*>(arg_value_list->v_val[i]);
+        auto obj = new object_double { var_name, "", val->d };
+        scopes.get_top_scope().push_object(obj);
+    }
+
+    auto func_value = root->eval();
+    /* Destroy the function scope. */
+    scopes.pop_scope();
+
+    return func_value;
 }
 
 #define CHECK_N_ARGS(n) \
@@ -441,5 +531,14 @@ void init_builtin_functions()
 {
 	register_static_cfunc("deg2rad", builtin_func_d_deg2rad_d);
 	register_static_cfunc("rad2deg", builtin_func_d_rad2deg_d);
+}
+
+void init_builtin_types()
+{
+    extern scope_stack scopes;
+
+	scopes.get_top_scope().push_type(new type_double);
+	scopes.get_top_scope().push_type(new type_int);
+	scopes.get_top_scope().push_type(new type_string);
 }
 

@@ -26,6 +26,7 @@ int main()
     init_builtin_functions();
     init_standard_variables(); /* pi, e ... */
     init_linked_cfunctions(); /* Initialice function objects for statically linked cfunctions. */
+    init_builtin_types();
 
     yyscan_t scanner;
   	yylex_init(&scanner);
@@ -50,13 +51,16 @@ redo:
 		    } else if (val->type == value_type::STRING) {
 		       auto vals = static_cast<expr_value_string*>(val);
 		       std::cout << std::endl << "> " << vals->s << std::endl;
-		    } else
-		        throw std::runtime_error("Not implemented qweqe");
+		    } else if (val->type == value_type::INT) {
+               auto vali = static_cast<expr_value_int*>(val);
+               std::cout << std::endl << "> " << vali->i << std::endl;
+            } else
+                throw std::runtime_error("Not implemented qweqe");
 	    }
 	    delete val;
 
 	    if (std::cin)
 	    	goto redo;
     }
-    return 1;
+    return 0;
 }

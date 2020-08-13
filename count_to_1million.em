@@ -1,6 +1,6 @@
 
 a = 0
-WHILE a < 10000000 DO
+WHILE a < 1000000 DO
 	a = a + 1
 END
 

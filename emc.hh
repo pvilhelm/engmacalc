@@ -1,3 +1,15 @@
+/*
+ * object-typerna borde ha en "convert_to(std::string)" virtuel function
+ * för att konverta till en viss typ
+ *
+ * typer borde inte ligga i scope utan i namespaces ... för att ha stöd för
+ * lokala typer
+ */
+
+
+
+
+
 #pragma once
 
 #include <stdexcept>
@@ -70,17 +82,30 @@ using cfunc_callwrapper = expr_value* (*)(expr_value_list *arg_value_list);
 void init_linked_cfunctions();
 void init_standard_variables();
 void init_builtin_functions();
+void init_builtin_types();
 
 /* Util functions */
 void deescape_string(std::string &s);
+int cmp_helper(expr_value *fv, expr_value *sv);
 
 class obj {
 public:
   virtual ~obj() {};
   virtual expr_value* eval() = 0;
+  virtual expr_value* assign(expr_value *val) = 0;
   std::string name;
   std::string nspace;
   object_type type;
+};
+
+class type_object {
+public:
+	virtual ~type_object(){};
+
+	virtual obj *ctor() = 0;
+	virtual obj *ctor(expr_value *val) = 0; /* Copy constructor */
+
+	std::string name;
 };
 
 
@@ -91,15 +116,15 @@ public:
   void push_new_scope();
   void pop_scope() { vec_scope.pop_back(); }
   scope &get_top_scope() { return vec_scope.back(); }  
-  obj *find_object(std::string name, std::string  nspace);
-  
+  obj *find_object(std::string name, std::string nspace);
+  type_object *find_type(std::string name);
   std::vector<scope> vec_scope;
 };
 
 class scope {
 public:
   ~scope()
-  {
+  { /* TODO: Fix så att inte minnet läcker ... */
     // for (auto p : vec_objs)
     //  if(p) delete p;
   }
@@ -110,7 +135,15 @@ public:
                                  + obj->nspace + obj->name);
     vec_objs.push_back(obj);
   }
+  void push_type(type_object *type)
+    {
+      if (find_type(type->name))
+          throw std::runtime_error("push_type: Pushing existing type:"
+                                   + type->name);
+      vec_types.push_back(type);
+    }
   void pop_object() { vec_objs.pop_back(); }
+  void pop_type() { vec_types.pop_back(); }
   obj *find_object(std::string name, std::string nspace)
   {
     for (auto p : vec_objs)
@@ -118,7 +151,16 @@ public:
         return p;
     return nullptr;
   }
+
+  type_object *find_type(std::string name)
+  {
+	for (auto p : vec_types)
+		if (p->name == name)
+			return p;
+	return nullptr;
+  }
   std::vector<obj*> vec_objs;
+  std::vector<type_object*> vec_types;
 };
 
 /* Base class of the value of an evaluated expression. */
@@ -205,6 +247,19 @@ public:
   object_string(std::string name, std::string nspace, std::string val)
     : s(val)
   { type = object_type::STRING; this->name = name; this->nspace = nspace;};
+  object_string(std::string name, std::string val) : object_string(name, "", val){}
+  object_string(std::string val) : object_string("","", val){}
+  object_string() : object_string("","", ""){}
+
+  expr_value* assign(expr_value *val)
+  {
+      if (val->type != value_type::STRING)
+          throw std::runtime_error("Can't assign this type to string");
+      expr_value_string *vals = dynamic_cast<expr_value_string*>(val);
+      s = vals->s;
+
+      return eval();
+  }
 
   expr_value *eval()
   {
@@ -222,16 +277,33 @@ public:
   object_double(std::string name, std::string nspace, double val)
     : d(val)
   { type = object_type::DOUBLE; this->name = name; this->nspace = nspace;};
-  object_double() : d(0.0) {}
   object_double(std::string name, double val)
     : object_double(name, "", val) {}
-
+  object_double(double val) : object_double("", "", val) {}
+  object_double() : object_double("", "", 0.) {}
 
   expr_value *eval()
   {
     return new expr_value_double{d};
   }
   
+  expr_value* assign(expr_value *val)
+  {
+        if (val->type != value_type::INT && val->type != value_type::DOUBLE)
+            throw std::runtime_error("Can't assign this type to double");
+
+        expr_value_string *valt;
+        if (val->type == value_type::INT) {
+            auto valt = dynamic_cast<expr_value_int*>(val);
+            d = valt->i;
+        } else if (val->type == value_type::DOUBLE) {
+            auto valt = dynamic_cast<expr_value_double*>(val);
+            d = valt->d;
+        }
+
+        return eval();
+  }
+
   double d;
 };
 
@@ -242,15 +314,32 @@ public:
   object_int(std::string name, std::string nspace, int val)
     : i(val)
   { type = object_type::INT; this->name = name; this->nspace = nspace;};
-  object_int() : i(0.0) {}
   object_int(std::string name, int val)
     : object_int(name, "", val) {}
-
+  object_int(int val) : object_int("", "", val) {}
+  object_int() : object_int("", "", 0) {}
 
   expr_value *eval()
   {
     return new expr_value_int{i};
   }
+
+  expr_value* assign(expr_value *val)
+    {
+          if (val->type != value_type::INT && val->type != value_type::DOUBLE)
+              throw std::runtime_error("Can't assign this type to int");
+
+          expr_value_string *valt;
+          if (val->type == value_type::INT) {
+              auto valt = dynamic_cast<expr_value_int*>(val);
+              i = valt->i;
+          } else if (val->type == value_type::DOUBLE) {
+              auto valt = dynamic_cast<expr_value_double*>(val);
+              i = valt->d;
+          }
+
+          return eval();
+    }
 
   int i;
 };
@@ -274,6 +363,8 @@ public:
 
   /* Evaluate the function. */
   expr_value *feval(expr_value_list *arg_value_list);
+
+  expr_value* assign(expr_value *val) { throw std::runtime_error("Not implemented function pointers yet"); }
 };
 
 class object_static_cfunc : public object_func_base {
@@ -292,6 +383,60 @@ public:
     }
 
     expr_value *eval() { throw std::runtime_error("cfunc eval");}
+
+    expr_value* assign(expr_value *val) { throw std::runtime_error("Not implemented function pointers yet"); }
+};
+
+class type_double : public type_object {
+public:
+	~type_double(){}
+	type_double() {name = "Double";}
+	obj *ctor()	{ return new object_double{};	}
+	obj *ctor(expr_value *val)
+	{
+		double d;
+		if (val->type == value_type::DOUBLE) {
+			d = dynamic_cast<expr_value_double*>(val)->d;
+		} else if (val->type == value_type::INT) {
+			d = (double)dynamic_cast<expr_value_int*>(val)->i;
+		} else
+			throw std::runtime_error("Invalid conversion");
+		return new object_double{d};
+	};
+};
+
+class type_int : public type_object {
+public:
+	~type_int(){}
+	type_int() {name = "Int";}
+	obj *ctor()	{ return new object_int{};	}
+	obj *ctor(expr_value *val)
+	{
+		int i;
+		if (val->type == value_type::DOUBLE) {
+			i = (int)dynamic_cast<expr_value_double*>(val)->d;
+		} else if (val->type == value_type::INT) {
+			i = dynamic_cast<expr_value_int*>(val)->i;
+		} else
+			throw std::runtime_error("Invalid conversion");
+		return new object_int{i};
+	};
+};
+
+class type_string : public type_object {
+public:
+	~type_string(){}
+	type_string() {name = "String";}
+	obj *ctor()	{ return new object_string{};	}
+	obj *ctor(expr_value *val)
+	{
+		std::string s;
+		if (val->type == value_type::STRING) {
+			s = dynamic_cast<expr_value_string*>(val)->s;
+		} else
+			throw std::runtime_error("Invalid conversion");
+		return new object_string{s};
+	};
 };
 
 class expr_value_lval : public expr_value {
@@ -366,105 +511,205 @@ public:
 
 
 
-class ast_node_add : public ast_node {
+class ast_node_add: public ast_node {
 public:
-  ast_node_add() : ast_node_add(nullptr, nullptr) {}
-  ast_node_add(ast_node *first, ast_node *sec) :
-    first(first) , sec(sec) { type = ast_type::DOUBLE_ADD;}
-  
-  ~ast_node_add()
-  {
-    delete first;
-    delete sec;
-  }
-
-  ast_node *clone()
-  {
-	  return new ast_node_add{first->clone(), sec->clone()};
-  }
-
-  expr_value *eval()
-  {
-    auto fv = first->eval();
-    auto sv = sec->eval();
-
-    if (fv->type == value_type::DOUBLE
-        && sv->type == value_type::DOUBLE) {
-          auto d_fv = dynamic_cast<expr_value_double*>(fv);
-          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
-
-          double ans = d_fv->d + d_sv->d;
-
-          delete sv;
-          delete fv;
-          
-          return new expr_value_double{ans};
-    } else if (fv->type == value_type::STRING
-            && sv->type == value_type::STRING) {
-	  auto s_fv = dynamic_cast<expr_value_string*>(fv);
-	  auto s_sv = dynamic_cast<expr_value_string*>(sv);
-
-	  std::string ans = s_fv->s + s_sv->s;
-
-	  delete sv;
-	  delete fv;
-
-	  return new expr_value_string{ans};
-	}else {
-      delete sv;
-      delete fv;
-      throw std::runtime_error("AST node add:  types not implemented");
+    ast_node_add() :
+            ast_node_add(nullptr, nullptr)
+    {
+    }
+    ast_node_add(ast_node *first, ast_node *sec) :
+            first(first), sec(sec)
+    {
+        type = ast_type::DOUBLE_ADD;
     }
 
-  }
-  
-  ast_node *first;
-  ast_node *sec;
+    ~ast_node_add()
+    {
+        delete first;
+        delete sec;
+    }
+
+    ast_node* clone()
+    {
+        return new ast_node_add { first->clone(), sec->clone() };
+    }
+
+    expr_value* eval()
+    {
+        auto fv = first->eval();
+        auto sv = sec->eval();
+
+        if (fv->type == value_type::DOUBLE
+                || sv->type == value_type::DOUBLE) {
+            /* Swap so that we always get a double in one specific. */
+            auto fv1 = fv->type == value_type::DOUBLE ? fv : sv;
+            auto sv1 = fv->type == value_type::DOUBLE ? sv : fv;
+
+            auto d_fv1 = dynamic_cast<expr_value_double*>(fv1);
+
+            switch (sv1->type) {
+            case value_type::DOUBLE:
+                {
+                    auto d_sv1 = dynamic_cast<expr_value_double*>(sv1);
+                    double ans = d_fv1->d + d_sv1->d;
+                    delete sv;
+                    delete fv;
+                    return new expr_value_double { ans };
+                }
+            case value_type::INT:
+                {
+                    auto i_sv1 = dynamic_cast<expr_value_int*>(sv1);
+                    double ans = d_fv1->d + i_sv1->i;
+                    delete sv;
+                    delete fv;
+                    return new expr_value_double { ans };
+                }
+            default:
+                {
+                    delete sv;
+                    delete fv;
+                    throw std::runtime_error(
+                            "AST node add:  types not implemented");
+                }
+            }
+        } else if (fv->type == value_type::INT
+                || sv->type == value_type::INT) {
+            /* Swap so that we always get a int in one specific. */
+            auto fv1 = fv->type == value_type::INT ? fv : sv;
+            auto sv1 = fv->type == value_type::INT ? sv : fv;
+
+            auto d_fv1 = dynamic_cast<expr_value_int*>(fv1);
+
+            switch (sv1->type) {
+            case value_type::DOUBLE:
+                {
+                    auto d_sv1 = dynamic_cast<expr_value_double*>(sv1);
+                    double ans = d_fv1->i + d_sv1->d;
+                    delete sv;
+                    delete fv;
+                    return new expr_value_double { ans };
+                }
+            case value_type::INT:
+                {
+                    auto i_sv1 = dynamic_cast<expr_value_int*>(sv1);
+                    int ans = d_fv1->i + i_sv1->i;
+                    delete sv;
+                    delete fv;
+                    return new expr_value_int { ans };
+                }
+            default:
+                {
+                    delete sv;
+                    delete fv;
+                    throw std::runtime_error(
+                            "AST node add:  types not implemented");
+                }
+            }
+        } else if (fv->type == value_type::STRING
+                && sv->type == value_type::STRING) {
+            auto s_fv = dynamic_cast<expr_value_string*>(fv);
+            auto s_sv = dynamic_cast<expr_value_string*>(sv);
+
+            std::string ans = s_fv->s + s_sv->s;
+
+            delete sv;
+            delete fv;
+
+            return new expr_value_string { ans };
+        } else {
+            delete sv;
+            delete fv;
+            throw std::runtime_error("AST node add:  types not implemented");
+        }
+
+    }
+
+    ast_node *first;
+    ast_node *sec;
 };
 
-class ast_node_sub : public ast_node {
+class ast_node_sub: public ast_node {
 public:
-  ast_node_sub() : ast_node_sub(nullptr, nullptr) {}
-  ast_node_sub(ast_node *first, ast_node *sec) :
-    first(first) , sec(sec) { type = ast_type::DOUBLE_SUB;}
-  
-  ~ast_node_sub()
-  {
-    delete first;
-    delete sec;
-  }
-
-  ast_node *clone()
-  {
-	  return new ast_node_sub{first->clone(), sec->clone()};
-  }
-
-  expr_value *eval()
-  {
-    auto fv = first->eval();
-    auto sv = sec->eval();
-
-    if (fv->type == value_type::DOUBLE
-        && sv->type == value_type::DOUBLE) {
-          auto d_fv = dynamic_cast<expr_value_double*>(fv);
-          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
-
-          double ans = d_fv->d - d_sv->d;
-
-          delete fv;
-          delete sv;
-          
-          return new expr_value_double{ans};
-    } else {
-      delete fv;
-      delete sv;
-      throw std::runtime_error("AST node sub:  types not implemented");
+    ast_node_sub() :
+            ast_node_sub(nullptr, nullptr)
+    {
+    }
+    ast_node_sub(ast_node *first, ast_node *sec) :
+            first(first), sec(sec)
+    {
+        type = ast_type::DOUBLE_SUB;
     }
 
-  }
-  
-  ast_node *first;
-  ast_node *sec;
+    ~ast_node_sub()
+    {
+        delete first;
+        delete sec;
+    }
+
+    ast_node* clone()
+    {
+        return new ast_node_sub { first->clone(), sec->clone() };
+    }
+
+    expr_value* eval()
+    {
+        auto fv = first->eval();
+        auto sv = sec->eval();
+
+        if (fv->type == value_type::DOUBLE
+                && sv->type == value_type::DOUBLE) {
+            auto d_fv = dynamic_cast<expr_value_double*>(fv);
+            auto d_sv = dynamic_cast<expr_value_double*>(sv);
+
+            double ans = d_fv->d - d_sv->d;
+
+            delete fv;
+            delete sv;
+
+            return new expr_value_double { ans };
+        } else if (fv->type == value_type::DOUBLE
+                && sv->type == value_type::INT) {
+            auto d_fv = dynamic_cast<expr_value_double*>(fv);
+            auto i_sv = dynamic_cast<expr_value_int*>(sv);
+
+            double ans = d_fv->d - i_sv->i;
+
+            delete fv;
+            delete sv;
+
+            return new expr_value_double { ans };
+        } else if (fv->type == value_type::INT
+                && sv->type == value_type::DOUBLE) {
+            auto d_fv = dynamic_cast<expr_value_int*>(fv);
+            auto d_sv = dynamic_cast<expr_value_double*>(sv);
+
+            double ans = d_fv->i - d_sv->d;
+
+            delete fv;
+            delete sv;
+
+            return new expr_value_double { ans };
+        } else if (fv->type == value_type::INT
+                && sv->type == value_type::INT) {
+            auto d_fv = dynamic_cast<expr_value_int*>(fv);
+            auto d_sv = dynamic_cast<expr_value_int*>(sv);
+
+            int ans = d_fv->i - d_sv->i;
+
+            delete fv;
+            delete sv;
+
+            return new expr_value_int { ans };
+        } else {
+            delete fv;
+            delete sv;
+            throw std::runtime_error("AST node sub:  types not implemented");
+        }
+
+    }
+
+    ast_node *first;
+    ast_node *sec;
 };
 
 class ast_node_mul : public ast_node {
@@ -500,6 +745,39 @@ public:
           delete sv;
           
           return new expr_value_double{ans};
+    } else if (fv->type == value_type::DOUBLE
+            && sv->type == value_type::INT) {
+        auto d_fv = dynamic_cast<expr_value_double*>(fv);
+        auto i_sv = dynamic_cast<expr_value_int*>(sv);
+
+        double ans = d_fv->d * i_sv->i;
+
+        delete fv;
+        delete sv;
+
+        return new expr_value_double { ans };
+    } else if (fv->type == value_type::INT
+            && sv->type == value_type::DOUBLE) {
+        auto i_fv = dynamic_cast<expr_value_int*>(fv);
+        auto d_sv = dynamic_cast<expr_value_double*>(sv);
+
+        double ans = i_fv->i * d_sv->d;
+
+        delete fv;
+        delete sv;
+
+        return new expr_value_double { ans };
+    } else if (fv->type == value_type::INT
+            && sv->type == value_type::INT) {
+        auto i_fv = dynamic_cast<expr_value_int*>(fv);
+        auto i_sv = dynamic_cast<expr_value_int*>(sv);
+
+        int ans = i_fv->i * i_sv->i;
+
+        delete fv;
+        delete sv;
+
+        return new expr_value_int { ans };
     } else {
       delete fv;
       delete sv;
@@ -545,7 +823,40 @@ public:
           delete sv;
 
           return new expr_value_double{ans};
-    } else {
+    } else if (fv->type == value_type::DOUBLE
+            && sv->type == value_type::INT) {
+              auto d_fv = dynamic_cast<expr_value_double*>(fv);
+              auto i_sv = dynamic_cast<expr_value_int*>(sv);
+
+              double ans = d_fv->d / i_sv->i;
+
+              delete fv;
+              delete sv;
+
+              return new expr_value_double{ans};
+    } else if (fv->type == value_type::INT
+            && sv->type == value_type::DOUBLE) {
+              auto i_fv = dynamic_cast<expr_value_int*>(fv);
+              auto d_sv = dynamic_cast<expr_value_double*>(sv);
+
+              double ans = i_fv->i / d_sv->d;
+
+              delete fv;
+              delete sv;
+
+              return new expr_value_double{ans};
+    } else if (fv->type == value_type::INT
+            && sv->type == value_type::INT) {
+              auto i_fv = dynamic_cast<expr_value_int*>(fv);
+              auto i_sv = dynamic_cast<expr_value_int*>(sv);
+
+              int ans = i_fv->i / i_sv->i;
+
+              delete fv;
+              delete sv;
+
+              return new expr_value_int{ans};
+        }else{
       delete fv;
       delete sv;
       throw std::runtime_error("AST node rdiv:  types not implemented");
@@ -590,7 +901,40 @@ public:
           delete sv;
 
           return new expr_value_double{ans};
-    } else {
+    } else if (fv->type == value_type::DOUBLE
+            && sv->type == value_type::INT) {
+              auto d_fv = dynamic_cast<expr_value_double*>(fv);
+              auto i_sv = dynamic_cast<expr_value_int*>(sv);
+
+              double ans = pow(d_fv->d , i_sv->i);
+
+              delete fv;
+              delete sv;
+
+              return new expr_value_double{ans};
+    } else if (fv->type == value_type::INT
+            && sv->type == value_type::DOUBLE) {
+              auto i_fv = dynamic_cast<expr_value_int*>(fv);
+              auto d_sv = dynamic_cast<expr_value_double*>(sv);
+
+              double ans = pow(i_fv->i , d_sv->d);
+
+              delete fv;
+              delete sv;
+
+              return new expr_value_double{ans};
+    } else if (fv->type == value_type::INT
+            && sv->type == value_type::INT) {
+              auto i_fv = dynamic_cast<expr_value_int*>(fv);
+              auto i_sv = dynamic_cast<expr_value_int*>(sv);
+
+              double ans_d = pow((double)i_fv->i , (double)i_sv->i);
+              int ans = std::round(ans_d);
+              delete fv;
+              delete sv;
+
+              return new expr_value_int{ans};
+        } else{
       delete fv;
       delete sv;
       throw std::runtime_error("AST node pow:  types not implemented");
@@ -625,9 +969,15 @@ public:
           auto d_fv = dynamic_cast<expr_value_double*>(fv);
   
           double ans = d_fv->d < 0 ? -d_fv->d : d_fv->d;
-
+          delete fv;
           return new expr_value_double{ans};
-    } else
+    } else if (fv->type == value_type::INT) {
+        auto i_fv = dynamic_cast<expr_value_int*>(fv);
+
+        int ans = i_fv->i < 0 ? -i_fv->i : i_fv->i;
+        delete fv;
+        return new expr_value_int{ans};
+  }
       throw std::runtime_error("AST node unary minus types not implemented");
   }
 };
@@ -656,9 +1006,15 @@ public:
           auto d_fv = dynamic_cast<expr_value_double*>(fv);
   
           double ans = -d_fv->d;
-
+          delete fv;
           return new expr_value_double{ans};
-    } else
+    } else if (fv->type == value_type::INT) {
+        auto i_fv = dynamic_cast<expr_value_int*>(fv);
+
+        int ans = -i_fv->i;
+        delete fv;
+        return new expr_value_int{ans};
+    }
       throw std::runtime_error("AST node unary minus types not implemented");
 
   }
@@ -739,87 +1095,62 @@ public:
 		  auto obj = new object_string{lvar->name, lvar->nspace, ""};
 		  scopes.get_top_scope().push_object(obj);
 		  lval->object = obj;
-	  }
+	  } else if (rval->type == value_type::INT) {
+          auto obj = new object_int{lvar->name, lvar->nspace, 0};
+          scopes.get_top_scope().push_object(obj);
+          lval->object = obj;
+      }
 	}
 
-    if (rval->type == value_type::DOUBLE && lval->object->type == object_type::DOUBLE) {
+	auto ans = lval->object->assign(rval);
+	delete rval;
 
-    	auto rvald = dynamic_cast<expr_value_double*>(rval);
-		auto objd = dynamic_cast<object_double*>(lval->object);
-		objd->d = rvald->d;
-
-		delete rval;
-		delete lval;
-
-		return new expr_value_double(objd->d);
-
-    } else if(rval->type == value_type::STRING && lval->object->type == object_type::STRING) {
-
-    	auto rvals = dynamic_cast<expr_value_string*>(rval);
-		auto objs = dynamic_cast<object_string*>(lval->object);
-		objs->s = rvals->s;
-
-		delete rval;
-		delete lval;
-
-		return new expr_value_string(objs->s);
-
-    } else
-    	throw std::runtime_error("ast_node_assign types not implemented");
+	return ans;
   }
   
   ast_node *first;
   ast_node *sec;
 };
 
-class ast_node_cmp : public ast_node {
+
+class ast_node_cmp: public ast_node {
 public:
-  ast_node_cmp() : ast_node_cmp(nullptr, nullptr) {}
-  ast_node_cmp(ast_node *first, ast_node *sec) :
-    first(first) , sec(sec) { type = ast_type::CMP;}
-  
-  ~ast_node_cmp()
-  {
-    if (first) delete first;
-    if (sec) delete sec;
-  }
-
-  ast_node *clone()
-  {
-	  return new ast_node_cmp{first, sec};
-  }
-
-  expr_value *eval()
-  {
-    auto fv = first->eval();
-    auto sv = sec->eval();
-
-    if (fv->type == value_type::DOUBLE
-        && sv->type == value_type::DOUBLE) {
-          auto d_fv = dynamic_cast<expr_value_double*>(fv);
-          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
-          double ans;
-          if (d_fv->d < d_sv->d)
-            ans = -1;
-          else if (d_fv->d > d_sv->d)
-            ans = 1;
-          else
-            ans = 0;
-
-          delete fv;
-          delete sv;
-          
-          return new expr_value_double{ans};
-    } else {
-      delete fv;
-      delete sv;
-      throw std::runtime_error("AST node cmp:  types not implemented");
+    ast_node_cmp() :
+            ast_node_cmp(nullptr, nullptr)
+    {
+    }
+    ast_node_cmp(ast_node *first, ast_node *sec) :
+            first(first), sec(sec)
+    {
+        type = ast_type::CMP;
     }
 
-  }
-  
-  ast_node *first;
-  ast_node *sec;
+    ~ast_node_cmp()
+    {
+        if (first) delete first;
+        if (sec) delete sec;
+    }
+
+    ast_node* clone()
+    {
+        return new ast_node_cmp { first, sec };
+    }
+
+    expr_value* eval()
+    {
+        auto fv = first->eval();
+        auto sv = sec->eval();
+
+        auto ans_val = cmp_helper(fv, sv);
+
+        delete fv;
+        delete sv;
+
+        return new expr_value_int{ans_val};
+    }
+
+    ast_node *first;
+    ast_node *sec;
 };
 
 
@@ -1003,10 +1334,9 @@ public:
 	delete ev_cond;
 
     if (initial_value) {
+        scopes.push_new_scope();
 redo:
-    	scopes.push_new_scope();
     	ans = if_el->eval();
-    	scopes.pop_scope();
 
     	ev_cond = cond_e->eval();
 		if (ev_cond->type != value_type::DOUBLE)
@@ -1018,6 +1348,8 @@ redo:
 
 			goto redo;
 		}
+
+		scopes.pop_scope();
     }
 
     /* See if the else should be executed. */
@@ -1219,17 +1551,17 @@ public:
   expr_value *eval()
   {
     bool ans = and_eval(true);
-    return new expr_value_double{(double)ans};
+    return new expr_value_int{ans};
   }
 
   bool and_eval(bool result)
   {
     auto e = first->eval();
-    if (e->type != value_type::DOUBLE)
+    if (e->type != value_type::INT)
       throw std::runtime_error("andchain Type not implemented");
-    auto ed = dynamic_cast<expr_value_double*>(e);
+    auto ed = dynamic_cast<expr_value_int*>(e);
 
-    bool b = !(ed->d == 0) && result;
+    bool b = !(ed->i == 0) && result;
 
     delete e;
     
@@ -1262,26 +1594,14 @@ public:
     auto fv = first->eval();
     auto sv = sec->eval();
 
-    if (fv->type == value_type::DOUBLE
-        && sv->type == value_type::DOUBLE) {
-          auto d_fv = dynamic_cast<expr_value_double*>(fv);
-          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
-          double ans;
-          if (d_fv->d < d_sv->d)
-            ans = 1;
-          else
-            ans = 0;
+    int a = cmp_helper(fv, sv);
 
-          delete fv;
-          delete sv;
-          
-          return new expr_value_double{ans};
-    } else {
-      delete fv;
-      delete sv;
-      throw std::runtime_error("AST node les:  types not implemented");
-    }
+    delete fv;
+    delete sv;
 
+    if (a == -1)
+        return new expr_value_int{1};
+    return new expr_value_int{0};
   }
 };
 
@@ -1307,25 +1627,14 @@ public:
     auto fv = first->eval();
     auto sv = sec->eval();
 
-    if (fv->type == value_type::DOUBLE
-        && sv->type == value_type::DOUBLE) {
-          auto d_fv = dynamic_cast<expr_value_double*>(fv);
-          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
-          double ans;
-          if (d_fv->d > d_sv->d)
-            ans = 1;
-          else
-            ans = 0;
+    int a = cmp_helper(fv, sv);
 
-          delete fv;
-          delete sv;
-          
-          return new expr_value_double{ans};
-    } else {
-      delete fv;
-      delete sv;
-      throw std::runtime_error("AST node gre:  types not implemented");
-    }
+    delete fv;
+    delete sv;
+
+    if (a == 1)
+        return new expr_value_int{1};
+    return new expr_value_int{0};
 
   }
 };
@@ -1353,25 +1662,14 @@ public:
     auto fv = first->eval();
     auto sv = sec->eval();
 
-    if (fv->type == value_type::DOUBLE
-        && sv->type == value_type::DOUBLE) {
-          auto d_fv = dynamic_cast<expr_value_double*>(fv);
-          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
-          double ans;
-          if (d_fv->d == d_sv->d)
-            ans = 1;
-          else
-            ans = 0;
+    int a = cmp_helper(fv, sv);
 
-          delete fv;
-          delete sv;
-          
-          return new expr_value_double{ans};
-    } else {
-      delete fv;
-      delete sv;
-      throw std::runtime_error("AST node equ:  types not implemented");
-    }
+    delete fv;
+    delete sv;
+
+    if (a == 0)
+        return new expr_value_int{1};
+    return new expr_value_int{0};
 
   }
 };
@@ -1398,25 +1696,14 @@ public:
     auto fv = first->eval();
     auto sv = sec->eval();
 
-    if (fv->type == value_type::DOUBLE
-        && sv->type == value_type::DOUBLE) {
-          auto d_fv = dynamic_cast<expr_value_double*>(fv);
-          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
-          double ans;
-          if (d_fv->d <= d_sv->d)
-            ans = 1;
-          else
-            ans = 0;
+    int a = cmp_helper(fv, sv);
 
-          delete fv;
-          delete sv;
-          
-          return new expr_value_double{ans};
-    } else {
-      delete fv;
-      delete sv;
-      throw std::runtime_error("AST node leq:  types not implemented");
-    }
+    delete fv;
+    delete sv;
+
+    if (a == -1 || a == 0)
+        return new expr_value_int{1};
+    return new expr_value_int{0};
 
   }
 };
@@ -1444,25 +1731,14 @@ public:
     auto fv = first->eval();
     auto sv = sec->eval();
 
-    if (fv->type == value_type::DOUBLE
-        && sv->type == value_type::DOUBLE) {
-          auto d_fv = dynamic_cast<expr_value_double*>(fv);
-          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
-          double ans;
-          if (d_fv->d >= d_sv->d)
-            ans = 1;
-          else
-            ans = 0;
+    int a = cmp_helper(fv, sv);
 
-          delete fv;
-          delete sv;
-          
-          return new expr_value_double{ans};
-    } else {
-      delete fv;
-      delete sv;
-      throw std::runtime_error("AST node geq:  types not implemented");
-    }
+    delete fv;
+    delete sv;
+
+    if (a == 0 || a == 1)
+        return new expr_value_int{1};
+    return new expr_value_int{0};
 
   }
 };
@@ -1489,38 +1765,59 @@ public:
     auto fv = first->eval();
     auto sv = sec->eval();
 
-    if (fv->type == value_type::DOUBLE
-        && sv->type == value_type::DOUBLE) {
-          auto d_fv = dynamic_cast<expr_value_double*>(fv);
-          auto d_sv = dynamic_cast<expr_value_double*>(sv);    
-          double ans;
-          if (d_fv->d != d_sv->d)
-            ans = 1;
-          else
-            ans = 0;
+    int a = cmp_helper(fv, sv);
 
-          delete fv;
-          delete sv;
-          
-          return new expr_value_double{ans};
-    } else {
-      delete fv;
-      delete sv;
-      throw std::runtime_error("AST node neq:  types not implemented");
-    }
+    delete fv;
+    delete sv;
+
+    if (a == 1 || a == -1 || a == 3)
+        return new expr_value_int{1};
+    return new expr_value_int{0};
 
   }
 };
 
-class ast_node_def : public ast_node {
+class ast_node_def: public ast_node {
 public:
-	ast_node_def(std::string type_name, std::string var_name) :
-		type_name(type_name), var_name(var_name)
-		{type = ast_type::DEF;}
+    ast_node_def(std::string type_name, std::string var_name, ast_node *value_node) :
+            type_name(type_name), var_name(var_name), value_node(value_node)
+    {
+        type = ast_type::DEF;
+    }
 
-	std::string type_name;
-	std::string var_name;
-	ast_node *assign_init = nullptr;
+    ast_node* clone()
+    {
+        return new ast_node_def {type_name, var_name, value_node ? value_node->clone() : nullptr};
+    }
+
+    expr_value* eval()
+    {
+        extern scope_stack scopes;
+
+        expr_value *val = nullptr;
+        if (value_node)
+            val = value_node->eval();
+
+        type_object *type = scopes.get_top_scope().find_type(type_name);
+        if (!type)
+            throw std::runtime_error("Type does not exist: " + type_name);
+
+        obj *obj;
+
+        if (value_node)
+            obj = type->ctor(val);
+        else
+            obj = type->ctor();
+        obj->name = var_name;
+
+        scopes.get_top_scope().push_object(obj);
+
+        return val;
+    }
+
+    std::string type_name;
+    std::string var_name;
+    ast_node *value_node = nullptr;
 };
 
 

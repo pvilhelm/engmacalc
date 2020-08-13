@@ -96,10 +96,11 @@ se: e
     | WHILE e DO EOL exp_list EOL END 
     						{ $$ = new ast_node_while{$2, $5};}
     | WHILE e DO EOL exp_list EOL ELSE EOL exp_list EOL END 
-    						{ $$ = new ast_node_while{$2, $5, $9};} 
+    						{ $$ = new ast_node_while{$2, $5, $9};}
+    | definion '=' se       { $$ = $1; dynamic_cast<ast_node_def*>($1)->value_node = $3;}   						
     ;
     
-definion: TYPENAME NAME 	{$$ = new ast_node_def{*$1, *$2};}    
+definion: TYPENAME NAME 	{$$ = new ast_node_def{*$1, *$2, nullptr};}    
 
 code_block: DO exp_list END             { $$ = new ast_node_doblock{$2};}
           | DO EOL exp_list EOL END     { $$ = new ast_node_doblock{$3};}
