@@ -26,7 +26,7 @@ typedef void* yyscan_t;
 %token <s> TYPENAME 
 %token <s> ESC_STRING
 
-%token EOL IF DO END ELSE WHILE ENDOFFILE FUNC
+%token EOL IF DO END ELSE WHILE ENDOFFILE FUNC ELSEIF
 
 %right '='
 %left CMP LEQ GEQ EQU NEQ '>' '<'
@@ -40,7 +40,7 @@ typedef void* yyscan_t;
 
 %start program
 
-%type <node> exp cmp_exp e se exp_list code_block arg_list param_list definion
+%type <node> exp cmp_exp e se cse exp_list code_block arg_list param_list definion elseif_list sl_elseif_list
 
 %define parse.trace
     
@@ -54,34 +54,61 @@ int yyerror(struct YYLTYPE * yylloc_param, void *scanner, const char *s);
     
 %%
 
-program:               
-		| program EOL
-     	| program exp_list EOL
+program:              
+		/*| program*/ 
+     	 cse
                         { 	
-                        	ast_root = $2;
+                        	ast_root = $1;
                         	YYACCEPT;
                         }
-     	| program ENDOFFILE { ast_root = nullptr; YYACCEPT;}
+     	//| ENDOFFILE { ast_root = nullptr; YYACCEPT;}
      	;
 
     /* List of expressions */
-exp_list: se           		{$$ = new ast_node_explist{$1};}
-     	| exp_list EOL se 	{
-	                            auto p_exl = static_cast<ast_node_explist*>($1);
-	                            p_exl->append_node($3);
+exp_list: cse           		{ast_node* p;
+                                 if ($1) /* If $1 is null the cse was an EOL */
+                                    p = new ast_node_explist{$1};
+                                 else
+                                    p = new ast_node_explist{}; 
+                                 $$ = p;}
+     	| exp_list cse 	    {
+	                            if ($2) {
+	                               auto p_exl = static_cast<ast_node_explist*>($1);
+	                               p_exl->append_node($2);
+                                }
 	                            $$ = $1; 
                         	}
      	;                       
 
- /* Statement expression */
-se: e
-	| IF e DO EOL exp_list EOL END { $$ = new ast_node_if{$2, $5};}
-    | IF e DO exp_list END { $$ = new ast_node_if{$2, $4};}
+/* Closed statement expression. */
+cse: EOL                    {$$ = 0;}
+    |se EOL                 {$$ = $1;}
 
-    | IF e DO     exp_list     ELSE     exp_list     END
-                        { $$ = new ast_node_if{$2, $4, $6};}
-    | IF e DO EOL exp_list EOL ELSE EOL exp_list EOL END 
-                        { $$ = new ast_node_if{$2, $5, $9};}                        
+ /* Statement expression */
+se: e                      {$$ = $1;}
+ /* IFs with ELSE:s are a headache to make grammer for. So ... */
+ 
+    /* These with se are for online if:s */
+	| IF e DO se END { $$ = new ast_node_if{$2, $4};}
+    | IF e DO se ELSE DO se END { $$ = new ast_node_if{$2, $4, $7};}
+    | IF e DO se ELSE sl_elseif_list END { $$ = new ast_node_if{$2, $4, $6};}
+    | IF e DO se ELSE sl_elseif_list ELSE DO se END 
+                            { 
+                                $$ = new ast_node_if{$2, $4, $6};
+                                auto p = dynamic_cast<ast_node_if*>($6);
+                                p->append_linked_if($9);
+                            }    
+    /* Multiline if:s with ELSE IFs */
+    | IF e DO exp_list END { $$ = new ast_node_if{$2, $4};}
+    | IF e DO exp_list ELSE DO exp_list END { $$ = new ast_node_if{$2, $4, $7};}
+    | IF e DO exp_list ELSE elseif_list END { $$ = new ast_node_if{$2, $4, $6};}
+    | IF e DO exp_list ELSE elseif_list ELSE DO exp_list END
+                            { 
+                                $$ = new ast_node_if{$2, $4, $6};
+                                auto p = dynamic_cast<ast_node_if*>($6);
+                                p->append_linked_if($9);
+                            }                            
+
     | code_block
     | FUNC NAME '(' param_list ')' code_block
                 {
@@ -93,29 +120,49 @@ se: e
     						{ $$ = new ast_node_while{$2, $4};}
     | WHILE e DO exp_list ELSE exp_list END 
     						{ $$ = new ast_node_while{$2, $4, $6};}
-    | WHILE e DO EOL exp_list EOL END 
-    						{ $$ = new ast_node_while{$2, $5};}
-    | WHILE e DO EOL exp_list EOL ELSE EOL exp_list EOL END 
-    						{ $$ = new ast_node_while{$2, $5, $9};}
     | definion '=' se       { $$ = $1; dynamic_cast<ast_node_def*>($1)->value_node = $3;}   						
     ;
     
-definion: TYPENAME NAME 	{$$ = new ast_node_def{*$1, *$2, nullptr};}    
+/* A list of ifelses */
+elseif_list: IF e DO exp_list              { $$ = new ast_node_if{$2, $4, 0};}
+       | elseif_list ELSE IF e DO exp_list { 
+                                             auto p = new ast_node_if{$4, $6, 0};
+                                             auto pp = dynamic_cast<ast_node_if*>($1);
+                                             pp->append_linked_if(p);
+                                             $$ = $1;
+                                           }
+/* A list of ifelsies for one liner. */                                         
+sl_elseif_list: IF e DO se                 { $$ = new ast_node_if{$2, $4, 0};}
+       | sl_elseif_list ELSE IF e DO se    { 
+                                             auto p = new ast_node_if{$4, $6, 0};
+                                             auto pp = dynamic_cast<ast_node_if*>($1);
+                                             pp->append_linked_if(p);
+                                             $$ = $1;
+                                           }   
+ 
+definion: TYPENAME NAME     {$$ = new ast_node_def{*$1, *$2, nullptr};}    
 
-code_block: DO exp_list END             { $$ = new ast_node_doblock{$2};}
-          | DO EOL exp_list EOL END     { $$ = new ast_node_doblock{$3};}
+code_block: DO exp_list END     { $$ = new ast_node_doblock{$2};}
 
-param_list: NAME                     {auto p = new ast_node_parlist;
-                                      $$ = p;
-                                      p->append_parameter(*$1);
-                                      delete $1;}
-        | param_list ',' NAME        {auto p = static_cast<ast_node_parlist*>($$);
-                                      p->append_parameter(*$3); delete $3;}
+param_list: NAME                        {
+                                            auto p = new ast_node_parlist;
+                                            $$ = p;
+                                            p->append_parameter(*$1);
+                                            delete $1; 
+                                        }
+        | param_list ',' NAME           {
+                                            auto p = static_cast<ast_node_parlist*>($$);
+                                            p->append_parameter(*$3); delete $3;
+                                        }
 
-arg_list: e                         {auto p = new ast_node_arglist;
-                                     p->append_arg($1); $$ = p;}
-        | arg_list ',' e            {auto p = static_cast<ast_node_arglist*>($$);
-                                     p->append_arg($3);}
+arg_list: e                 {
+                                auto p = new ast_node_arglist;
+                                p->append_arg($1); $$ = p;
+                            }
+        | arg_list ',' e    {
+                                auto p = static_cast<ast_node_arglist*>($$);
+                                p->append_arg($3);
+                            }
     
  /* Top expression */
 e: exp

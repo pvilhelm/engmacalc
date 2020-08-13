@@ -1410,9 +1410,12 @@ class ast_node_explist: public ast_node {
 public:
     ast_node_explist(ast_node *first)
     {
-        v_nodes.push_back(first);
+        if (first)
+            v_nodes.push_back(first);
         type = ast_type::EXPLIST;
     }
+
+    ast_node_explist() : ast_node_explist(nullptr) {}
 
     ~ast_node_explist()
     {
@@ -1444,7 +1447,9 @@ public:
     {
         expr_value *ans = 0;
         for (auto p : v_nodes)
-            ans = p->eval();
+           ans = p->eval();
+        if (!ans) /* Expressionslist can be empty eg. all EOLs. */
+            ans = new expr_value_int{0};
         return ans;
     }
 
@@ -1502,6 +1507,14 @@ public:
         delete else_el;
     }
 
+    void append_linked_if(ast_node *node)
+    {
+        auto p = &else_el;
+        while(*p)
+            p = &(dynamic_cast<ast_node_if*>(*p)->else_el);
+        *p = node;
+    }
+
     ast_node* clone()
     {
         return new ast_node_if { cond_e->clone(), if_el->clone(),
@@ -1525,9 +1538,15 @@ public:
             ans = if_el->eval();
             scopes.pop_scope();
         } else if (else_el) {
-            scopes.push_new_scope();
-            ans = else_el->eval();
-            scopes.pop_scope();
+            /* Push a scope unless the else node is a linked IF node (that pushes it's own scope). */
+            if (else_el->type != ast_type::IF) {
+                scopes.push_new_scope();
+                ans = else_el->eval();
+                scopes.pop_scope();
+                return ans;
+            }
+            /* Call linked elseif and else */
+            return else_el->eval();
         } else
             ans = new expr_value_double { 0. };
 

@@ -56,6 +56,8 @@ int main()
 
         if (std::cin)
             goto redo;
-    }
+    } else if (!ast_root && err == 0)
+        if (std::cin)
+            goto redo;
     return 0;
 }
