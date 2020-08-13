@@ -1,4 +1,3 @@
-
 #include <cmath>
 #include <cstdio>
 #include <cstdarg>
@@ -26,25 +25,35 @@ void deescape_string(std::string &s)
 
             switch (c) {
             case 'n':
-                s.replace(i - 1, 2, "\n"); break;
+                s.replace(i - 1, 2, "\n");
+                break;
             case 'a':
-                s.replace(i - 1, 2, "\a"); break;
+                s.replace(i - 1, 2, "\a");
+                break;
             case 'v':
-                s.replace(i - 1, 2, "\v"); break;
+                s.replace(i - 1, 2, "\v");
+                break;
             case 't':
-                s.replace(i - 1, 2, "\t"); break;
+                s.replace(i - 1, 2, "\t");
+                break;
             case 'r':
-                s.replace(i - 1, 2, "\r"); break;
+                s.replace(i - 1, 2, "\r");
+                break;
             case '\\':
-                s.replace(i - 1, 2, "\\"); break;
+                s.replace(i - 1, 2, "\\");
+                break;
             case '\'':
-                s.replace(i - 1, 2, "\'"); break;
+                s.replace(i - 1, 2, "\'");
+                break;
             case '\"':
-                s.replace(i - 1, 2, "\""); break;
+                s.replace(i - 1, 2, "\"");
+                break;
             case '\b':
-                s.replace(i - 1, 2, "\b"); break;
+                s.replace(i - 1, 2, "\b");
+                break;
             case '\?':
-                s.replace(i - 1, 2, "\?"); break;
+                s.replace(i - 1, 2, "\?");
+                break;
             default:
                 hit = false;
             }
@@ -143,7 +152,6 @@ void deescape_string(std::string &s)
     }
 }
 
-
 int cmp_helper(expr_value *fv, expr_value *sv)
 {
     if (fv->type == value_type::DOUBLE
@@ -211,7 +219,7 @@ obj* scope_stack::find_object(std::string name, std::string nspace)
 {
     /* Search backwards so that the top scope matches first. */
     for (auto it = vec_scope.rbegin(); it != vec_scope.rend(); it++)
-    {
+            {
         obj *p = it->find_object(name, nspace);
         if (p)
             return p;
@@ -224,7 +232,7 @@ type_object* scope_stack::find_type(std::string name)
 {
     /* Search backwards so that the top scope matches first. */
     for (auto it = vec_scope.rbegin(); it != vec_scope.rend(); it++)
-    {
+            {
         type_object *p = it->find_type(name);
         if (p)
             return p;
@@ -263,6 +271,8 @@ expr_value* object_func::feval(expr_value_list *arg_value_list)
     return func_value;
 }
 
+//@formatter:off
+
 #define CHECK_N_ARGS(n) \
 	do {if (arg_value_list->v_val.size() != (n))\
 			throw std::runtime_error("Wrong amount of arguments");} while(0)
@@ -280,7 +290,6 @@ expr_value* object_func::feval(expr_value_list *arg_value_list)
 		if (!p_evd)\
 				throw std::runtime_error("Argument not correct type");\
 		arg = p_evd->s;} while(0)
-
 
 #define ONE_D_ARG_ONE_D_RETURN_ARG_MUL_ANS_MUL( cfunc_c_name, wrapper_fn_name, arg_mul, ans_mul) \
 static expr_value* wrapper_fn_name (expr_value_list *arg_value_list)  \
@@ -332,6 +341,7 @@ ONE_D_ARG_ONE_D_RETURN(std::acos, static_cfunc_d_acos_d)
 ONE_D_ARG_ONE_D_RETURN(std::atan, static_cfunc_d_atan_d)
 TWO_D_ARG_ONE_D_RETURN(std::atan2, static_cfunc_d_atan2_d_d)
 
+
 ONE_D_ARG_ONE_D_RETURN_ARG_MUL_ANS_MUL(std::sin, static_cfunc_d_sind_d			, *(PI_D/180),  		  )
 ONE_D_ARG_ONE_D_RETURN_ARG_MUL_ANS_MUL(std::cos, static_cfunc_d_cosd_d			, *(PI_D/180),  		  )
 ONE_D_ARG_ONE_D_RETURN_ARG_MUL_ANS_MUL(std::tan, static_cfunc_d_tand_d			, *(PI_D/180),  		  )
@@ -356,172 +366,180 @@ ONE_D_ARG_ONE_D_RETURN(std::floor, static_cfunc_d_floor_d)
 ONE_D_ARG_ONE_D_RETURN(std::trunc, static_cfunc_d_trunc_d)
 ONE_D_ARG_ONE_D_RETURN(std::round, static_cfunc_d_round_d)
 
+
+
 static expr_value* static_cfunc__printf__(expr_value_list *arg_value_list)
 {
-	int n_args = arg_value_list->v_val.size();
-	if (n_args == 0)
-		throw std::runtime_error("No arguments");
-	int i_arg = 1;
+    int n_args = arg_value_list->v_val.size();
+    if (n_args == 0)
+        throw std::runtime_error("No arguments");
+    int i_arg = 1;
 
-	int ans = 0;
+    int ans = 0;
 
-	std::string format;
-	GET_NTH_ARG_AS_STRING(0, format);
+    std::string format;
+    GET_NTH_ARG_AS_STRING(0, format);
 
-	if (n_args == 1) {
-		ans = std::printf("%s",format.c_str());
-		return new expr_value_double{(double)ans};
-	}
+    if (n_args == 1) {
+        ans = std::printf("%s", format.c_str());
+        return new expr_value_double { (double) ans };
+    }
 
-	int pos0 = 0;
+    int pos0 = 0;
 
-	pos0 = format.find('%');
-	if (pos0 == std::string::npos)
-		throw std::runtime_error("Invalid format specifier: " + format);
+    pos0 = format.find('%');
+    if (pos0 == std::string::npos)
+        throw std::runtime_error("Invalid format specifier: " + format);
 
-	if (pos0 == format.size() - 1)
-		throw std::runtime_error("Invalid format specifier: " + format);
+    if (pos0 == format.size() - 1)
+        throw std::runtime_error("Invalid format specifier: " + format);
 
-	int err = 0;
-	pos0 = 0;
-	int pos1 = 0;
-	bool in_percent = false;
-	bool in_spec = false;
+    int err = 0;
+    pos0 = 0;
+    int pos1 = 0;
+    bool in_percent = false;
+    bool in_spec = false;
 
-	for (int i = 0; i < format.size(); i++) {
-		char cc = format[i];
-		bool is_last_char = i + 1 == format.size();
+    for (int i = 0; i < format.size(); i++) {
+        char cc = format[i];
+        bool is_last_char = i + 1 == format.size();
 
-		if (!in_spec && ! in_percent && !is_last_char) {
-			if (cc == '%') {
-				in_percent = true;
-			}
-		} else if (in_percent && !in_spec && !is_last_char) {
-			if (cc != '%') {
-				in_percent = false;
-				in_spec = true;
-			} else /* Escaped % with %% */
-				in_percent = false;
-		} else {
-			/* Next specifier or escaped % */
-			if (cc == '%' || is_last_char) {
-				if (i_arg == n_args)
-					throw std::runtime_error("Too few arguments for format specifier 2");
-				if (arg_value_list->v_val[i_arg]->type == value_type::DOUBLE) {
-					double d;
+        if (!in_spec && !in_percent && !is_last_char) {
+            if (cc == '%') {
+                in_percent = true;
+            }
+        } else if (in_percent && !in_spec && !is_last_char) {
+            if (cc != '%') {
+                in_percent = false;
+                in_spec = true;
+            } else
+                /* Escaped % with %% */
+                in_percent = false;
+        } else {
+            /* Next specifier or escaped % */
+            if (cc == '%' || is_last_char) {
+                if (i_arg == n_args)
+                    throw std::runtime_error(
+                            "Too few arguments for format specifier 2");
+                if (arg_value_list->v_val[i_arg]->type == value_type::DOUBLE) {
+                    double d;
 
-					GET_NTH_ARG_AS_DOUBLE(i_arg, d);
-					if (is_last_char)
-						err = std::printf(format.substr(pos0).c_str(), d);
-					else
-						err = std::printf(format.substr(pos0, i - pos0).c_str(), d);
-					if (err == -1)
-						break;
-					else
-						ans += err;
-				} else if (arg_value_list->v_val[i_arg]->type == value_type::STRING) {
-					std::string s;
-					GET_NTH_ARG_AS_STRING(i_arg, s);
-					if (is_last_char)
-						err = std::printf(format.substr(pos0).c_str(), s.c_str());
-					else
-						err = std::printf(format.substr(pos0).c_str(), s.c_str());
-					if (err == -1)
-						break;
-					else
-						ans += err;
-				}
-				i_arg++;
-				in_percent = true;
-				pos0 = i;
-			}
-		}
-	}
+                    GET_NTH_ARG_AS_DOUBLE(i_arg, d);
+                    if (is_last_char)
+                        err = std::printf(format.substr(pos0).c_str(), d);
+                    else
+                        err = std::printf(format.substr(pos0, i - pos0).c_str(),
+                                d);
+                    if (err == -1)
+                        break;
+                    else
+                        ans += err;
+                } else if (arg_value_list->v_val[i_arg]->type
+                        == value_type::STRING) {
+                    std::string s;
+                    GET_NTH_ARG_AS_STRING(i_arg, s);
+                    if (is_last_char)
+                        err = std::printf(format.substr(pos0).c_str(),
+                                s.c_str());
+                    else
+                        err = std::printf(format.substr(pos0).c_str(),
+                                s.c_str());
+                    if (err == -1)
+                        break;
+                    else
+                        ans += err;
+                }
+                i_arg++;
+                in_percent = true;
+                pos0 = i;
+            }
+        }
+    }
 
-	if (err == -1)
-		return new expr_value_double{(double)-1};
+    if (err == -1)
+        return new expr_value_double { (double) -1 };
 
-	if (i_arg != n_args)
-		throw std::runtime_error("Too few arguments for format specifier");
+    if (i_arg != n_args)
+        throw std::runtime_error("Too few arguments for format specifier");
 
-	return new expr_value_double{(double)ans};
+    return new expr_value_double { (double) ans };
 }
 
 /* Helper function for init_linked_cfunctions */
 void register_static_cfunc(std::string name, cfunc_callwrapper fptr)
 {
-	extern scope_stack scopes;
-	auto fobj = new object_static_cfunc{name, fptr};
-	scopes.get_top_scope().push_object(fobj);
+    extern scope_stack scopes;
+    auto fobj = new object_static_cfunc { name, fptr };
+    scopes.get_top_scope().push_object(fobj);
 }
 
 void init_linked_cfunctions()
 {
-	register_static_cfunc("remainder", static_cfunc_d_remainder_d_d);
-	register_static_cfunc("mod", static_cfunc_d_fmod_d_d);
-	register_static_cfunc("sqrt", static_cfunc_d_sqrt_d);
-	register_static_cfunc("isnan", static_cfunc_d_isnan_d);
-	register_static_cfunc("isinf", static_cfunc_d_isinf_d);
-	register_static_cfunc("isfinite", static_cfunc_d_isfinite_d);
+    register_static_cfunc("remainder", static_cfunc_d_remainder_d_d);
+    register_static_cfunc("mod", static_cfunc_d_fmod_d_d);
+    register_static_cfunc("sqrt", static_cfunc_d_sqrt_d);
+    register_static_cfunc("isnan", static_cfunc_d_isnan_d);
+    register_static_cfunc("isinf", static_cfunc_d_isinf_d);
+    register_static_cfunc("isfinite", static_cfunc_d_isfinite_d);
 
-	register_static_cfunc("sin", static_cfunc_d_sin_d);
-	register_static_cfunc("cos", static_cfunc_d_cos_d);
-	register_static_cfunc("tan", static_cfunc_d_tan_d);
-	register_static_cfunc("asin", static_cfunc_d_asin_d);
-	register_static_cfunc("acos", static_cfunc_d_acos_d);
-	register_static_cfunc("atan", static_cfunc_d_atan_d);
-	register_static_cfunc("atan2", static_cfunc_d_atan2_d_d);
+    register_static_cfunc("sin", static_cfunc_d_sin_d);
+    register_static_cfunc("cos", static_cfunc_d_cos_d);
+    register_static_cfunc("tan", static_cfunc_d_tan_d);
+    register_static_cfunc("asin", static_cfunc_d_asin_d);
+    register_static_cfunc("acos", static_cfunc_d_acos_d);
+    register_static_cfunc("atan", static_cfunc_d_atan_d);
+    register_static_cfunc("atan2", static_cfunc_d_atan2_d_d);
 
-	register_static_cfunc("sind", static_cfunc_d_sind_d);
-	register_static_cfunc("cosd", static_cfunc_d_cosd_d);
-	register_static_cfunc("tand", static_cfunc_d_tand_d);
-	register_static_cfunc("asind", static_cfunc_d_asind_d);
-	register_static_cfunc("acosd", static_cfunc_d_acosd_d);
-	register_static_cfunc("atand", static_cfunc_d_atand_d);
-	register_static_cfunc("atan2d", static_cfunc_d_atan2d_d_d);
+    register_static_cfunc("sind", static_cfunc_d_sind_d);
+    register_static_cfunc("cosd", static_cfunc_d_cosd_d);
+    register_static_cfunc("tand", static_cfunc_d_tand_d);
+    register_static_cfunc("asind", static_cfunc_d_asind_d);
+    register_static_cfunc("acosd", static_cfunc_d_acosd_d);
+    register_static_cfunc("atand", static_cfunc_d_atand_d);
+    register_static_cfunc("atan2d", static_cfunc_d_atan2d_d_d);
 
-	register_static_cfunc("sinh", static_cfunc_d_sinh_d);
-	register_static_cfunc("cosh", static_cfunc_d_cosh_d);
-	register_static_cfunc("tanh", static_cfunc_d_tanh_d);
-	register_static_cfunc("asinh", static_cfunc_d_asinh_d);
-	register_static_cfunc("acosh", static_cfunc_d_acosh_d);
-	register_static_cfunc("atanh", static_cfunc_d_atanh_d);
+    register_static_cfunc("sinh", static_cfunc_d_sinh_d);
+    register_static_cfunc("cosh", static_cfunc_d_cosh_d);
+    register_static_cfunc("tanh", static_cfunc_d_tanh_d);
+    register_static_cfunc("asinh", static_cfunc_d_asinh_d);
+    register_static_cfunc("acosh", static_cfunc_d_acosh_d);
+    register_static_cfunc("atanh", static_cfunc_d_atanh_d);
 
-	register_static_cfunc("ln", static_cfunc_d_log_d);
-	register_static_cfunc("log", static_cfunc_d_log10_d);
-	register_static_cfunc("log2", static_cfunc_d_log2_d);
+    register_static_cfunc("ln", static_cfunc_d_log_d);
+    register_static_cfunc("log", static_cfunc_d_log10_d);
+    register_static_cfunc("log2", static_cfunc_d_log2_d);
 
-	register_static_cfunc("ceil", static_cfunc_d_ceil_d);
-	register_static_cfunc("floor", static_cfunc_d_floor_d);
-	register_static_cfunc("trunc", static_cfunc_d_trunc_d);
-	register_static_cfunc("round", static_cfunc_d_round_d);
+    register_static_cfunc("ceil", static_cfunc_d_ceil_d);
+    register_static_cfunc("floor", static_cfunc_d_floor_d);
+    register_static_cfunc("trunc", static_cfunc_d_trunc_d);
+    register_static_cfunc("round", static_cfunc_d_round_d);
 
-	register_static_cfunc("printf", static_cfunc__printf__);
+    register_static_cfunc("printf", static_cfunc__printf__);
 }
 
 /* Helper function for init_linked_cfunctions */
 void register_double_var(std::string name, double d)
 {
-	extern scope_stack scopes;
-	auto obj = new object_double{name, "", d};
-	scopes.get_top_scope().push_object(obj);
+    extern scope_stack scopes;
+    auto obj = new object_double { name, "", d };
+    scopes.get_top_scope().push_object(obj);
 }
 
 void init_standard_variables()
 {
-	register_double_var("pi", 3.14159265358979323846);
-	register_double_var("e", 2.7182818284590452354);
-	register_double_var("nan", NAN);
+    register_double_var("pi", 3.14159265358979323846);
+    register_double_var("e", 2.7182818284590452354);
+    register_double_var("nan", NAN);
 }
 
 static double rad2deg(double d)
 {
-	return d * (180/PI_D);
+    return d * (180 / PI_D);
 }
 
 static double deg2rad(double d)
 {
-	return d * (PI_D/180);
+    return d * (PI_D / 180);
 }
 
 ONE_D_ARG_ONE_D_RETURN(deg2rad, builtin_func_d_deg2rad_d)
@@ -529,16 +547,16 @@ ONE_D_ARG_ONE_D_RETURN(rad2deg, builtin_func_d_rad2deg_d)
 
 void init_builtin_functions()
 {
-	register_static_cfunc("deg2rad", builtin_func_d_deg2rad_d);
-	register_static_cfunc("rad2deg", builtin_func_d_rad2deg_d);
+    register_static_cfunc("deg2rad", builtin_func_d_deg2rad_d);
+    register_static_cfunc("rad2deg", builtin_func_d_rad2deg_d);
 }
 
 void init_builtin_types()
 {
     extern scope_stack scopes;
 
-	scopes.get_top_scope().push_type(new type_double);
-	scopes.get_top_scope().push_type(new type_int);
-	scopes.get_top_scope().push_type(new type_string);
+    scopes.get_top_scope().push_type(new type_double);
+    scopes.get_top_scope().push_type(new type_int);
+    scopes.get_top_scope().push_type(new type_string);
 }
 
