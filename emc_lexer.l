@@ -56,7 +56,8 @@ WS([ \t])
 "END" return END;
 "ELSE" return ELSE;
 "WHILE" return WHILE;
-"FUNC" return FUNC;    
+"FUNC" return FUNC;  
+"ALSO" return ALSO;   
 
  /* Symbol names */
 [a-z][a-z0-9\-_]*    { yylval->s = new std::string{yytext}; return NAME; }

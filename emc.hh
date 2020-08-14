@@ -1490,13 +1490,19 @@ class ast_node_if: public ast_node {
 public:
     ast_node *cond_e;
     ast_node *if_el;
-    ast_node *else_el;
+    ast_node *else_el; /* else_el can be a linked IF or another expression (for IF ELSE ... ) */
+    ast_node *also_el = 0;
+    /* The ALSO statement is assumed to be in
+     * the first IF node and not the linked IFs. */
+
     ast_node_if(ast_node *cond_e, ast_node *if_el) :
             ast_node_if(cond_e, if_el, nullptr)
     {
     }
     ast_node_if(ast_node *cond_e, ast_node *if_el, ast_node *else_el) :
-            cond_e(cond_e), if_el(if_el), else_el(else_el)
+                ast_node_if(cond_e, if_el, else_el, nullptr) {}
+    ast_node_if(ast_node *cond_e, ast_node *if_el, ast_node *else_el, ast_node *also_el) :
+            cond_e(cond_e), if_el(if_el), else_el(else_el), also_el(also_el)
     {
         type = ast_type::IF;
     }
@@ -1505,6 +1511,7 @@ public:
         delete cond_e;
         delete if_el;
         delete else_el;
+        delete also_el;
     }
 
     void append_linked_if(ast_node *node)
@@ -1523,6 +1530,25 @@ public:
 
     expr_value* eval()
     {
+        bool ifs_executed = false; /* Keep track of if any IF-conditions were true */
+        auto ans = ifeval(ifs_executed);
+
+        if (ifs_executed && also_el) {
+            delete ans;
+
+            extern scope_stack scopes;
+
+            scopes.push_new_scope();
+            ans = also_el->eval();
+            scopes.pop_scope();
+        }
+
+        return ans;
+    }
+
+    /* This eval() evaluates all the linked if:s also */
+    expr_value* ifeval(bool &ifs_executed)
+    {
         extern scope_stack scopes;
 
         auto ev_cond = std::unique_ptr<expr_value>(cond_e->eval());
@@ -1531,13 +1557,15 @@ public:
         auto ed = std::unique_ptr<expr_value_double>(
                 dynamic_cast<expr_value_double*>(ev_cond.release()));
 
-        expr_value *ans;
+        expr_value *ans = 0;
 
         if (ed->d) {
             scopes.push_new_scope();
             ans = if_el->eval();
             scopes.pop_scope();
+            ifs_executed = true;
         } else if (else_el) {
+
             /* Push a scope unless the else node is a linked IF node (that pushes it's own scope). */
             if (else_el->type != ast_type::IF) {
                 scopes.push_new_scope();
@@ -1545,8 +1573,8 @@ public:
                 scopes.pop_scope();
                 return ans;
             }
-            /* Call linked elseif and else */
-            return else_el->eval();
+            auto ifnode = dynamic_cast<ast_node_if*>(else_el);
+            return ifnode->ifeval(ifs_executed); /* Chain on the "one if has been executed (for the ALSO) */
         } else
             ans = new expr_value_double { 0. };
 

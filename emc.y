@@ -26,7 +26,7 @@ typedef void* yyscan_t;
 %token <s> TYPENAME 
 %token <s> ESC_STRING
 
-%token EOL IF DO END ELSE WHILE ENDOFFILE FUNC ELSEIF
+%token EOL IF DO END ELSE WHILE ENDOFFILE FUNC ELSEIF ALSO
 
 %right '='
 %left CMP LEQ GEQ EQU NEQ '>' '<'
@@ -86,28 +86,44 @@ cse: EOL                    {$$ = 0;}
 
  /* Statement expression */
 se: e                      {$$ = $1;}
- /* IFs with ELSE:s are a headache to make grammer for. So ... */
+ /* IFs with ELSE:s are a headache to make grammar for. So ... */
  
-    /* These with se are for online if:s */
+    /* These with se are for one line if:s */
 	| IF e DO se END { $$ = new ast_node_if{$2, $4};}
     | IF e DO se ELSE DO se END { $$ = new ast_node_if{$2, $4, $7};}
     | IF e DO se ELSE sl_elseif_list END { $$ = new ast_node_if{$2, $4, $6};}
+        /* The also statement expression is executed if atleast of IF condition was true. */
+    | IF e DO se ELSE sl_elseif_list ALSO DO se END { $$ = new ast_node_if{$2, $4, $6, $9};}
     | IF e DO se ELSE sl_elseif_list ELSE DO se END 
                             { 
                                 $$ = new ast_node_if{$2, $4, $6};
                                 auto p = dynamic_cast<ast_node_if*>($6);
                                 p->append_linked_if($9);
                             }    
+    | IF e DO se ELSE sl_elseif_list ALSO DO se ELSE DO se END 
+                            { 
+                                $$ = new ast_node_if{$2, $4, $9};
+                                auto p = dynamic_cast<ast_node_if*>($6);
+                                p->append_linked_if($12);
+                            }  
     /* Multiline if:s with ELSE IFs */
     | IF e DO exp_list END { $$ = new ast_node_if{$2, $4};}
     | IF e DO exp_list ELSE DO exp_list END { $$ = new ast_node_if{$2, $4, $7};}
     | IF e DO exp_list ELSE elseif_list END { $$ = new ast_node_if{$2, $4, $6};}
+    | IF e DO exp_list ELSE elseif_list ALSO DO exp_list END 
+                                            { $$ = new ast_node_if{$2, $4, $6, $9};}
     | IF e DO exp_list ELSE elseif_list ELSE DO exp_list END
                             { 
                                 $$ = new ast_node_if{$2, $4, $6};
                                 auto p = dynamic_cast<ast_node_if*>($6);
                                 p->append_linked_if($9);
-                            }                            
+                            } 
+    | IF e DO exp_list ELSE elseif_list ALSO DO exp_list ELSE DO exp_list END
+                            { 
+                                $$ = new ast_node_if{$2, $4, $6, $9};
+                                auto p = dynamic_cast<ast_node_if*>($6);
+                                p->append_linked_if($12);
+                            }                             
 
     | code_block
     | FUNC NAME '(' param_list ')' code_block

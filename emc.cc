@@ -277,6 +277,10 @@ expr_value* object_func::feval(expr_value_list *arg_value_list)
 	do {if (arg_value_list->v_val.size() != (n))\
 			throw std::runtime_error("Wrong amount of arguments");} while(0)
 
+#define N_ARGS \
+    (arg_value_list->v_val.size())\
+
+
 #define GET_NTH_ARG_AS_DOUBLE(n, arg) \
 	do {auto p_ev = arg_value_list->v_val[(n)];\
 		auto p_evd = dynamic_cast<expr_value_double*>(p_ev);\
@@ -542,6 +546,35 @@ static double deg2rad(double d)
     return d * (PI_D / 180);
 }
 
+static expr_value* builtin_func_i_print_vardiac(expr_value_list *arg_value_list)
+{
+    for (auto val : arg_value_list->v_val) {
+        if (val->type == value_type::DOUBLE) {
+            auto d_val = dynamic_cast<expr_value_double*>(val);
+            std::cout << d_val->d;
+        } else if (val->type == value_type::INT) {
+            auto i_val = dynamic_cast<expr_value_int*>(val);
+            std::cout << i_val->i;
+        } else if (val->type == value_type::STRING) {
+            auto s_val = dynamic_cast<expr_value_string*>(val);
+            std::cout << s_val->s;
+        } else
+            throw std::runtime_error("Invalid type to print");
+    }
+
+    delete arg_value_list;
+
+    return new expr_value_int{0};
+}
+
+static expr_value* builtin_func_i_printnl_vardiac(expr_value_list *arg_value_list)
+{
+    builtin_func_i_print_vardiac(arg_value_list);
+    std::cout << "\n";
+
+    return new expr_value_int{0};
+}
+
 ONE_D_ARG_ONE_D_RETURN(deg2rad, builtin_func_d_deg2rad_d)
 ONE_D_ARG_ONE_D_RETURN(rad2deg, builtin_func_d_rad2deg_d)
 
@@ -549,6 +582,8 @@ void init_builtin_functions()
 {
     register_static_cfunc("deg2rad", builtin_func_d_deg2rad_d);
     register_static_cfunc("rad2deg", builtin_func_d_rad2deg_d);
+    register_static_cfunc("print", builtin_func_i_print_vardiac);
+    register_static_cfunc("printnl", builtin_func_i_printnl_vardiac);
 }
 
 void init_builtin_types()

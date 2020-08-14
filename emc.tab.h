@@ -62,12 +62,13 @@ extern int yydebug;
     ENDOFFILE = 268,
     FUNC = 269,
     ELSEIF = 270,
-    CMP = 271,
-    LEQ = 272,
-    GEQ = 273,
-    EQU = 274,
-    NEQ = 275,
-    UMINUS = 276
+    ALSO = 271,
+    CMP = 272,
+    LEQ = 273,
+    GEQ = 274,
+    EQU = 275,
+    NEQ = 276,
+    UMINUS = 277
   };
 #endif
 
@@ -80,7 +81,7 @@ union YYSTYPE
     ast_node *node;
     std::string *s;
 
-#line 84 "emc.tab.h"
+#line 85 "emc.tab.h"
 
 };
 typedef union YYSTYPE YYSTYPE;
