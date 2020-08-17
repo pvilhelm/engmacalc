@@ -2,6 +2,7 @@
 *~*
 a.out
 emc.output
-
+*.o
 .*
+engmac
 !.gitignore

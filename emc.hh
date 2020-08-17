@@ -16,9 +16,10 @@
 #include <memory>
 
 enum class ast_type {
+    INVALID = 0,
     DOUBLE_LITERAL = 1,
     STRING_LITERAL,
-    DOUBLE_ADD,
+    ADD,
     DOUBLE_SUB,
     DOUBLE_MUL,
     DOUBLE_RDIV,
@@ -703,7 +704,7 @@ public:
     ast_node_add(ast_node *first, ast_node *sec) :
             first(first), sec(sec)
     {
-        type = ast_type::DOUBLE_ADD;
+        type = ast_type::ADD;
     }
 
     ~ast_node_add()
