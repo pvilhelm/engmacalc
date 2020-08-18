@@ -65,6 +65,51 @@ enum class object_type {
     INT
 };
 
+enum class emc_types {
+    INVALID,
+    NONE, /* The node have no type. */
+    POINTER,
+    INT,
+    DOUBLE,
+    STRING,
+    VOID,
+    CONST,
+    REFERENCE, /* e.g. REFERENCE, INT (reference to an int object) */
+    FUNCTION,
+    RETURNING,
+};
+
+struct emc_type {
+    /* First element is inner element. I.e.
+     * c type "const int *" => POINTER, CONST, INT
+     */
+    emc_type(std::initializer_list<emc_types> l)
+    {
+        for (auto e : l)
+            types.push_back(e);
+    }
+    bool is_valid()
+    {
+        if (types.size() && types[0] != emc_types::INVALID) return true;
+        return false;
+    }
+    bool is_double()
+    {
+        if (types.size() && types[0] != emc_types::DOUBLE) return true;
+        return false;
+    }
+    bool is_int()
+    {
+        if (types.size() && types[0] != emc_types::INT) return true;
+        return false;
+    }
+
+    std::vector<emc_types> types;
+};
+
+emc_type standard_type_promotion(const emc_type &a, const emc_type &b);
+emc_type standard_type_promotion_or_invalid(const emc_type &a, const emc_type &b);
+
 /* Forward declarations. */
 class scope;
 class ast_node;
@@ -92,6 +137,7 @@ public:
     ;
     virtual expr_value* eval() = 0;
     virtual expr_value* assign(expr_value *val) = 0;
+    virtual emc_type resolve() {return emc_type{emc_types::INVALID};}
     std::string name;
     std::string nspace;
     object_type type;
@@ -343,6 +389,11 @@ public:
     }
 
     std::string s;
+
+    emc_type resolve()
+    {
+        return emc_type{emc_types::STRING};
+    }
 };
 
 class object_double: public obj {
@@ -398,6 +449,11 @@ public:
     }
 
     double d;
+
+    emc_type resolve()
+    {
+        return emc_type{emc_types::DOUBLE};
+    }
 };
 
 class object_int: public obj {
@@ -453,6 +509,11 @@ public:
     }
 
     int i;
+
+    emc_type resolve()
+    {
+        return emc_type{emc_types::INT};
+    }
 };
 
 class object_func_base: public obj {
@@ -489,6 +550,11 @@ public:
     {
         throw std::runtime_error("Not implemented function pointers yet");
     }
+
+    emc_type resolve()
+    {
+        return emc_type{emc_types::FUNCTION};
+    }
 };
 
 class object_static_cfunc: public object_func_base {
@@ -520,6 +586,11 @@ public:
     expr_value* assign(expr_value *val)
     {
         throw std::runtime_error("Not implemented function pointers yet");
+    }
+
+    emc_type resolve()
+    {
+        return emc_type{emc_types::FUNCTION};
     }
 };
 
@@ -630,7 +701,9 @@ public:
 
     virtual expr_value* eval() = 0;
     virtual ast_node* clone() = 0;
+    virtual emc_type resolve() = 0;
     ast_type type;
+    emc_type value_type = emc_type{emc_types::INVALID};
 };
 
 class ast_node_double_literal: public ast_node {
@@ -655,6 +728,11 @@ public:
     }
 
     double d;
+
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::DOUBLE};
+    }
 
     expr_value* eval()
     {
@@ -681,6 +759,11 @@ public:
     }
 
     std::string s;
+
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::STRING};
+    }
 
     expr_value* eval()
     {
@@ -711,6 +794,11 @@ public:
     {
         delete first;
         delete sec;
+    }
+
+    emc_type resolve()
+    {
+        return value_type = standard_type_promotion(first->resolve(), sec->resolve());
     }
 
     ast_node* clone()
@@ -835,6 +923,11 @@ public:
         return new ast_node_sub { first->clone(), sec->clone() };
     }
 
+    emc_type resolve()
+    {
+        return value_type = standard_type_promotion(first->resolve(), sec->resolve());
+    }
+
     expr_value* eval()
     {
         auto fv = first->eval();
@@ -912,6 +1005,11 @@ public:
     {
         if (first) delete first;
         if (sec) delete sec;
+    }
+
+    emc_type resolve()
+    {
+        return value_type = standard_type_promotion(first->resolve(), sec->resolve());
     }
 
     ast_node* clone()
@@ -996,6 +1094,11 @@ public:
     {
         if (first) delete first;
         if (sec) delete sec;
+    }
+
+    emc_type resolve()
+    {
+        return value_type = standard_type_promotion(first->resolve(), sec->resolve());
     }
 
     ast_node* clone()
@@ -1087,6 +1190,11 @@ public:
         return new ast_node_pow { first->clone(), sec->clone() };
     }
 
+    emc_type resolve()
+    {
+        return value_type = standard_type_promotion(first->resolve(), sec->resolve());
+    }
+
     expr_value* eval()
     {
         auto fv = first->eval();
@@ -1167,6 +1275,11 @@ public:
         return new ast_node_abs { first->clone() };
     }
 
+    emc_type resolve()
+    {
+        return value_type = first->resolve();
+    }
+
     expr_value* eval()
     {
         auto fv = first->eval();
@@ -1208,6 +1321,11 @@ public:
     ast_node* clone()
     {
         return new ast_node_uminus { first->clone() };
+    }
+
+    emc_type resolve()
+    {
+        return value_type = first->resolve();
     }
 
     expr_value* eval()
@@ -1253,6 +1371,16 @@ public:
     {
     }
 
+    emc_type resolve()
+    {
+        extern scope_stack resolve_scope;
+        auto p = resolve_scope.find_object(name, nspace);
+        if (!p) /* TODO: Kanske borde throwa "inte hittat än" för att kunna fortsätta? */
+            throw std::runtime_error("Object does not exist: >>" +
+                    nspace + name + "<<");
+        return p->resolve();
+    }
+
     ast_node* clone()
     {
         return new ast_node_var { name, nspace };
@@ -1293,6 +1421,11 @@ public:
     ast_node* clone()
     {
         return new ast_node_assign { first, sec };
+    }
+
+    emc_type resolve()
+    {
+        return value_type = first->resolve();
     }
 
     expr_value* eval()
@@ -1354,6 +1487,11 @@ public:
         if (sec) delete sec;
     }
 
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::INT};
+    }
+
     ast_node* clone()
     {
         return new ast_node_cmp { first, sec };
@@ -1396,6 +1534,11 @@ public:
         return new ast_node_temporary { first };
     }
 
+    emc_type resolve()
+    {
+        return value_type = first->resolve();
+    }
+
     expr_value* eval()
     {
         if (!val)
@@ -1422,6 +1565,20 @@ public:
     {
         for (auto e : v_nodes)
             delete e;
+    }
+
+    emc_type resolve()
+    {
+        /* If we don't find any real type in the list the type is NONE.
+         * I.e. can't be used for expression assignments etc.
+         */
+        emc_type t = emc_type{emc_types::NONE};
+        for (auto e : v_nodes) {
+            auto et = e->resolve();
+            if (t.types[0] == emc_types::NONE && et.types[0] != emc_types::NONE)
+                t = et;
+        }
+        return t;
     }
 
     ast_node* clone()
@@ -1471,6 +1628,11 @@ public:
         if (first) delete first;
     }
 
+    emc_type resolve()
+    {
+        return value_type = first->resolve();
+    }
+
     ast_node* clone()
     {
         return new ast_node_doblock { first->clone() };
@@ -1513,6 +1675,37 @@ public:
         delete if_el;
         delete else_el;
         delete also_el;
+    }
+
+    /* The type of the value of an IF statement expression is NONE unless
+     * all the blocks have a not NONE type, which have to be promotional
+     * to eachother.
+     */
+    emc_type resolve()
+    {
+        if (!else_el && !also_el)
+            return if_el->resolve();
+        else if (else_el && !also_el) {
+            auto value_type_if = if_el->resolve();
+            auto value_type_else = else_el->resolve();
+
+            auto t = standard_type_promotion_or_invalid(value_type_if, value_type_else);
+            if (t.is_valid())
+                return t;
+            else
+                return emc_type{emc_types::NONE};
+        } else {
+            auto value_type_if = if_el->resolve();
+            auto value_type_else = else_el->resolve();
+            auto value_type_also = also_el->resolve();
+
+            auto t = standard_type_promotion_or_invalid(value_type_if, value_type_else);
+            t = standard_type_promotion_or_invalid(t, value_type_also);
+            if (t.is_valid())
+                return t;
+            else
+                return emc_type{emc_types::NONE};
+        }
     }
 
     void append_linked_if(ast_node *node)
@@ -1610,6 +1803,22 @@ public:
                 else_el ? else_el->clone() : nullptr };
     }
 
+    emc_type resolve()
+    {
+        if (!else_el)
+            return if_el->resolve();
+        else {
+            auto value_type_if = if_el->resolve();
+            auto value_type_else = else_el->resolve();
+
+            auto t = standard_type_promotion_or_invalid(value_type_if, value_type_else);
+            if (t.is_valid())
+                return t;
+            else
+                return emc_type{emc_types::NONE};
+        }
+    }
+
     expr_value* eval()
     {
         extern scope_stack scopes;
@@ -1686,6 +1895,11 @@ public:
         return pel;
     }
 
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::NONE};
+    }
+
     void append_parameter(func_para para)
     {
         v_func_paras.push_back(para);
@@ -1725,6 +1939,11 @@ public:
         v_ast_args.push_back(arg);
     }
 
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::NONE};
+    }
+
     expr_value* eval()
     {
         auto val_list = new expr_value_list;
@@ -1751,6 +1970,20 @@ public:
     {
         delete code_block;
         delete parlist;
+    }
+
+    emc_type resolve()
+    {
+        extern scope_stack resolve_scope;
+        auto aa = dynamic_cast<ast_node_parlist*>(parlist);
+        if (!aa)
+            throw std::runtime_error("ast_node* clone()");
+        extern scope_stack resolve_scope;
+        auto fobj = new object_func { code_block->clone(), name, nspace,
+                parlist->clone() };
+        resolve_scope.get_top_scope().push_object(fobj);
+
+        return value_type = emc_type{emc_types::FUNCTION}; /* TODO: Add types too */
     }
 
     ast_node* clone()
@@ -1800,6 +2033,16 @@ public:
                 arg_list->clone() };
     }
 
+    emc_type resolve()
+    {
+        extern scope_stack resolve_scope;
+        auto obj = resolve_scope.find_object(name, nspace);
+        if (!obj) /* TODO: Kolla så fn */
+            throw std::runtime_error(
+                    "Could not find function " + nspace + " " + name);
+        return value_type = obj->resolve();
+    }
+
     expr_value* eval()
     {
         extern scope_stack scopes;
@@ -1828,6 +2071,8 @@ class ast_node_chainable: public ast_node {
 public:
     ast_node *first;
     ast_node *sec;
+
+
 };
 
 class ast_node_andchain: public ast_node {
@@ -1850,6 +2095,13 @@ public:
             next->first->first = 0; /* Chained to this objects first->sec */
             delete next; /* Recursive */
         }
+    }
+
+    emc_type resolve()
+    {
+        if (first) first->resolve();
+        if (next) next->resolve();
+        return value_type = emc_type{emc_types::INT};
     }
 
     ast_node* clone()
@@ -1921,6 +2173,11 @@ public:
         return new ast_node_les { first->clone(), sec->clone() };
     }
 
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::INT};
+    }
+
     expr_value* eval()
     {
         auto fv = first->eval();
@@ -1955,7 +2212,10 @@ public:
         if (first) delete first;
         if (sec) delete sec;
     }
-
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::INT};
+    }
     ast_node* clone()
     {
         return new ast_node_gre { first->clone(), sec->clone() };
@@ -1996,7 +2256,10 @@ public:
         if (first) delete first;
         if (sec) delete sec;
     }
-
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::INT};
+    }
     ast_node* clone()
     {
         return new ast_node_equ { first->clone(), sec->clone() };
@@ -2037,7 +2300,10 @@ public:
         if (first) delete first;
         if (sec) delete sec;
     }
-
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::INT};
+    }
     ast_node* clone()
     {
         return new ast_node_leq { first->clone(), sec->clone() };
@@ -2078,7 +2344,10 @@ public:
         if (first) delete first;
         if (sec) delete sec;
     }
-
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::INT};
+    }
     ast_node* clone()
     {
         return new ast_node_geq { first->clone(), sec->clone() };
@@ -2119,7 +2388,10 @@ public:
         if (first) delete first;
         if (sec) delete sec;
     }
-
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::INT};
+    }
     ast_node* clone()
     {
         return new ast_node_neq { first->clone(), sec->clone() };
@@ -2156,7 +2428,26 @@ public:
         return new ast_node_def { type_name, var_name,
                 value_node ? value_node->clone() : nullptr };
     }
+    emc_type resolve()
+    {
+        extern scope_stack resolve_scope;
 
+        type_object *type = resolve_scope.get_top_scope().find_type(type_name);
+        obj *obj;
+        obj = type->ctor();
+        obj->name = var_name;
+
+        resolve_scope.get_top_scope().push_object(obj);
+
+        /* TODO: This wont work for user types ... */
+        if (type_name == "Int")
+            return value_type = emc_type{emc_types::INT};
+        else if (type_name == "Double")
+            return value_type = emc_type{emc_types::DOUBLE};
+        else if (type_name == "String")
+            return value_type = emc_type{emc_types::STRING};
+        throw std::runtime_error("Not implemented proper types ... ");
+    }
     expr_value* eval()
     {
         extern scope_stack scopes;

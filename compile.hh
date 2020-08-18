@@ -1,3 +1,4 @@
+#pragma once
 
 #include <string>
 #include <libgccjit.h>
@@ -19,18 +20,24 @@ struct default_types {
     }
 };
 
+gcc_jit_type * emc_type_to_gccjit_type(const emc_type &type);
+
 class jit {
 public:
     ~jit()
     {
+        gcc_jit_result_release(result);
+        gcc_jit_context_release(context);
         delete types;
     }
 
     void* get_function(std::string name);
     void* get_var(std::string name);
     /* Add a ast node to the root block */
-    void  add_ast_node(ast_node *node);
-    void  init_as_root_context();
+    void add_ast_node(ast_node *node);
+    void init_as_root_context();
+    void compile();
+    void execute();
 private:
     gcc_jit_result *result = nullptr;
     gcc_jit_context *context = nullptr;
@@ -39,8 +46,9 @@ private:
     gcc_jit_function *root_func = nullptr;
 
     void walk_tree(ast_node *node,
-            gcc_jit_block * current_block,
-            gcc_jit_function *current_function);
+            gcc_jit_block ** current_block,
+            gcc_jit_function **current_function,
+            gcc_jit_rvalue **current_rvalue);
     void setup_default_root_environment();
 
     default_types *types;

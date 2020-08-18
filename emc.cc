@@ -4,6 +4,36 @@
 
 #include "emc.hh"
 
+
+
+emc_type standard_type_promotion(const emc_type &a, const emc_type &b)
+{
+
+    auto ans = standard_type_promotion_or_invalid(a, b);
+    if (a.types[0] == emc_types::INVALID)
+        throw std::runtime_error("emc_types has no valid standard promotion");
+    return ans;
+}
+
+emc_type standard_type_promotion_or_invalid(const emc_type &a, const emc_type &b)
+{
+    if (!a.types.size() || !b.types.size())
+            throw std::runtime_error("Either emc_type has no elements");
+
+    auto at = a.types[0];
+    auto bt = a.types[0];
+
+    if (at == bt)
+        return emc_type{at};
+
+    if ((at == emc_types::DOUBLE && bt == emc_types::INT)
+            || (bt == emc_types::DOUBLE && at == emc_types::INT))
+        return emc_type{emc_types::DOUBLE};
+    else if (at == emc_types::STRING && bt == emc_types::STRING)
+        return emc_type{emc_types::STRING};
+    return emc_type{emc_types::INVALID};
+}
+
 /* Replaces any c-like escaped characters in a string with the proper values.
  * Eg. '\' 'a' => 7 (bell)
  *
