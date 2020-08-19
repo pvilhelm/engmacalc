@@ -8,7 +8,6 @@
 
 emc_type standard_type_promotion(const emc_type &a, const emc_type &b)
 {
-
     auto ans = standard_type_promotion_or_invalid(a, b);
     if (a.types[0] == emc_types::INVALID)
         throw std::runtime_error("emc_types has no valid standard promotion");

@@ -267,11 +267,11 @@ void jit::walk_tree(ast_node *node, gcc_jit_block **current_block,
         /* Resolve types. */
 
         gcc_jit_rvalue *a_rv = nullptr;
-        walk_tree(t_node->first, 0, 0, &a_rv);
+        walk_tree(t_node->first.get(), 0, 0, &a_rv);
         if (a_rv == nullptr)
             throw std::runtime_error("GEQ a is null");
         gcc_jit_rvalue *b_rv = nullptr;
-        walk_tree(t_node->sec, 0, 0, &b_rv);
+        walk_tree(t_node->sec.get(), 0, 0, &b_rv);
         if (b_rv == nullptr)
             throw std::runtime_error("GEQ b is null");
 

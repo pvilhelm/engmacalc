@@ -1,10 +1,10 @@
 
 GPP = g++
 CPPFLAGS = -g
-OBJ = emc.tab.o lex.yy.o compile.o
+OBJ = emc.tab.o lex.yy.o compile.o emc.o
 
 engmac: engma.cc $(OBJ) lexer.h  libjitruntime.so
-	$(GPP) $(CPPFLAGS) -L/mnt/c/repos/engmacalc/ engma.cc emc.o -o engmac $(OBJ) -ljitruntime -lgccjit
+	$(GPP) $(CPPFLAGS) -L/mnt/c/repos/engmacalc/ engma.cc -o engmac $(OBJ) -ljitruntime -lgccjit
 	sudo cp /mnt/c/repos/engmacalc/libjitruntime.so /usr/lib/libjitruntime.so  
 	
 lex.yy.c: emc_lexer.l emc.hh

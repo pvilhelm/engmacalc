@@ -15,6 +15,8 @@
 #include <cmath>
 #include <memory>
 
+#include "emc_assert.hh"
+
 enum class ast_type {
     INVALID = 0,
     DOUBLE_LITERAL = 1,
@@ -2069,83 +2071,74 @@ public:
 
 class ast_node_chainable: public ast_node {
 public:
-    ast_node *first;
-    ast_node *sec;
-
-
+    std::shared_ptr<ast_node> first;
+    std::shared_ptr<ast_node> sec;
 };
 
 class ast_node_andchain: public ast_node {
 public:
-    ast_node_chainable *first;
-    ast_node *tail; /* TODO: Remove make vector instead. */
-    ast_node_andchain *next = nullptr;
-
+    std::vector<ast_node_chainable*> v_children;
+    ast_node_andchain() : ast_node_andchain(nullptr) {}
     ast_node_andchain(ast_node_chainable *first)
-    :
-            first(first), tail(first->sec)
     {
+        if (first)
+            v_children.push_back(first);
         type = ast_type::ANDCHAIN;
     }
 
     ~ast_node_andchain()
     {
-        delete first;
-        if (next) {
-            next->first->first = 0; /* Chained to this objects first->sec */
-            delete next; /* Recursive */
-        }
+        for (auto e : v_children)
+            delete e;
     }
 
     emc_type resolve()
     {
-        if (first) first->resolve();
-        if (next) next->resolve();
+        for (auto e : v_children)
+            e->resolve();
         return value_type = emc_type{emc_types::INT};
     }
 
     ast_node* clone()
     {
-        auto p = new ast_node_andchain {
-                dynamic_cast<ast_node_chainable*>(first->clone()) };
-        p->tail = nullptr; /* Only used during construction by Bison. */
-
-        if (next)
-            p->next = dynamic_cast<ast_node_andchain*>(next->clone()); /* Recursive */
+        auto p = new ast_node_andchain {};
+        for (auto e : v_children)
+            p->append_next(dynamic_cast<ast_node_chainable*>(e->clone()));
         return p;
     }
 
-    void append_next(ast_node_andchain *node)
+    void append_next(ast_node_chainable *node)
     {
-        auto p = &next;
-        while (*p)
-            p = &((*p)->next);
-        *p = node;
-        tail = node->first->sec;
-        if (!tail)
-            throw std::runtime_error("Bugg");
+        DEBUG_ASSERT(node != nullptr, "node is null");
+        DEBUG_ASSERT(v_children.size(), "v_children is empty");
+        DEBUG_ASSERT(node->first == nullptr, "node->first not a nullptr");
+        node->first = v_children.back()->sec;
+        v_children.push_back(node);
+    }
+
+    std::shared_ptr<ast_node> last_chain_node_leaf()
+    {
+        return v_children.back()->sec;
     }
 
     expr_value* eval()
     {
-        bool ans = and_eval(true);
+        bool ans = true; /* Assume that the andchain will yield true */
+
+        DEBUG_ASSERT(v_children.size(),"Evaluating empty andchain");
+
+        for (auto child : v_children) {
+            auto e = child->eval();
+            if (e->type != value_type::INT)
+                throw std::runtime_error("andchain Type not implemented");
+            auto ed = dynamic_cast<expr_value_int*>(e);
+
+            ans = (ed->i != 0) && ans;
+
+            delete e;
+        }
+
         return new expr_value_int { ans };
-    }
-
-    bool and_eval(bool result)
-    {
-        auto e = first->eval();
-        if (e->type != value_type::INT)
-            throw std::runtime_error("andchain Type not implemented");
-        auto ed = dynamic_cast<expr_value_int*>(e);
-
-        bool b = !(ed->i == 0) && result;
-
-        delete e;
-
-        if (!next)
-            return b;
-        return next->and_eval(b);
     }
 };
 
@@ -2157,15 +2150,13 @@ public:
     }
     ast_node_les(ast_node *first, ast_node *sec)
     {
-        this->first = first;
-        this->sec = sec;
+        this->first = std::shared_ptr<ast_node>(first);
+        this->sec = std::shared_ptr<ast_node>(sec);
         type = ast_type::LES;
     }
 
     ~ast_node_les()
     {
-        delete first;
-        delete sec;
     }
 
     ast_node* clone()
@@ -2202,15 +2193,13 @@ public:
     }
     ast_node_gre(ast_node *first, ast_node *sec)
     {
-        this->first = first;
-        this->sec = sec;
+        this->first = std::shared_ptr<ast_node>(first);
+        this->sec = std::shared_ptr<ast_node>(sec);
         type = ast_type::GRE;
     }
 
     ~ast_node_gre()
     {
-        if (first) delete first;
-        if (sec) delete sec;
     }
     emc_type resolve()
     {
@@ -2246,15 +2235,13 @@ public:
     }
     ast_node_equ(ast_node *first, ast_node *sec)
     {
-        this->first = first;
-        this->sec = sec;
+        this->first = std::shared_ptr<ast_node>(first);
+        this->sec = std::shared_ptr<ast_node>(sec);
         type = ast_type::EQU;
     }
 
     ~ast_node_equ()
     {
-        if (first) delete first;
-        if (sec) delete sec;
     }
     emc_type resolve()
     {
@@ -2290,15 +2277,13 @@ public:
     }
     ast_node_leq(ast_node *first, ast_node *sec)
     {
-        this->first = first;
-        this->sec = sec;
+        this->first = std::shared_ptr<ast_node>(first);
+        this->sec = std::shared_ptr<ast_node>(sec);
         type = ast_type::LEQ;
     }
 
     ~ast_node_leq()
     {
-        if (first) delete first;
-        if (sec) delete sec;
     }
     emc_type resolve()
     {
@@ -2334,15 +2319,13 @@ public:
     }
     ast_node_geq(ast_node *first, ast_node *sec)
     {
-        this->first = first;
-        this->sec = sec;
+        this->first = std::shared_ptr<ast_node>(first);
+        this->sec = std::shared_ptr<ast_node>(sec);
         type = ast_type::GEQ;
     }
 
     ~ast_node_geq()
     {
-        if (first) delete first;
-        if (sec) delete sec;
     }
     emc_type resolve()
     {
@@ -2378,15 +2361,13 @@ public:
     }
     ast_node_neq(ast_node *first, ast_node *sec)
     {
-        this->first = first;
-        this->sec = sec;
+        this->first = std::shared_ptr<ast_node>(first);
+        this->sec = std::shared_ptr<ast_node>(sec);
         type = ast_type::NEQ;
     }
 
     ~ast_node_neq()
     {
-        if (first) delete first;
-        if (sec) delete sec;
     }
     emc_type resolve()
     {

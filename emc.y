@@ -236,38 +236,45 @@ cmp_exp:  exp '>' exp        {
          | cmp_exp '>' exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
                                 auto t = new ast_node_temporary($3);
-                                auto gre = new ast_node_gre{chain->tail, t};
-                                chain->append_next(new ast_node_andchain{gre});
+                                auto gre = new ast_node_gre{nullptr, t};
+                                chain->append_next(gre);
                                 $$ = chain;
                              }
          | cmp_exp '<' exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
                                 auto t = new ast_node_temporary($3);
-                                auto cmp = new ast_node_les{chain->tail, t};
-                                chain->append_next(new ast_node_andchain{cmp});
+                                auto les = new ast_node_les{nullptr, t};
+                                chain->append_next(les);
                                 $$ = chain;
                              }
          | cmp_exp EQU exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
                                 auto t = new ast_node_temporary($3);
-                                auto cmp = new ast_node_equ{chain->tail, t};
-                                chain->append_next(new ast_node_andchain{cmp});
+                                auto equ = new ast_node_equ{nullptr, t};
+                                chain->append_next(equ);
                                 $$ = chain;
                              }
          | cmp_exp LEQ exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
                                 auto t = new ast_node_temporary($3);
-                                auto cmp = new ast_node_leq{chain->tail, t};
-                                chain->append_next(new ast_node_andchain{cmp});
+                                auto leq = new ast_node_leq{nullptr, t};
+                                chain->append_next(leq);
                                 $$ = chain;
                              }
          | cmp_exp GEQ exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
                                 auto t = new ast_node_temporary($3);
-                                auto cmp = new ast_node_geq{chain->tail, t};
-                                chain->append_next(new ast_node_andchain{cmp});
+                                auto geq = new ast_node_geq{nullptr, t};
+                                chain->append_next(geq);
                                 $$ = chain;
                              }
+         | cmp_exp NEQ exp   {
+                                auto chain = dynamic_cast<ast_node_andchain*>($1);
+                                auto t = new ast_node_temporary($3);
+                                auto neq = new ast_node_neq{nullptr, t};
+                                chain->append_next(neq);
+                                $$ = chain;
+                             }                             
          ;
 
 %%

@@ -34,7 +34,7 @@ int main()
     yylex_init(&scanner);
     yydebug = 0;
 
-    bool interpret = false;
+    bool interpret = true;
 
     redo:
     int err = yyparse(scanner);

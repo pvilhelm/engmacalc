@@ -2,7 +2,11 @@
 *~*
 a.out
 emc.output
+lex.yy.c
+emc.tab.c
+lexer.h
 *.o
+*.so
 .*
 engmac
 !.gitignore
