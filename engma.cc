@@ -14,11 +14,14 @@ typedef void *yyscan_t;
 /* external objects */
 extern int yydebug;
 extern ast_node *ast_root; /* Bison writes to this after each parse(). */
+extern bool parsed_eol;
 
 /* Scope during runtime, tree walking interpretion */
 scope_stack scopes;
 /* Scope during resolving of the ast node tree. */
 scope_stack resolve_scope;
+
+
 
 int main()
 {
@@ -31,17 +34,18 @@ int main()
 
 
     yyscan_t scanner;
-    yylex_init(&scanner);
     yydebug = 0;
 
     bool interpret = true;
 
     redo:
+    yylex_init(&scanner);
     int err = yyparse(scanner);
+    yylex_destroy(scanner);
     if (err) {
         std::cerr << "error" << std::endl;
-        yylex_destroy(scanner);
-        return 1;
+        if (!isatty(0))
+            return 1;
     }
 
     if (ast_root && err == 0) {
@@ -64,6 +68,9 @@ int main()
                     throw std::runtime_error("Not implemented qweqe");
             }
             delete val;
+
+            DEBUG_ASSERT(ast_node_count == 0, "ast nodes seems to be leaking: " << ast_node_count);
+            DEBUG_ASSERT(value_expr_count == 0, "value_expr seems to be leaking: " << value_expr_count);
         } else {
             jit jit;
             jit.init_as_root_context();
@@ -71,10 +78,13 @@ int main()
             jit.compile();
             jit.execute();
         }
-        if (std::cin)
+        if (std::cin && !parsed_eol)
             goto redo;
-    } else if (!ast_root && err == 0)
-        if (std::cin)
+    } else if (std::cin && !parsed_eol)
             goto redo;
+
+
+    DEBUG_ASSERT(ast_node_count == 0, "ast nodes seems to be leaking: " << ast_node_count);
+    DEBUG_ASSERT(value_expr_count == 0, "value_expr seems to be leaking: " << value_expr_count);
     return 0;
 }

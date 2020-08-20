@@ -4,7 +4,10 @@
 
 #include "emc.hh"
 
-
+#ifndef NDEBUG
+int ast_node_count;
+int value_expr_count;
+#endif
 
 emc_type standard_type_promotion(const emc_type &a, const emc_type &b)
 {

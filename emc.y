@@ -7,6 +7,7 @@
 #include "emc.hh"
 
 ast_node *ast_root; /* Bison parser writes answer to this. */
+bool parsed_eol = false;
 
 typedef void* yyscan_t;
 }
@@ -61,7 +62,7 @@ program:
                         	ast_root = $1;
                         	YYACCEPT;
                         }
-     	//| ENDOFFILE { ast_root = nullptr; YYACCEPT;}
+     	| ENDOFFILE { ast_root = nullptr; parsed_eol = true; YYACCEPT;}
      	;
 
     /* List of expressions */

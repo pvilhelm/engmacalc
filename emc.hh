@@ -17,6 +17,11 @@
 
 #include "emc_assert.hh"
 
+#ifndef NDEBUG
+extern int ast_node_count;
+extern int value_expr_count;
+#endif
+
 enum class ast_type {
     INVALID = 0,
     DOUBLE_LITERAL = 1,
@@ -51,7 +56,8 @@ enum class ast_type {
 };
 
 enum class value_type {
-    DOUBLE = 1,
+    INVALID = 0,
+    DOUBLE,
     RVAL,
     LVAL,
     LIST,
@@ -227,12 +233,21 @@ public:
 /* Base class of the value of an evaluated expression. */
 class expr_value {
 public:
+    expr_value()
+{
+#ifndef NDEBUG
+        value_expr_count++;
+#endif
+}
     virtual ~expr_value()
     {
+#ifndef NDEBUG
+        value_expr_count--;
+#endif
     }
     ;
     virtual expr_value* clone() = 0;
-    value_type type;
+    value_type type = value_type::INVALID;
 };
 
 class expr_value_list: public expr_value {
@@ -696,15 +711,27 @@ public:
 /* Base class for a node in the abstract syntax tree. */
 class ast_node {
 public:
+
+    ast_node()
+{
+#ifndef NDEBUG
+        extern int ast_node_count; ast_node_count++;
+#endif
+    }
     virtual ~ast_node()
     {
+#ifndef NDEBUG
+        extern int ast_node_count; ast_node_count--;
+#endif
     }
     ;
+
+
 
     virtual expr_value* eval() = 0;
     virtual ast_node* clone() = 0;
     virtual emc_type resolve() = 0;
-    ast_type type;
+    ast_type type = ast_type::INVALID;
     emc_type value_type = emc_type{emc_types::INVALID};
 };
 
@@ -1528,7 +1555,7 @@ public:
     }
     ~ast_node_temporary()
     {
-        delete val;
+        delete val; delete first;
     }
 
     ast_node* clone()
@@ -1549,7 +1576,6 @@ public:
             throw std::runtime_error("temp bugg null val");
         return val->clone();
     }
-
 };
 
 class ast_node_explist: public ast_node {
@@ -2402,6 +2428,11 @@ public:
             type_name(type_name), var_name(var_name), value_node(value_node)
     {
         type = ast_type::DEF;
+    }
+
+    ~ast_node_def()
+    {
+        if (value_node) delete value_node;
     }
 
     ast_node* clone()
