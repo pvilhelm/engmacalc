@@ -22,6 +22,7 @@ extern int ast_node_count;
 extern int value_expr_count;
 #endif
 
+
 enum class ast_type {
     INVALID = 0,
     DOUBLE_LITERAL = 1,
@@ -53,6 +54,7 @@ enum class ast_type {
     ANDCHAIN, /* Dummy node for chained comparations. */
     WHILE,
     DEF,
+    RETURN,
 };
 
 enum class value_type {
@@ -103,12 +105,12 @@ struct emc_type {
     }
     bool is_double()
     {
-        if (types.size() && types[0] != emc_types::DOUBLE) return true;
+        if (types.size() && types[0] == emc_types::DOUBLE) return true;
         return false;
     }
     bool is_int()
     {
-        if (types.size() && types[0] != emc_types::INT) return true;
+        if (types.size() && types[0] == emc_types::INT) return true;
         return false;
     }
 
@@ -136,6 +138,8 @@ void init_builtin_types();
 /* Util functions */
 void deescape_string(std::string &s);
 int cmp_helper(expr_value *fv, expr_value *sv);
+bool truthy_value(expr_value *val);
+
 
 class obj {
 public:
@@ -248,6 +252,15 @@ public:
     ;
     virtual expr_value* clone() = 0;
     value_type type = value_type::INVALID;
+};
+
+/* We are cheating in the tree walking interpreter when we hit a return and
+ * throw this instead of doing it in a sane way.
+ */
+class return_exception {
+public:
+    return_exception(expr_value *rval) : rval(rval){}
+    expr_value *rval = nullptr;
 };
 
 class expr_value_list: public expr_value {
@@ -733,6 +746,31 @@ public:
     virtual emc_type resolve() = 0;
     ast_type type = ast_type::INVALID;
     emc_type value_type = emc_type{emc_types::INVALID};
+};
+
+class ast_node_return : public ast_node {
+public:
+    ast_node_return(ast_node *first)
+    : first(first) { type = ast_type::RETURN;}
+
+    ~ast_node_return(){delete first;}
+
+    emc_type resolve()
+    {
+        return value_type = first->resolve();
+    }
+
+    expr_value* eval()
+    {
+        throw return_exception{first->eval()};
+    }
+
+    ast_node* clone()
+    {
+        return new ast_node_return { first };
+    }
+
+    ast_node *first; /* rvalue to return */
 };
 
 class ast_node_double_literal: public ast_node {
@@ -1449,7 +1487,7 @@ public:
 
     ast_node* clone()
     {
-        return new ast_node_assign { first, sec };
+        return new ast_node_assign { first->clone(), sec->clone() };
     }
 
     emc_type resolve()
@@ -1523,7 +1561,7 @@ public:
 
     ast_node* clone()
     {
-        return new ast_node_cmp { first, sec };
+        return new ast_node_cmp { first->clone(), sec->clone() };
     }
 
     expr_value* eval()
@@ -1560,7 +1598,7 @@ public:
 
     ast_node* clone()
     {
-        return new ast_node_temporary { first };
+        return new ast_node_temporary { first->clone() };
     }
 
     emc_type resolve()
@@ -1677,6 +1715,8 @@ public:
     }
 };
 
+
+
 class ast_node_if: public ast_node {
 public:
     ast_node *cond_e;
@@ -1773,15 +1813,9 @@ public:
     {
         extern scope_stack scopes;
 
-        auto ev_cond = std::unique_ptr<expr_value>(cond_e->eval());
-        if (ev_cond->type != value_type::DOUBLE)
-            throw std::runtime_error("ast_node_if Cond type not implemented");
-        auto ed = std::unique_ptr<expr_value_double>(
-                dynamic_cast<expr_value_double*>(ev_cond.release()));
-
         expr_value *ans = 0;
 
-        if (ed->d) {
+        if (truthy_value(cond_e->eval())) {
             scopes.push_new_scope();
             ans = if_el->eval();
             scopes.pop_scope();
@@ -2091,6 +2125,19 @@ public:
         auto val = dynamic_cast<expr_value_list*>(arg_list->eval());
         if (!val)
             throw std::runtime_error("feval kan inte göras med null obj");
+
+        expr_value *rval = nullptr;
+        /* It's abit of cheating. The returning expression value
+         * of a return is brought back with a throw if a return
+         * is encountered. If no return is encountered the eval function
+         * returns the value.
+         */
+        try {
+            rval = fobj->feval(val);
+        } catch (return_exception &re) {
+            rval = re.rval;
+        }
+
         return fobj->feval(val);
     }
 };
@@ -2128,8 +2175,11 @@ public:
     ast_node* clone()
     {
         auto p = new ast_node_andchain {};
-        for (auto e : v_children)
-            p->append_next(dynamic_cast<ast_node_chainable*>(e->clone()));
+        if (v_children.size() >= 1)
+            p->v_children.push_back(dynamic_cast<ast_node_chainable*>(v_children.front()->clone()));
+
+        for (int i = 1; i < v_children.size(); i++)
+            p->append_next(dynamic_cast<ast_node_chainable*>(v_children[i]->clone()));
         return p;
     }
 

@@ -27,7 +27,7 @@ typedef void* yyscan_t;
 %token <s> TYPENAME 
 %token <s> ESC_STRING
 
-%token EOL IF DO END ELSE WHILE ENDOFFILE FUNC ELSEIF ALSO
+%token EOL IF DO END ELSE WHILE ENDOFFILE FUNC ELSEIF ALSO RETURN
 
 %right '='
 %left CMP LEQ GEQ EQU NEQ '>' '<'
@@ -87,8 +87,8 @@ cse: EOL                    {$$ = 0;}
 
  /* Statement expression */
 se: e                      {$$ = $1;}
- /* IFs with ELSE:s are a headache to make grammar for. So ... */
- 
+    | RETURN e             {$$ = $2;}
+    /* IFs with ELSE:s are a headache to make grammar for. So ... */
     /* These with se are for one line if:s */
 	| IF e DO se END { $$ = new ast_node_if{$2, $4};}
     | IF e DO se ELSE DO se END { $$ = new ast_node_if{$2, $4, $7};}

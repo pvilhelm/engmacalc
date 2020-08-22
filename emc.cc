@@ -17,6 +17,27 @@ emc_type standard_type_promotion(const emc_type &a, const emc_type &b)
     return ans;
 }
 
+bool truthy_value(expr_value *val)
+{
+    if (val->type == value_type::DOUBLE) {
+        auto *v = dynamic_cast<expr_value_double*>(val);
+        if (v->d != 0)
+            return true;
+        return false;
+    } else if (val->type == value_type::INT) {
+        auto *v = dynamic_cast<expr_value_int*>(val);
+        if (v->i != 0)
+            return true;
+        return false;
+    } else if (val->type == value_type::STRING) {
+        auto *v = dynamic_cast<expr_value_string*>(val);
+        if (v->s.size() != 0)
+            return true;
+        return false;
+    } else
+        throw std::runtime_error("trutchy_value not implemented type");
+}
+
 emc_type standard_type_promotion_or_invalid(const emc_type &a, const emc_type &b)
 {
     if (!a.types.size() || !b.types.size())

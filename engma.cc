@@ -38,10 +38,12 @@ int main()
 
     bool interpret = true;
 
-    redo:
     yylex_init(&scanner);
+    std::vector<ast_node*> v_nodes;
+
+    redo:
     int err = yyparse(scanner);
-    yylex_destroy(scanner);
+
     if (err) {
         std::cerr << "error" << std::endl;
         if (!isatty(0))
@@ -69,12 +71,16 @@ int main()
             }
             delete val;
 
-            DEBUG_ASSERT(ast_node_count == 0, "ast nodes seems to be leaking: " << ast_node_count);
-            DEBUG_ASSERT(value_expr_count == 0, "value_expr seems to be leaking: " << value_expr_count);
+            //DEBUG_ASSERT(ast_node_count == 0, "ast nodes seems to be leaking: " << ast_node_count);
+            //DEBUG_ASSERT(value_expr_count == 0, "value_expr seems to be leaking: " << value_expr_count);
         } else {
+            v_nodes.push_back(ast_root);
+
             jit jit;
             jit.init_as_root_context();
-            jit.add_ast_node(ast_root);
+            for (auto e : v_nodes)
+                jit.add_ast_node(e);
+            jit.dump("./dump.txt");
             jit.compile();
             jit.execute();
         }
@@ -83,6 +89,7 @@ int main()
     } else if (std::cin && !parsed_eol)
             goto redo;
 
+    yylex_destroy(scanner);
 
     DEBUG_ASSERT(ast_node_count == 0, "ast nodes seems to be leaking: " << ast_node_count);
     DEBUG_ASSERT(value_expr_count == 0, "value_expr seems to be leaking: " << value_expr_count);
