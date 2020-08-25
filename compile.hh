@@ -22,8 +22,6 @@ struct default_types {
     }
 };
 
-gcc_jit_type * emc_type_to_gccjit_type(const emc_type &type);
-
 class jit {
 public:
     ~jit()
@@ -108,5 +106,48 @@ private:
     std::vector<std::map<std::string, gcc_jit_lvalue*>> v_of_map_of_varname_to_lval;
 
     std::vector<std::string> v_node_fn_names;
+
+    /* Helper functions ... */
+    /*
+    walk_tree(ast_node *node, 
+        gcc_jit_block **current_block,
+        gcc_jit_function **current_function, 
+        gcc_jit_rvalue **current_rvalue, 
+        gcc_jit_lvalue **current_lvalue)
+    */
+    void walk_tree_add(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_sub(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_mul(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_rdiv(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_andchain(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_geq(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_leq(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_equ(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_les(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_gre(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_neq(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_uminus(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_dlit(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_fcall(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_fdec(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_ret(ast_node *node, gcc_jit_block **current_block);
+    void walk_tree_assign(  ast_node *node, 
+                            gcc_jit_block **current_block, 
+                            gcc_jit_function **current_function);
+    void walk_tree_var(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_def( ast_node *node, 
+                        gcc_jit_block **current_block, 
+                        gcc_jit_function **current_function);
+    void walk_tree_explist( ast_node *node, 
+                            gcc_jit_block **current_block, 
+                            gcc_jit_function **current_function,
+                            gcc_jit_rvalue **current_rvalue);
+    void walk_tree_doblock( ast_node *node, 
+                            gcc_jit_block **current_block, 
+                            gcc_jit_function **current_function,
+                            gcc_jit_rvalue **current_rvalue);
+    void walk_tree_if( ast_node *node, 
+                        gcc_jit_block **current_block, 
+                        gcc_jit_function **current_function);
 };
 

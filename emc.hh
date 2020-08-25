@@ -31,10 +31,10 @@ enum class ast_type {
     DOUBLE_LITERAL = 1,
     STRING_LITERAL,
     ADD,
-    DOUBLE_SUB,
-    DOUBLE_MUL,
-    DOUBLE_RDIV,
-    DOUBLE_UMINUS,
+    SUB,
+    MUL,
+    RDIV,
+    UMINUS,
     VAR,
     ASSIGN,
     GEQ,
@@ -84,6 +84,7 @@ enum class emc_types {
     NONE, /* The node have no type. */
     POINTER,
     INT,
+    BOOL,
     DOUBLE,
     STRING,
     VOID,
@@ -1034,7 +1035,7 @@ public:
     ast_node_sub(ast_node *first, ast_node *sec) :
             first(first), sec(sec)
     {
-        type = ast_type::DOUBLE_SUB;
+        type = ast_type::SUB;
     }
 
     ~ast_node_sub()
@@ -1123,7 +1124,7 @@ public:
     ast_node_mul(ast_node *first, ast_node *sec) :
             first(first), sec(sec)
     {
-        type = ast_type::DOUBLE_MUL;
+        type = ast_type::MUL;
     }
 
     ~ast_node_mul()
@@ -1212,7 +1213,7 @@ public:
     ast_node_rdiv(ast_node *first, ast_node *sec) :
             first(first), sec(sec)
     {
-        type = ast_type::DOUBLE_RDIV;
+        type = ast_type::RDIV;
     }
 
     ~ast_node_rdiv()
@@ -1435,7 +1436,7 @@ public:
     ast_node_uminus(ast_node *first) :
             first(first)
     {
-        type = ast_type::DOUBLE_UMINUS;
+        type = ast_type::UMINUS;
     }
 
     ~ast_node_uminus()
