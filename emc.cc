@@ -9,12 +9,49 @@ int ast_node_count;
 int value_expr_count;
 #endif
 
+emc_type ast_node_vardef_list::resolve()
+{
+    if (v_defs.size() != 1)
+        throw std::runtime_error("Multiple vars in deflist not supported yet");
+    auto ast_def = dynamic_cast<ast_node_def*>(v_defs.front());
+    return value_type = ast_def->resolve_no_push();
+}
+
+void scope_stack::clear()
+{
+    for (auto &e : vec_scope)
+        e.clear();
+}
+
+object_func::~object_func()
+{
+    delete root;
+    delete para_list;
+    delete var_list;
+}
+    
+emc_type object_func::resolve()
+{
+    return var_list->resolve();
+}
+
+
 emc_type standard_type_promotion(const emc_type &a, const emc_type &b)
 {
     auto ans = standard_type_promotion_or_invalid(a, b);
     if (a.types[0] == emc_types::INVALID)
         throw std::runtime_error("emc_types has no valid standard promotion");
     return ans;
+}
+
+void scope_stack::debug_print()
+{
+    for (auto &scope : vec_scope) {
+        std::cout << "Scope:" << std::endl;
+        for (auto obj : scope.vec_objs) {
+            obj->debug_print();
+        }
+    }
 }
 
 bool truthy_value(expr_value *val)
@@ -264,8 +301,8 @@ int cmp_helper(expr_value *fv, expr_value *sv)
 
 void scope_stack::push_new_scope()
 {
-    scope s;
-    vec_scope.push_back(s);
+
+    vec_scope.emplace_back(scope{});
 }
 
 obj* scope_stack::find_object(std::string name, std::string nspace)
@@ -298,7 +335,7 @@ expr_value* object_func::feval(expr_value_list *arg_value_list)
 {
     extern scope_stack scopes;
     scopes.push_new_scope();
-    auto scope = scopes.get_top_scope();
+    auto &scope = scopes.get_top_scope();
     if (!para_list)
         throw std::runtime_error("para_list == null");
     auto para_listc = dynamic_cast<ast_node_parlist*>(para_list);
@@ -642,9 +679,14 @@ void init_builtin_functions()
 void init_builtin_types()
 {
     extern scope_stack scopes;
+    extern scope_stack resolve_scope;
 
-    scopes.get_top_scope().push_type(new type_double);
-    scopes.get_top_scope().push_type(new type_int);
-    scopes.get_top_scope().push_type(new type_string);
+    std::vector<scope_stack*> v = {&scopes, &resolve_scope};
+
+    for (auto e : v) {
+        e->get_top_scope().push_type(new type_double);
+        e->get_top_scope().push_type(new type_int);
+        e->get_top_scope().push_type(new type_string);
+    }
 }
 

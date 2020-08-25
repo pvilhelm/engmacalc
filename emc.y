@@ -41,7 +41,7 @@ typedef void* yyscan_t;
 
 %start program
 
-%type <node> exp cmp_exp e se cse exp_list code_block arg_list param_list definion elseif_list sl_elseif_list
+%type <node> exp cmp_exp e se cse exp_list code_block arg_list param_list vardef elseif_list sl_elseif_list vardef_list
 
 %define parse.trace
     
@@ -49,7 +49,6 @@ typedef void* yyscan_t;
 %code {
 int yylex (YYSTYPE * yylval_param, YYLTYPE * yylloc_param , void * yyscanner);
 int yyerror(struct YYLTYPE * yylloc_param, void *scanner, const char *s);
-
 }    
     
     
@@ -87,7 +86,7 @@ cse: EOL                    {$$ = 0;}
 
  /* Statement expression */
 se: e                      {$$ = $1;}
-    | RETURN e             {$$ = $2;}
+    | RETURN e             {$$ = new ast_node_return{$2};}
     /* IFs with ELSE:s are a headache to make grammar for. So ... */
     /* These with se are for one line if:s */
 	| IF e DO se END { $$ = new ast_node_if{$2, $4};}
@@ -127,17 +126,17 @@ se: e                      {$$ = $1;}
                             }                             
 
     | code_block
-    | FUNC NAME '(' param_list ')' code_block
-                {
-                    auto p = new ast_node_funcdec{$4, $6, *$2, ""};
-                    delete $2;
-                    $$ = p;
-                }
+    | FUNC vardef_list '=' NAME '(' param_list ')' code_block
+                            {
+                                auto p = new ast_node_funcdec{$6, $8, *$4, "", $2};
+                                delete $4;
+                                $$ = p;
+                            }
     | WHILE e DO exp_list END 
     						{ $$ = new ast_node_while{$2, $4};}
     | WHILE e DO exp_list ELSE exp_list END 
     						{ $$ = new ast_node_while{$2, $4, $6};}
-    | definion '=' se       { $$ = $1; dynamic_cast<ast_node_def*>($1)->value_node = $3;}   						
+    | vardef '=' se         { $$ = $1; dynamic_cast<ast_node_def*>($1)->value_node = $3;}   						
     ;
     
 /* A list of ifelses */
@@ -156,10 +155,23 @@ sl_elseif_list: IF e DO se                 { $$ = new ast_node_if{$2, $4, 0};}
                                              pp->append_linked_if(p);
                                              $$ = $1;
                                            }   
+                                           
+vardef_list: vardef                         {
+                                                auto p = new ast_node_vardef_list;
+                                                p->append($1); $$ = p;
+                                            }
+           | vardef_list ',' vardef         {
+                                                auto p = dynamic_cast<ast_node_vardef_list*>($$);
+                                                p->append($3);
+                                            }                                    
  
-definion: TYPENAME NAME     {$$ = new ast_node_def{*$1, *$2, nullptr};}    
+vardef: TYPENAME NAME     {$$ = new ast_node_def{*$1, *$2, nullptr}; delete $1; delete $2; }    
 
 code_block: DO exp_list END     { $$ = new ast_node_doblock{$2};}
+
+
+
+
 
 param_list: NAME                        {
                                             auto p = new ast_node_parlist;
@@ -205,74 +217,62 @@ exp: exp '+' exp             {$$ = new ast_node_add{$1, $3};}
   
  /* Compare expressions. */
 cmp_exp:  exp '>' exp        {
-                                auto t = new ast_node_temporary($3);
-                                auto gre = new ast_node_gre{$1, t};
+                                auto gre = new ast_node_gre{$1, $3};
                                 $$ = new ast_node_andchain{gre};
                              }
          | exp '<' exp       {
-                                auto t = new ast_node_temporary($3);
-                                auto cmp = new ast_node_les{$1, t};
+                                auto cmp = new ast_node_les{$1, $3};
                                 $$ = new ast_node_andchain{cmp};
                              }
          | exp EQU exp       {
-                                auto t = new ast_node_temporary($3);
-                                auto cmp = new ast_node_equ{$1, t};
+                                auto cmp = new ast_node_equ{$1, $3};
                                 $$ = new ast_node_andchain{cmp};
                              }
          | exp LEQ exp       {
-                                auto t = new ast_node_temporary($3);
-                                auto cmp = new ast_node_leq{$1, t};
+                                auto cmp = new ast_node_leq{$1, $3};
                                 $$ = new ast_node_andchain{cmp};
                              }
          | exp GEQ exp       {
-                                auto t = new ast_node_temporary($3);
-                                auto cmp = new ast_node_geq{$1, t};
+                                auto cmp = new ast_node_geq{$1, $3};
                                 $$ = new ast_node_andchain{cmp};
                              }
          | exp NEQ exp       {
-                                auto t = new ast_node_temporary($3);
-                                auto cmp = new ast_node_neq{$1, t};
+                                auto cmp = new ast_node_neq{$1, $3};
                                 $$ = new ast_node_andchain{cmp};
                              }
          | cmp_exp '>' exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
-                                auto t = new ast_node_temporary($3);
-                                auto gre = new ast_node_gre{nullptr, t};
+                                auto gre = new ast_node_gre{nullptr, $3};
                                 chain->append_next(gre);
                                 $$ = chain;
                              }
          | cmp_exp '<' exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
-                                auto t = new ast_node_temporary($3);
-                                auto les = new ast_node_les{nullptr, t};
+                                auto les = new ast_node_les{nullptr, $3};
                                 chain->append_next(les);
                                 $$ = chain;
                              }
          | cmp_exp EQU exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
-                                auto t = new ast_node_temporary($3);
-                                auto equ = new ast_node_equ{nullptr, t};
+                                auto equ = new ast_node_equ{nullptr, $3};
                                 chain->append_next(equ);
                                 $$ = chain;
                              }
          | cmp_exp LEQ exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
-                                auto t = new ast_node_temporary($3);
-                                auto leq = new ast_node_leq{nullptr, t};
+                                auto leq = new ast_node_leq{nullptr, $3};
                                 chain->append_next(leq);
                                 $$ = chain;
                              }
          | cmp_exp GEQ exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
-                                auto t = new ast_node_temporary($3);
-                                auto geq = new ast_node_geq{nullptr, t};
+                                auto geq = new ast_node_geq{nullptr, $3};
                                 chain->append_next(geq);
                                 $$ = chain;
                              }
          | cmp_exp NEQ exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
-                                auto t = new ast_node_temporary($3);
-                                auto neq = new ast_node_neq{nullptr, t};
+                                auto neq = new ast_node_neq{nullptr, $3};
                                 chain->append_next(neq);
                                 $$ = chain;
                              }                             

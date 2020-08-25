@@ -10,10 +10,11 @@ do {\
         std::cerr << __FILE__ << ":" << __LINE__ << " in " << __PRETTY_FUNCTION__ <<\
             "\nAssertion >>" << #exp << "<< failed ... with msg:\n" << msg <<\
             "\nAborting ..."<< std::endl;\
-        exit(1);\
+        throw std::runtime_error("Bug");\
     }\
 } while((0))\
 
+#define DEBUG_ASSERT_NOTNULL(var) DEBUG_ASSERT(var != nullptr , "Anticipates non-null " << #var)
 
 #else
 #define DEBUG_ASSERT(exp, msg)

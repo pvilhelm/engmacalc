@@ -4,6 +4,9 @@
  *
  * typer borde inte ligga i scope utan i namespaces ... för att ha stöd för
  * lokala typer
+ * 
+ * Borde finnas en local resolve och en global resolve per ast_node
+ * för att det inte ska bli så mkt mek ...
  */
 
 #pragma once
@@ -55,6 +58,7 @@ enum class ast_type {
     WHILE,
     DEF,
     RETURN,
+    VARDEF_LIST
 };
 
 enum class value_type {
@@ -87,6 +91,7 @@ enum class emc_types {
     REFERENCE, /* e.g. REFERENCE, INT (reference to an int object) */
     FUNCTION,
     RETURNING,
+    LIST_COMMA, /* For declaring type lists eg. "int, int, double" */
 };
 
 struct emc_type {
@@ -146,10 +151,18 @@ public:
     virtual ~obj()
     {
     }
-    ;
+    obj(){}
+    obj(const obj&) = delete;
+    obj& operator=(const obj&) = delete;
+
     virtual expr_value* eval() = 0;
     virtual expr_value* assign(expr_value *val) = 0;
     virtual emc_type resolve() {return emc_type{emc_types::INVALID};}
+    virtual void debug_print()
+    {
+        std::cout << "Object, Namespace: " << nspace <<
+                "Name: " << name << " Type: " << (int)type << std::endl;
+    }
     std::string name;
     std::string nspace;
     object_type type;
@@ -160,39 +173,80 @@ public:
     virtual ~type_object()
     {
     }
-    ;
 
     virtual obj* ctor() = 0;
     virtual obj* ctor(expr_value *val) = 0; /* Copy constructor */
-
+    virtual void debug_print()
+    {
+        std::cout << "Type object, Name: " << name << std::endl;
+    }
     std::string name;
 };
 
 class scope;
+class scope_stack;
+
+/*
+class scopes {
+public:
+    scope_stack runtime_scopestack;
+    scope_stack resolve_scopestack;
+};
+*/
 
 class scope_stack {
 public:
+    /* There is always one root scope in the scope stack. */
+    scope_stack() {push_new_scope();}
+    scope_stack(const scope_stack&) = delete;
+    scope_stack operator=(const scope_stack&) = delete;
+
     void push_new_scope();
     void pop_scope()
     {
+        DEBUG_ASSERT(vec_scope.size() >= 1, 
+            "Trying to pop scope_stack too far");
         vec_scope.pop_back();
     }
     scope& get_top_scope()
     {
+        DEBUG_ASSERT(vec_scope.size() >= 1, 
+            "Trying to access scope in empty scope_stack");
         return vec_scope.back();
     }
     obj* find_object(std::string name, std::string nspace);
     type_object* find_type(std::string name);
     std::vector<scope> vec_scope;
+
+    void debug_print();
+
+    void clear();
 };
 
 class scope {
 public:
     ~scope()
     { /* TODO: Fix så att inte minnet läcker ... */
-        // for (auto p : vec_objs)
-        //  if(p) delete p;
+        for (auto p : vec_objs)
+            delete p;
+        for (auto p : vec_types)
+            delete p;
     }
+    scope(){}
+    scope(scope &&s) 
+    {
+        std::swap(vec_objs, s.vec_objs);
+        std::swap(vec_types, s.vec_types);
+    }
+    /* Since this objects keeps track of pointers there can
+     * be no copy or assignment ctor.
+     */ 
+    scope(const scope&) = delete;
+    scope operator=(const scope&) = delete;
+
+    std::vector<obj*> vec_objs;
+    std::vector<type_object*> vec_types;
+
     void push_object(obj *obj)
     {
         if (find_object(obj->name, obj->nspace))
@@ -230,8 +284,16 @@ public:
                 return p;
         return nullptr;
     }
-    std::vector<obj*> vec_objs;
-    std::vector<type_object*> vec_types;
+
+    void clear()
+    {
+        for (auto p : vec_objs)
+            delete p;
+        vec_objs.clear();
+        for (auto p : vec_types)
+            delete p;
+        vec_types.clear();
+    }
 };
 
 /* Base class of the value of an evaluated expression. */
@@ -456,6 +518,8 @@ public:
     {
     }
 
+    double d;
+
     expr_value* eval()
     {
         return new expr_value_double { d };
@@ -477,8 +541,6 @@ public:
 
         return eval();
     }
-
-    double d;
 
     emc_type resolve()
     {
@@ -553,13 +615,11 @@ public:
 
 class object_func: public object_func_base {
 public:
-    ~object_func()
-    {
-    }
+    ~object_func();
     object_func(ast_node *root, std::string name,
-            std::string nspace, ast_node *para_list)
+            std::string nspace, ast_node *para_list, ast_node *var_list)
     :
-            root(root), para_list(para_list)
+            root(root), para_list(para_list), var_list(var_list)
     {
         type = object_type::FUNC;
         this->name = name;
@@ -568,6 +628,7 @@ public:
 
     ast_node *root;
     ast_node *para_list;
+    ast_node *var_list;
     expr_value* eval()
     {
         throw std::runtime_error("func eval");
@@ -581,10 +642,7 @@ public:
         throw std::runtime_error("Not implemented function pointers yet");
     }
 
-    emc_type resolve()
-    {
-        return emc_type{emc_types::FUNCTION};
-    }
+    emc_type resolve();
 };
 
 class object_static_cfunc: public object_func_base {
@@ -737,9 +795,9 @@ public:
         extern int ast_node_count; ast_node_count--;
 #endif
     }
-    ;
-
-
+    
+    ast_node(const ast_node&) = delete;
+    ast_node& operator=(const ast_node&) = delete;
 
     virtual expr_value* eval() = 0;
     virtual ast_node* clone() = 0;
@@ -767,7 +825,7 @@ public:
 
     ast_node* clone()
     {
-        return new ast_node_return { first };
+        return new ast_node_return { first->clone() };
     }
 
     ast_node *first; /* rvalue to return */
@@ -1696,7 +1754,11 @@ public:
 
     emc_type resolve()
     {
-        return value_type = first->resolve();
+        extern scope_stack resolve_scope;
+        resolve_scope.push_new_scope();
+        value_type = first->resolve();
+        resolve_scope.pop_scope();
+        return value_type;
     }
 
     ast_node* clone()
@@ -1751,11 +1813,20 @@ public:
      */
     emc_type resolve()
     {
-        if (!else_el && !also_el)
-            return if_el->resolve();
-        else if (else_el && !also_el) {
+        if (!else_el && !also_el) {
+            extern scope_stack resolve_scope;
+            resolve_scope.push_new_scope();
+            value_type = if_el->resolve();
+            resolve_scope.pop_scope();
+            return value_type;
+        } else if (else_el && !also_el) {
+            extern scope_stack resolve_scope;
+            resolve_scope.push_new_scope();
             auto value_type_if = if_el->resolve();
+            resolve_scope.pop_scope();
+            resolve_scope.push_new_scope();
             auto value_type_else = else_el->resolve();
+            resolve_scope.pop_scope();
 
             auto t = standard_type_promotion_or_invalid(value_type_if, value_type_else);
             if (t.is_valid())
@@ -1763,9 +1834,16 @@ public:
             else
                 return emc_type{emc_types::NONE};
         } else {
+            extern scope_stack resolve_scope;
+            resolve_scope.push_new_scope();
             auto value_type_if = if_el->resolve();
+            resolve_scope.pop_scope();
+            resolve_scope.push_new_scope();
             auto value_type_else = else_el->resolve();
+            resolve_scope.pop_scope();
+            resolve_scope.push_new_scope();
             auto value_type_also = also_el->resolve();
+            resolve_scope.pop_scope();
 
             auto t = standard_type_promotion_or_invalid(value_type_if, value_type_else);
             t = standard_type_promotion_or_invalid(t, value_type_also);
@@ -1867,11 +1945,20 @@ public:
 
     emc_type resolve()
     {
-        if (!else_el)
-            return if_el->resolve();
-        else {
+        if (!else_el) {
+            extern scope_stack resolve_scope;
+            resolve_scope.push_new_scope();
+            value_type = if_el->resolve();
+            resolve_scope.pop_scope();
+            return value_type;
+        } else {
+            extern scope_stack resolve_scope;
+            resolve_scope.push_new_scope();
             auto value_type_if = if_el->resolve();
+            resolve_scope.pop_scope();
+            resolve_scope.push_new_scope();
             auto value_type_else = else_el->resolve();
+            resolve_scope.pop_scope();
 
             auto t = standard_type_promotion_or_invalid(value_type_if, value_type_else);
             if (t.is_valid())
@@ -1976,6 +2063,41 @@ public:
     }
 };
 
+class ast_node_vardef_list: public ast_node {
+public:
+    ast_node_vardef_list()
+    {
+        type = ast_type::VARDEF_LIST;
+    }
+    ~ast_node_vardef_list()
+    {
+        for (auto p : v_defs)
+            delete p;
+    }
+
+    ast_node* clone()
+    {
+        auto argl = new ast_node_vardef_list { };
+        for (auto e : v_defs)
+            argl->append(e->clone());
+        return argl;
+    }
+
+    void append(ast_node *arg)
+    {
+        v_defs.push_back(arg);
+    }
+
+    emc_type resolve();
+
+    expr_value* eval()
+    {
+        throw std::runtime_error("ast_node_vardef_list eval not implemented (ever?)");
+    }
+
+    std::vector<ast_node*> v_defs;
+};
+
 class ast_node_arglist: public ast_node {
 public:
     ast_node_arglist()
@@ -2020,10 +2142,10 @@ public:
 class ast_node_funcdec: public ast_node {
 public:
     ast_node_funcdec(ast_node *parlist, ast_node *code_block,
-            std::string name, std::string nspace)
+            std::string name, std::string nspace, ast_node *vardef_list)
     :
             parlist(parlist), code_block(code_block),
-                    name(name), nspace(nspace)
+                    name(name), nspace(nspace), vardef_list(vardef_list)
     {
         type = ast_type::FUNCTION_DECLARATION;
     }
@@ -2032,6 +2154,7 @@ public:
     {
         delete code_block;
         delete parlist;
+        delete vardef_list;
     }
 
     emc_type resolve()
@@ -2042,7 +2165,23 @@ public:
             throw std::runtime_error("ast_node* clone()");
         extern scope_stack resolve_scope;
         auto fobj = new object_func { code_block->clone(), name, nspace,
-                parlist->clone() };
+                parlist->clone() , vardef_list->clone()};
+        resolve_scope.push_new_scope();
+        auto parlist_t = dynamic_cast<ast_node_parlist*>(parlist);
+        /* Create variables with the arguments' names in the function scope. */
+        for (int i = 0; i < parlist_t->v_func_paras.size(); i++) {
+            std::string var_name = parlist_t->v_func_paras[i].name;
+            auto obj = new object_double { var_name, "", 0 };
+            resolve_scope.get_top_scope().push_object(obj);
+        }
+        code_block->resolve();
+        resolve_scope.pop_scope();
+
+        /* Hack to allow for return names with same names as other things ... */
+        resolve_scope.push_new_scope();
+        vardef_list->resolve();
+        resolve_scope.pop_scope();
+
         resolve_scope.get_top_scope().push_object(fobj);
 
         return value_type = emc_type{emc_types::FUNCTION}; /* TODO: Add types too */
@@ -2052,7 +2191,7 @@ public:
     {
         return new ast_node_funcdec { parlist->clone(),
                 code_block->clone(),
-                name, nspace };
+                name, nspace, vardef_list->clone() };
     }
 
     /* Evaluating the function declaration creates the function object
@@ -2065,12 +2204,13 @@ public:
             throw std::runtime_error("qweqweqweqweqweesasdfdsasdffd");
         extern scope_stack scopes;
         auto fobj = new object_func { code_block->clone(), name, nspace,
-                parlist->clone() };
+                parlist->clone(), vardef_list->clone()};
         scopes.get_top_scope().push_object(fobj);
 
         return new expr_value_double { 0. };
     }
 
+    ast_node *vardef_list;
     ast_node *code_block;
     ast_node *parlist;
     std::string name;
@@ -2084,6 +2224,12 @@ public:
     {
         type = ast_type::FUNCTION_CALL;
     }
+
+    ~ast_node_funccall()
+    {
+        delete arg_list;
+    }
+
     std::string name;
     std::string nspace;
     ast_node *arg_list;
@@ -2501,6 +2647,17 @@ public:
 
         resolve_scope.get_top_scope().push_object(obj);
 
+        /* TODO: This wont work for user types ... */
+        if (type_name == "Int")
+            return value_type = emc_type{emc_types::INT};
+        else if (type_name == "Double")
+            return value_type = emc_type{emc_types::DOUBLE};
+        else if (type_name == "String")
+            return value_type = emc_type{emc_types::STRING};
+        throw std::runtime_error("Not implemented proper types ... ");
+    }
+    emc_type resolve_no_push()
+    {
         /* TODO: This wont work for user types ... */
         if (type_name == "Int")
             return value_type = emc_type{emc_types::INT};
