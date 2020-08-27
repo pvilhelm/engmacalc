@@ -15,3 +15,5 @@ a.out
 
 .*
 !.gitignore
+/*.out
+/dump.txt.c

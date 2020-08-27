@@ -22,7 +22,7 @@ typedef void* yyscan_t;
     std::string *s;
 }
 
-%token <s> NUMBER
+%token <node> NUMBER
 %token <s> NAME
 %token <s> TYPENAME 
 %token <s> ESC_STRING
@@ -126,7 +126,7 @@ se: e                      {$$ = $1;}
                             }                             
 
     | code_block
-    | FUNC vardef_list '=' NAME '(' param_list ')' code_block
+    | FUNC vardef_list '=' NAME '(' vardef_list ')' code_block
                             {
                                 auto p = new ast_node_funcdec{$6, $8, *$4, "", $2};
                                 delete $4;
@@ -210,7 +210,7 @@ exp: exp '+' exp             {$$ = new ast_node_add{$1, $3};}
      | '|' exp '|'           {$$ = new ast_node_abs{$2};}
      | exp '^' exp           {$$ = new ast_node_pow{$1, $3};}
      | NAME                  {$$ = new ast_node_var{*$1, ""}; delete $1;}
-     | NUMBER                {$$ = new ast_node_double_literal(*$1); delete $1;}
+     | NUMBER                {$$ = $1;}
      | NAME '(' arg_list ')' {$$ = new ast_node_funccall{"", *$1, $3}; delete $1;}
      | ESC_STRING			 {$$ = new ast_node_string_literal{*$1}; delete $1;}
      ;

@@ -21,8 +21,6 @@ scope_stack scopes;
 /* Scope during resolving of the ast node tree. */
 scope_stack resolve_scope;
 
-
-
 int main(int argc, char **argv)
 {
     bool interpret = false;
@@ -34,7 +32,7 @@ int main(int argc, char **argv)
 
     init_builtin_functions();
     init_standard_variables(); /* pi, e ... */
-    init_linked_cfunctions(); /* Initialice function objects for statically linked cfunctions. */
+    init_linked_cfunctions();  /* Initialice function objects for statically linked cfunctions. */
     init_builtin_types();
 
     yyscan_t scanner;
@@ -98,12 +96,10 @@ int main(int argc, char **argv)
             for (auto e : v_nodes)
                 jit.add_ast_node(e);
             jit.add_ast_node(ast_root);
-
            
             jit.dump("./dump.txt");
             jit.compile();
             jit.execute();
-
 
             /* Save variable declarations and definitions. */
             /*TODO: add persistens env. var. values somehow between CLI

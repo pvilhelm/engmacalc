@@ -66,6 +66,20 @@ private:
     std::map<std::string, gcc_jit_function*> map_fnname_to_gccfnobj;
     int call_depth = 0;
 
+    /* Cast a and b according to promotion rules. The casted values can be
+     * pointing to the original rvalues if no cast was done. 
+     * 
+     * The return value is of the type promoted to or the original type. */
+    gcc_jit_type* promote_types( gcc_jit_rvalue *a_rv,
+                        gcc_jit_rvalue *b_rv,
+                        gcc_jit_rvalue **a_casted_rv,
+                        gcc_jit_rvalue **b_casted_rv);
+
+    /* Returns a rvalue that is a_rv with an cast to target_type applied to it.
+     * The return value can point to the same rvalue as a_rv if no cast is needed. */
+    gcc_jit_rvalue* cast_to(gcc_jit_rvalue *a_rv,
+                        gcc_jit_type *target_type);
+
     void push_scope()
     {
         v_of_map_of_varname_to_lval.push_back(
@@ -127,7 +141,10 @@ private:
     void walk_tree_gre(ast_node *node, gcc_jit_rvalue **current_rvalue);
     void walk_tree_neq(ast_node *node, gcc_jit_rvalue **current_rvalue);
     void walk_tree_uminus(ast_node *node, gcc_jit_rvalue **current_rvalue);
+
     void walk_tree_dlit(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_ilit(ast_node *node, gcc_jit_rvalue **current_rvalue);
+
     void walk_tree_fcall(ast_node *node, gcc_jit_rvalue **current_rvalue);
     void walk_tree_fdec(ast_node *node, gcc_jit_rvalue **current_rvalue);
     void walk_tree_ret(ast_node *node, gcc_jit_block **current_block);
@@ -147,6 +164,9 @@ private:
                             gcc_jit_function **current_function,
                             gcc_jit_rvalue **current_rvalue);
     void walk_tree_if( ast_node *node, 
+                        gcc_jit_block **current_block, 
+                        gcc_jit_function **current_function);
+    void walk_tree_while( ast_node *node, 
                         gcc_jit_block **current_block, 
                         gcc_jit_function **current_function);
 };

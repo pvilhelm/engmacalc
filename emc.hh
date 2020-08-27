@@ -17,6 +17,9 @@
 #include <iostream>
 #include <cmath>
 #include <memory>
+#include <cstdlib>
+#include <cerrno>
+#include <limits>
 
 #include "emc_assert.hh"
 
@@ -29,6 +32,7 @@ extern int value_expr_count;
 enum class ast_type {
     INVALID = 0,
     DOUBLE_LITERAL = 1,
+    INT_LITERAL,
     STRING_LITERAL,
     ADD,
     SUB,
@@ -346,6 +350,7 @@ public:
     expr_value* clone()
     {
         auto ret = new expr_value_list;
+        ret->type = type;
         for (auto &e : v_val)
             ret->v_val.push_back(e->clone());
         return ret;
@@ -379,7 +384,9 @@ public:
 
     expr_value* clone()
     {
-        return new expr_value_double { d };
+        auto c = new expr_value_double { d };
+        c->type = type;
+        return c;
     }
 };
 
@@ -409,7 +416,9 @@ public:
 
     expr_value* clone()
     {
-        return new expr_value_int { i };
+        auto c = new expr_value_int { i };
+        c->type = type;
+        return c;
     }
 };
 
@@ -433,7 +442,9 @@ public:
 
     expr_value* clone()
     {
-        return new expr_value_string { s };
+        auto c = new expr_value_string { s };
+        c->type = type;
+        return c;
     }
 };
 
@@ -776,7 +787,9 @@ public:
 
     expr_value* clone()
     {
-        return new expr_value_lval { object };
+        auto c = new expr_value_lval { object };
+        c->type = type;
+        return c;
     }
 };
 
@@ -814,6 +827,8 @@ public:
 
     ~ast_node_return(){delete first;}
 
+    ast_node *first; /* rvalue to return */
+
     emc_type resolve()
     {
         return value_type = first->resolve();
@@ -826,10 +841,12 @@ public:
 
     ast_node* clone()
     {
-        return new ast_node_return { first->clone() };
+        auto c = new ast_node_return {first->clone()};
+        c->value_type = value_type;
+        return c;
     }
 
-    ast_node *first; /* rvalue to return */
+   
 };
 
 class ast_node_double_literal: public ast_node {
@@ -869,7 +886,58 @@ public:
 
     ast_node* clone()
     {
-        return new ast_node_double_literal { d };
+        auto c = new ast_node_double_literal { d };
+        c->value_type = value_type;
+        return c;
+    }
+};
+
+class ast_node_int_literal: public ast_node {
+public:
+    ast_node_int_literal()
+    {
+        type = ast_type::INT_LITERAL;
+        i = 0;
+    }
+    ast_node_int_literal(int i) : i(i)
+    {
+        type = ast_type::INT_LITERAL;
+    }
+    ast_node_int_literal(std::string s)
+    {
+        type = ast_type::INT_LITERAL;
+        char *pc;
+        errno = 0;
+        long long l = strtol(s.c_str(), &pc, 0);
+
+        if (l > std::numeric_limits<int>::max() ||
+            l < std::numeric_limits<int>::min())
+            throw std::runtime_error("Value out of Int range: " + s);
+        if (errno == ERANGE)
+            throw std::runtime_error("String not an valid Int: " + s);
+        i = (int)l;
+    }
+    ~ast_node_int_literal()
+    {
+    }
+
+    int i;
+
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::INT};
+    }
+
+    expr_value* eval()
+    {
+        throw std::runtime_error("Not implemented INT Lit eval");
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_int_literal { i };
+        c->value_type = value_type;
+        return c;
     }
 };
 
@@ -900,7 +968,9 @@ public:
 
     ast_node* clone()
     {
-        return new ast_node_string_literal { s };
+        auto c = new ast_node_string_literal { s };
+        c->value_type = value_type;
+        return c;
     }
 };
 
@@ -922,6 +992,9 @@ public:
         delete sec;
     }
 
+    ast_node *first;
+    ast_node *sec;
+
     emc_type resolve()
     {
         return value_type = standard_type_promotion(first->resolve(), sec->resolve());
@@ -929,7 +1002,9 @@ public:
 
     ast_node* clone()
     {
-        return new ast_node_add { first->clone(), sec->clone() };
+        auto c = new ast_node_add { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     expr_value* eval()
@@ -1021,9 +1096,6 @@ public:
         }
 
     }
-
-    ast_node *first;
-    ast_node *sec;
 };
 
 class ast_node_sub: public ast_node {
@@ -1044,9 +1116,14 @@ public:
         delete sec;
     }
 
+    ast_node *first;
+    ast_node *sec;
+
     ast_node* clone()
     {
-        return new ast_node_sub { first->clone(), sec->clone() };
+        auto c = new ast_node_sub { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     emc_type resolve()
@@ -1108,11 +1185,7 @@ public:
             delete sv;
             throw std::runtime_error("AST node sub:  types not implemented");
         }
-
     }
-
-    ast_node *first;
-    ast_node *sec;
 };
 
 class ast_node_mul: public ast_node {
@@ -1132,6 +1205,9 @@ public:
         if (first) delete first;
         if (sec) delete sec;
     }
+    
+    ast_node *first;
+    ast_node *sec;
 
     emc_type resolve()
     {
@@ -1140,7 +1216,9 @@ public:
 
     ast_node* clone()
     {
-        return new ast_node_mul { first->clone(), sec->clone() };
+        auto c = new ast_node_mul { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     expr_value* eval()
@@ -1199,9 +1277,6 @@ public:
         }
 
     }
-
-    ast_node *first;
-    ast_node *sec;
 };
 
 class ast_node_rdiv: public ast_node {
@@ -1221,6 +1296,9 @@ public:
         if (first) delete first;
         if (sec) delete sec;
     }
+    
+    ast_node *first;
+    ast_node *sec;
 
     emc_type resolve()
     {
@@ -1229,7 +1307,9 @@ public:
 
     ast_node* clone()
     {
-        return new ast_node_rdiv { first->clone(), sec->clone() };
+        auto c = new ast_node_rdiv { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     expr_value* eval()
@@ -1288,9 +1368,6 @@ public:
         }
 
     }
-
-    ast_node *first;
-    ast_node *sec;
 };
 
 class ast_node_pow: public ast_node {
@@ -1310,10 +1387,15 @@ public:
         if (first) delete first;
         if (sec) delete sec;
     }
+    
+    ast_node *first;
+    ast_node *sec;
 
     ast_node* clone()
     {
-        return new ast_node_pow { first->clone(), sec->clone() };
+        auto c = new ast_node_pow { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     emc_type resolve()
@@ -1378,8 +1460,6 @@ public:
 
     }
 
-    ast_node *first;
-    ast_node *sec;
 };
 
 class ast_node_abs: public ast_node {
@@ -1398,7 +1478,9 @@ public:
 
     ast_node* clone()
     {
-        return new ast_node_abs { first->clone() };
+        auto c = new ast_node_abs { first->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     emc_type resolve()
@@ -1443,10 +1525,14 @@ public:
     {
         if (first) delete first;
     }
+    
+    ast_node *first;
 
     ast_node* clone()
     {
-        return new ast_node_uminus { first->clone() };
+        auto c = new ast_node_uminus { first->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     emc_type resolve()
@@ -1475,7 +1561,6 @@ public:
 
     }
 
-    ast_node *first;
 };
 
 class ast_node_var: public ast_node {
@@ -1504,12 +1589,14 @@ public:
         if (!p) /* TODO: Kanske borde throwa "inte hittat än" för att kunna fortsätta? */
             throw std::runtime_error("Object does not exist: >>" +
                     nspace + name + "<<");
-        return p->resolve();
+        return value_type = p->resolve();
     }
 
     ast_node* clone()
     {
-        return new ast_node_var { name, nspace };
+        auto c = new ast_node_var { name, nspace };
+        c->value_type = value_type;
+        return c;
     }
 
     expr_value* eval()
@@ -1543,14 +1630,20 @@ public:
     {
         type = ast_type::ASSIGN;
     }
+    
+    ast_node *first;
+    ast_node *sec;
 
     ast_node* clone()
     {
-        return new ast_node_assign { first->clone(), sec->clone() };
+        auto c = new ast_node_assign { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     emc_type resolve()
     {
+        sec->resolve();
         return value_type = first->resolve();
     }
 
@@ -1591,8 +1684,6 @@ public:
         return ans;
     }
 
-    ast_node *first;
-    ast_node *sec;
 };
 
 class ast_node_cmp: public ast_node {
@@ -1612,15 +1703,21 @@ public:
         if (first) delete first;
         if (sec) delete sec;
     }
+    
+    ast_node *first;
+    ast_node *sec;
 
     emc_type resolve()
     {
+        first->resolve(); sec->resolve();
         return value_type = emc_type{emc_types::INT};
     }
 
     ast_node* clone()
     {
-        return new ast_node_cmp { first->clone(), sec->clone() };
+        auto c = new ast_node_cmp { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     expr_value* eval()
@@ -1636,8 +1733,6 @@ public:
         return new expr_value_int { ans_val };
     }
 
-    ast_node *first;
-    ast_node *sec;
 };
 
 class ast_node_temporary: public ast_node {
@@ -1657,7 +1752,9 @@ public:
 
     ast_node* clone()
     {
-        return new ast_node_temporary { first->clone() };
+        auto c = new ast_node_temporary { first->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     emc_type resolve()
@@ -1691,6 +1788,8 @@ public:
         for (auto e : v_nodes)
             delete e;
     }
+    
+    std::vector<ast_node*> v_nodes;
 
     emc_type resolve()
     {
@@ -1703,7 +1802,7 @@ public:
             if (t.types[0] == emc_types::NONE && et.types[0] != emc_types::NONE)
                 t = et;
         }
-        return t;
+        return value_type = t;
     }
 
     ast_node* clone()
@@ -1713,11 +1812,15 @@ public:
         if (iter == v_nodes.end())
             throw std::runtime_error("Bugg ast_node_explist");
 
-        auto pel = new ast_node_explist { (*iter++)->clone() };
+        auto pel = new ast_node_explist { (*iter)->clone() };
+        pel->value_type = value_type;
+        pel->v_nodes[0]->value_type = (*iter++)->value_type;
 
-        for (; iter != v_nodes.end(); iter++)
-            pel->append_node((*iter)->clone());
-
+        for (; iter != v_nodes.end(); iter++) {
+            auto c = (*iter)->clone();
+            c->value_type = (*iter)->value_type;
+            pel->append_node(c);
+        }
         return pel;
     }
 
@@ -1736,13 +1839,10 @@ public:
         return ans;
     }
 
-    std::vector<ast_node*> v_nodes;
 };
 
 class ast_node_doblock: public ast_node {
 public:
-    ast_node *first;
-
     ast_node_doblock(ast_node *first) :
             first(first)
     {
@@ -1752,6 +1852,8 @@ public:
     {
         if (first) delete first;
     }
+    
+    ast_node *first;
 
     emc_type resolve()
     {
@@ -1764,7 +1866,9 @@ public:
 
     ast_node* clone()
     {
-        return new ast_node_doblock { first->clone() };
+        auto c = new ast_node_doblock { first->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     expr_value* eval()
@@ -1782,13 +1886,6 @@ public:
 
 class ast_node_if: public ast_node {
 public:
-    ast_node *cond_e;
-    ast_node *if_el;
-    ast_node *else_el; /* else_el can be a linked IF or another expression (for IF ELSE ... ) */
-    ast_node *also_el = 0;
-    /* The ALSO statement is assumed to be in
-     * the first IF node and not the linked IFs. */
-
     ast_node_if(ast_node *cond_e, ast_node *if_el) :
             ast_node_if(cond_e, if_el, nullptr)
     {
@@ -1807,6 +1904,13 @@ public:
         delete else_el;
         delete also_el;
     }
+    
+    ast_node *cond_e;
+    ast_node *if_el;
+    ast_node *else_el; /* else_el can be a linked IF or another expression (for IF ELSE ... ) */
+    ast_node *also_el = 0;
+    /* The ALSO statement is assumed to be in
+     * the first IF node and not the linked IFs. */
 
     /* The type of the value of an IF statement expression is NONE unless
      * all the blocks have a not NONE type, which have to be promotional
@@ -1814,6 +1918,7 @@ public:
      */
     emc_type resolve()
     {
+        cond_e->resolve();
         if (!else_el && !also_el) {
             extern scope_stack resolve_scope;
             resolve_scope.push_new_scope();
@@ -1831,9 +1936,9 @@ public:
 
             auto t = standard_type_promotion_or_invalid(value_type_if, value_type_else);
             if (t.is_valid())
-                return t;
+                return value_type = t;
             else
-                return emc_type{emc_types::NONE};
+                return value_type = emc_type{emc_types::NONE};
         } else {
             extern scope_stack resolve_scope;
             resolve_scope.push_new_scope();
@@ -1849,9 +1954,9 @@ public:
             auto t = standard_type_promotion_or_invalid(value_type_if, value_type_else);
             t = standard_type_promotion_or_invalid(t, value_type_also);
             if (t.is_valid())
-                return t;
+                return value_type = t;
             else
-                return emc_type{emc_types::NONE};
+                return value_type = emc_type{emc_types::NONE};
         }
     }
 
@@ -1865,8 +1970,10 @@ public:
 
     ast_node* clone()
     {
-        return new ast_node_if { cond_e->clone(), if_el->clone(),
+        auto c = new ast_node_if { cond_e->clone(), if_el->clone(),
                 else_el ? else_el->clone() : nullptr };
+        c->value_type = value_type;
+        return c;        
     }
 
     expr_value* eval()
@@ -1919,9 +2026,6 @@ public:
 
 class ast_node_while: public ast_node {
 public:
-    ast_node *cond_e;
-    ast_node *if_el;
-    ast_node *else_el;
     ast_node_while(ast_node *cond_e, ast_node *if_el) :
             ast_node_while(cond_e, if_el, nullptr)
     {
@@ -1938,14 +2042,21 @@ public:
         delete else_el;
     }
 
+    ast_node *cond_e;
+    ast_node *if_el;
+    ast_node *else_el;
+
     ast_node* clone()
     {
-        return new ast_node_while { cond_e->clone(), if_el->clone(),
+        auto c = new ast_node_while { cond_e->clone(), if_el->clone(),
                 else_el ? else_el->clone() : nullptr };
+        c->value_type = value_type;
+        return c;        
     }
 
     emc_type resolve()
     {
+        cond_e->resolve();
         if (!else_el) {
             extern scope_stack resolve_scope;
             resolve_scope.push_new_scope();
@@ -1963,9 +2074,9 @@ public:
 
             auto t = standard_type_promotion_or_invalid(value_type_if, value_type_else);
             if (t.is_valid())
-                return t;
+                return value_type = t;
             else
-                return emc_type{emc_types::NONE};
+                return value_type = emc_type{emc_types::NONE};
         }
     }
 
@@ -2040,6 +2151,7 @@ public:
     ast_node* clone()
     {
         auto pel = new ast_node_parlist { };
+        pel->value_type = value_type;
         for (auto e : v_func_paras)
             pel->append_parameter(e);
         return pel;
@@ -2075,10 +2187,13 @@ public:
         for (auto p : v_defs)
             delete p;
     }
+    
+    std::vector<ast_node*> v_defs;
 
     ast_node* clone()
     {
         auto argl = new ast_node_vardef_list { };
+        argl->value_type = value_type;
         for (auto e : v_defs)
             argl->append(e->clone());
         return argl;
@@ -2095,8 +2210,6 @@ public:
     {
         throw std::runtime_error("ast_node_vardef_list eval not implemented (ever?)");
     }
-
-    std::vector<ast_node*> v_defs;
 };
 
 class ast_node_arglist: public ast_node {
@@ -2110,10 +2223,13 @@ public:
         for (auto p : v_ast_args)
             delete p;
     }
+    
+    std::vector<ast_node*> v_ast_args;
 
     ast_node* clone()
     {
         auto argl = new ast_node_arglist { };
+        argl->value_type = value_type;
         for (auto e : v_ast_args)
             argl->append_arg(e->clone());
         return argl;
@@ -2126,6 +2242,8 @@ public:
 
     emc_type resolve()
     {
+        for (auto e : v_ast_args)
+            e->resolve();
         return value_type = emc_type{emc_types::NONE};
     }
 
@@ -2136,8 +2254,6 @@ public:
             val_list->v_val.push_back(node->eval());
         return val_list;
     }
-
-    std::vector<ast_node*> v_ast_args;
 };
 
 class ast_node_funcdec: public ast_node {
@@ -2157,42 +2273,22 @@ public:
         delete parlist;
         delete vardef_list;
     }
+    
+    ast_node *vardef_list;
+    ast_node *code_block;
+    ast_node *parlist;
+    std::string name;
+    std::string nspace;
 
-    emc_type resolve()
-    {
-        extern scope_stack resolve_scope;
-        auto aa = dynamic_cast<ast_node_parlist*>(parlist);
-        if (!aa)
-            throw std::runtime_error("ast_node* clone()");
-        extern scope_stack resolve_scope;
-        auto fobj = new object_func { code_block->clone(), name, nspace,
-                parlist->clone() , vardef_list->clone()};
-        resolve_scope.push_new_scope();
-        auto parlist_t = dynamic_cast<ast_node_parlist*>(parlist);
-        /* Create variables with the arguments' names in the function scope. */
-        for (int i = 0; i < parlist_t->v_func_paras.size(); i++) {
-            std::string var_name = parlist_t->v_func_paras[i].name;
-            auto obj = new object_double { var_name, "", 0 };
-            resolve_scope.get_top_scope().push_object(obj);
-        }
-        code_block->resolve();
-        resolve_scope.pop_scope();
-
-        /* Hack to allow for return names with same names as other things ... */
-        resolve_scope.push_new_scope();
-        vardef_list->resolve();
-        resolve_scope.pop_scope();
-
-        resolve_scope.get_top_scope().push_object(fobj);
-
-        return value_type = emc_type{emc_types::FUNCTION}; /* TODO: Add types too */
-    }
+    emc_type resolve();
 
     ast_node* clone()
     {
-        return new ast_node_funcdec { parlist->clone(),
+        auto c =  new ast_node_funcdec { parlist->clone(),
                 code_block->clone(),
                 name, nspace, vardef_list->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     /* Evaluating the function declaration creates the function object
@@ -2210,12 +2306,6 @@ public:
 
         return new expr_value_double { 0. };
     }
-
-    ast_node *vardef_list;
-    ast_node *code_block;
-    ast_node *parlist;
-    std::string name;
-    std::string nspace;
 };
 
 class ast_node_funccall: public ast_node {
@@ -2237,13 +2327,16 @@ public:
 
     ast_node* clone()
     {
-        return new ast_node_funccall { nspace,
+        auto c =  new ast_node_funccall { nspace,
                 name,
                 arg_list->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     emc_type resolve()
     {
+        arg_list->resolve();
         extern scope_stack resolve_scope;
         auto obj = resolve_scope.find_object(name, nspace);
         if (!obj) /* TODO: Kolla så fn */
@@ -2293,11 +2386,14 @@ class ast_node_chainable: public ast_node {
 public:
     std::shared_ptr<ast_node> first;
     std::shared_ptr<ast_node> sec;
+
+    /* The chainable:s resolve() is not called when they are chained. So
+     * set value_type here. */
+    ast_node_chainable(){value_type = emc_type{emc_types::INT};}
 };
 
 class ast_node_andchain: public ast_node {
 public:
-    std::vector<ast_node_chainable*> v_children;
     ast_node_andchain() : ast_node_andchain(nullptr) {}
     ast_node_andchain(ast_node_chainable *first)
     {
@@ -2312,16 +2408,21 @@ public:
             delete e;
     }
 
+    std::vector<ast_node_chainable*> v_children;
+
     emc_type resolve()
     {
-        for (auto e : v_children)
-            e->resolve();
-        return value_type = emc_type{emc_types::INT};
+        for (auto e : v_children) {
+            e->first->resolve();
+        }
+        (*v_children.rbegin())->sec->resolve(); /* Dont forget this one */
+        return value_type = emc_type{emc_types::INT}; /* Always an int */
     }
 
     ast_node* clone()
     {
         auto p = new ast_node_andchain {};
+        p->value_type = value_type;
         if (v_children.size() >= 1)
             p->v_children.push_back(dynamic_cast<ast_node_chainable*>(v_children.front()->clone()));
 
@@ -2384,11 +2485,14 @@ public:
 
     ast_node* clone()
     {
-        return new ast_node_les { first->clone(), sec->clone() };
+        auto c = new ast_node_les { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     emc_type resolve()
     {
+        first->resolve(); sec->resolve();
         return value_type = emc_type{emc_types::INT};
     }
 
@@ -2426,11 +2530,14 @@ public:
     }
     emc_type resolve()
     {
+        first->resolve(); sec->resolve();
         return value_type = emc_type{emc_types::INT};
     }
     ast_node* clone()
     {
-        return new ast_node_gre { first->clone(), sec->clone() };
+        auto c = new ast_node_gre { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     expr_value* eval()
@@ -2468,11 +2575,14 @@ public:
     }
     emc_type resolve()
     {
+        first->resolve(); sec->resolve();
         return value_type = emc_type{emc_types::INT};
     }
     ast_node* clone()
     {
-        return new ast_node_equ { first->clone(), sec->clone() };
+        auto c = new ast_node_equ { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     expr_value* eval()
@@ -2510,11 +2620,14 @@ public:
     }
     emc_type resolve()
     {
+        first->resolve(); sec->resolve();
         return value_type = emc_type{emc_types::INT};
     }
     ast_node* clone()
     {
-        return new ast_node_leq { first->clone(), sec->clone() };
+        auto c = new ast_node_leq { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     expr_value* eval()
@@ -2552,11 +2665,14 @@ public:
     }
     emc_type resolve()
     {
+        first->resolve(); sec->resolve();
         return value_type = emc_type{emc_types::INT};
     }
     ast_node* clone()
     {
-        return new ast_node_geq { first->clone(), sec->clone() };
+        auto c = new ast_node_geq { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     expr_value* eval()
@@ -2594,11 +2710,14 @@ public:
     }
     emc_type resolve()
     {
+        first->resolve(); sec->resolve();
         return value_type = emc_type{emc_types::INT};
     }
     ast_node* clone()
     {
-        return new ast_node_neq { first->clone(), sec->clone() };
+        auto c = new ast_node_neq { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
     }
 
     expr_value* eval()
@@ -2631,22 +2750,31 @@ public:
     {
         if (value_node) delete value_node;
     }
+    
+    std::string type_name;
+    std::string var_name;
+    ast_node *value_node = nullptr;
 
     ast_node* clone()
     {
-        return new ast_node_def { type_name, var_name,
+        auto c = new ast_node_def { type_name, var_name,
                 value_node ? value_node->clone() : nullptr };
+        c->value_type = value_type;
+        return c;        
     }
     emc_type resolve()
     {
         extern scope_stack resolve_scope;
 
-        type_object *type = resolve_scope.get_top_scope().find_type(type_name);
+        type_object *type = resolve_scope.find_type(type_name);
         obj *obj;
         obj = type->ctor();
         obj->name = var_name;
 
         resolve_scope.get_top_scope().push_object(obj);
+
+        if (value_node)
+            value_node->resolve();
 
         /* TODO: This wont work for user types ... */
         if (type_name == "Int")
@@ -2693,8 +2821,5 @@ public:
         return val;
     }
 
-    std::string type_name;
-    std::string var_name;
-    ast_node *value_node = nullptr;
 };
 

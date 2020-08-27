@@ -1,33 +1,17 @@
 
-Double global_double = 2
-
-FUNC Double avg = avg(a,b) DO
-    RETURN (a+b)/2
+FUNC Double sq = square(Int a) DO
+    RETURN a * a
 END
 
-FUNC Int sign = sign(a) DO
-    IF a > 0 DO
-        RETURN 1
-    ELSE IF a < 0 DO
-        RETURN -1
-    ELSE DO
-        RETURN 0
-    END
+FUNC Double avg = avg(Double a, Double b) DO
+    RETURN (a + b)/2
 END
 
-FUNC Int test = test(a) DO
-    IF a > 0 DO
-        RETURN 2
-    END
-    RETURN 3
-END
+square(4)
+square(8)
+square(16)
+square(32)
 
-avg(4,5)
-sign(-2)
-sign(2)
-sign(0)
-test(0)
-test(1)
-
-
-
+avg(2,3)
+avg(7,14)
+avg(101,-100)

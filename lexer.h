@@ -245,6 +245,7 @@ void yyfree ( void * , yyscan_t yyscanner );
 
 #ifdef YY_HEADER_EXPORT_START_CONDITIONS
 #define INITIAL 0
+#define IN_COMMENT 1
 
 #endif
 
@@ -516,9 +517,9 @@ extern int yylex \
 #undef yyTABLES_NAME
 #endif
 
-#line 88 "emc_lexer.l"
+#line 113 "emc_lexer.l"
 
 
-#line 523 "lexer.h"
+#line 524 "lexer.h"
 #undef yyIN_HEADER
 #endif /* yyHEADER_H */

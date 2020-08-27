@@ -9,6 +9,8 @@ void yyerror(const char *s);
 
 #define YY_USER_ACTION update_loc(yylloc_param, yytext);
 
+int n_nested_comments = 0;
+
 /*typedef struct YYLTYPE
 {
   int first_line;
@@ -25,6 +27,9 @@ void yyerror(const char *s);
     /* float exponent */
 EXP([Ee][-+]?[0-9]+)
 WS([ \t])
+
+%x IN_COMMENT
+
 %%
 
     /* Single character operators */
@@ -67,7 +72,19 @@ WS([ \t])
 [A-Z][a-z0-9\-_]*     { yylval->s = new std::string{yytext}; return TYPENAME; }
 
 [0-9]+"."[0-9]*{EXP}? |
-"."?[0-9]+{EXP}?        { yylval->s = new std::string{yytext}; return NUMBER; }
+"."[0-9]+{EXP}?         { 
+							yylval->node = new ast_node_double_literal{std::string{yytext}};
+							return NUMBER; 
+						}
+
+	/* TODO: Borde göra egen parsning för att tex. tillåta 1'000'000 och 09 som inte 
+	 * oktal ... */
+[0-9]+ |
+"0"[xX][0-9a-fA-F]+     { 
+							yylval->node = new ast_node_int_literal{std::string{yytext}};
+							return NUMBER; 
+						}
+
 
 \"(\\.|[^"\\])*\"		{ 
 							yylval->s = new std::string{yytext + 1, strlen(yytext) - 2}; 
@@ -75,10 +92,18 @@ WS([ \t])
 							return ESC_STRING; 
 						}
 
+<INITIAL>"/*"         {n_nested_comments++; BEGIN(IN_COMMENT);}
+<IN_COMMENT>"/*"      {n_nested_comments++;}
+<IN_COMMENT>"*/"      {n_nested_comments--; if (n_nested_comments == 0) BEGIN(INITIAL);}
+<IN_COMMENT>[^/*\n]+  // eat comment in chunks
+<IN_COMMENT>"*"       // eat the lone star
+<IN_COMMENT>\n         
+<IN_COMMENT>"/" 
+
 "//".*
 {WS}                    /* ignore white space */
 \\\n                    /* ignore line continuation */
- /*^{WS}*\n*/                /* ignore empty new lines */
+ /*^{WS}*\n*/           /* ignore empty new lines */
 "\r\n"         			{ return EOL; }
 "\n"         			{ return EOL; }
 <<EOF>>                 { return ENDOFFILE; }

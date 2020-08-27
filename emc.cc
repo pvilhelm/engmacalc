@@ -9,12 +9,57 @@ int ast_node_count;
 int value_expr_count;
 #endif
 
+emc_type ast_node_funcdec::resolve()
+{
+    extern scope_stack resolve_scope;
+    parlist->resolve();
+    
+    resolve_scope.push_new_scope();
+    auto parlist_t = dynamic_cast<ast_node_vardef_list*>(parlist);
+    DEBUG_ASSERT_NOTNULL(parlist_t);
+    parlist_t->resolve();
+
+    /* Create variables with the arguments' names in the function scope. */
+    for (int i = 0; i < parlist_t->v_defs.size(); i++) {
+        auto par = dynamic_cast<ast_node_def*>(parlist_t->v_defs[i]);
+        std::string var_name = par->var_name;
+
+        /* TODO: Måste tänka över typerna lite ... */
+        obj *obj = nullptr;
+        if (par->type_name == "Double")
+            obj = new object_double { var_name, "", 0 };
+        else if (par->type_name == "Int")
+            obj = new object_int { var_name, "", 0 };
+        else
+            throw std::runtime_error("Type not implemented: " + par->type_name);
+        resolve_scope.get_top_scope().push_object(obj);
+    }
+    code_block->resolve();
+    resolve_scope.pop_scope();
+
+    /* Hack to allow for return names with same names as other things ... */
+    resolve_scope.push_new_scope();
+    vardef_list->resolve();
+    resolve_scope.pop_scope();
+
+    auto fobj = new object_func { code_block->clone(), name, nspace,
+            parlist->clone() , vardef_list->clone()};
+    resolve_scope.get_top_scope().push_object(fobj);
+
+    return value_type = emc_type{emc_types::FUNCTION}; /* TODO: Add types too */
+}
+
 emc_type ast_node_vardef_list::resolve()
 {
-    if (v_defs.size() != 1)
-        throw std::runtime_error("Multiple vars in deflist not supported yet");
-    auto ast_def = dynamic_cast<ast_node_def*>(v_defs.front());
-    return value_type = ast_def->resolve_no_push();
+    if (v_defs.size() == 0)
+        throw std::runtime_error("0 vars in deflist not supported yet");
+    
+    for (auto e : v_defs) {
+        auto ee = dynamic_cast<ast_node_def*>(e);
+        emc_type value = ee->resolve_no_push();
+    }
+
+    return value_type = v_defs.front()->value_type;
 }
 
 void scope_stack::clear()

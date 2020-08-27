@@ -16,9 +16,45 @@
 std::vector<gcc_jit_type*> v_return_type; /* Stack to keep track of return type of function defs. */
 std::vector<bool> v_block_terminated;     /* To keep track off if the block was terminated depper in the tree. */
 
+gcc_jit_rvalue* jit::cast_to(gcc_jit_rvalue *a_rv,
+                        gcc_jit_type *target_type)
+{
+    gcc_jit_type *at = gcc_jit_rvalue_get_type(a_rv);
+    if (at == target_type)
+        return a_rv;
+    return gcc_jit_context_new_cast(context, 0, a_rv, target_type);
+}
+
+gcc_jit_type* jit::promote_types(gcc_jit_rvalue *a_rv,
+                        gcc_jit_rvalue *b_rv,
+                        gcc_jit_rvalue **a_casted_rv,
+                        gcc_jit_rvalue **b_casted_rv)
+{
+    gcc_jit_type *at = gcc_jit_rvalue_get_type(a_rv);
+    gcc_jit_type *bt = gcc_jit_rvalue_get_type(b_rv);
+
+    if (at == bt) { /* Same types no cast needed. */
+        *a_casted_rv = a_rv;
+        *b_casted_rv = b_rv;
+        return bt;
+    } else if (at == DOUBLE_TYPE || bt == DOUBLE_TYPE) { /* Double has highest prio. */
+        if (at != DOUBLE_TYPE) {
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, DOUBLE_TYPE);
+            *b_casted_rv = b_rv;
+            return bt;
+        } else {
+            *a_casted_rv = a_rv;
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, DOUBLE_TYPE);
+            return at;
+        }
+    } else 
+        throw std::runtime_error("Cast not supported");
+}
+
 void jit::dump(std::string path)
 {
     gcc_jit_context_dump_to_file(context, path.c_str(), 0);
+    gcc_jit_context_dump_reproducer_to_file(context, (path + ".c").c_str());
 }
 
 gcc_jit_type* jit::emc_type_to_jit_type(emc_type t)
@@ -45,12 +81,22 @@ void jit::compile()
 {
     /* Close the root_block in root_func */
     gcc_jit_block_end_with_void_return(root_block, 0);
-
+          
     result = gcc_jit_context_compile(context);
     if (!result)
     {
       std::cerr <<  "NULL result from JIT compilation" << std::endl;
     }
+    /*
+    gcc_jit_context_compile_to_file (context,
+				 GCC_JIT_OUTPUT_KIND_ASSEMBLER,
+				 "./ass.out");
+    gcc_jit_context_compile_to_file (context,
+				 GCC_JIT_OUTPUT_KIND_EXECUTABLE,
+				 "./a.out");
+    gcc_jit_context_compile_to_file (context,
+				 GCC_JIT_OUTPUT_KIND_OBJECT_FILE,
+				 "./a.o");   */        
 }
 
 void jit::execute()
@@ -138,7 +184,9 @@ void jit::init_as_root_context()
 
     /* Dump gimple to stderr  */
     gcc_jit_context_set_bool_option(context, GCC_JIT_BOOL_OPTION_DUMP_INITIAL_GIMPLE, 0);
-
+    gcc_jit_context_set_bool_option(context,
+                                            GCC_JIT_BOOL_OPTION_DUMP_GENERATED_CODE,
+                                            0);
     /* Initialize the default types for this context (e.g. int etc) and put them in this->types */
     types = new default_types(context);
 
@@ -207,8 +255,8 @@ void jit::walk_tree_add(ast_node *node, gcc_jit_rvalue **current_rvalue)
     /* Resolve types. */
 
     /* Get r-value a */
-    emc_type rt = t_node->resolve();
-    gcc_jit_type *result_type = emc_type_to_jit_type(rt);
+    emc_type rt = t_node->value_type;
+    gcc_jit_type *result_type_emc = emc_type_to_jit_type(rt); /* TODO: Remove? */
 
     gcc_jit_rvalue *a_rv = nullptr;
     walk_tree(t_node->first, 0, 0, &a_rv);
@@ -219,9 +267,14 @@ void jit::walk_tree_add(ast_node *node, gcc_jit_rvalue **current_rvalue)
     if (b_rv == nullptr)
         throw std::runtime_error("add b is null");
 
+    gcc_jit_rvalue *a_casted_rv = nullptr;
+    gcc_jit_rvalue *b_casted_rv = nullptr;
+    gcc_jit_type *result_type = promote_types(a_rv, b_rv, &a_casted_rv, &b_casted_rv);
+    DEBUG_ASSERT(result_type_emc == result_type, "Not anticipated type");
+
     gcc_jit_rvalue *rv_result = gcc_jit_context_new_binary_op(
                                     context, nullptr, GCC_JIT_BINARY_OP_PLUS,
-                                    result_type, a_rv, b_rv);
+                                    result_type, a_casted_rv, b_casted_rv);
     *current_rvalue = rv_result;
 }
 
@@ -231,8 +284,8 @@ void jit::walk_tree_sub(ast_node *node, gcc_jit_rvalue **current_rvalue)
     /* Resolve types. */
 
     /* Get r-value a */
-    emc_type rt = t_node->resolve();
-    gcc_jit_type *result_type = emc_type_to_jit_type(rt);
+    emc_type rt = t_node->value_type;
+    gcc_jit_type *result_type_emc = emc_type_to_jit_type(rt);
 
     gcc_jit_rvalue *a_rv = nullptr;
     walk_tree(t_node->first, 0, 0, &a_rv);
@@ -243,9 +296,14 @@ void jit::walk_tree_sub(ast_node *node, gcc_jit_rvalue **current_rvalue)
     if (b_rv == nullptr)
         throw std::runtime_error("sub b is null");
 
+    gcc_jit_rvalue *a_casted_rv = nullptr;
+    gcc_jit_rvalue *b_casted_rv = nullptr;
+    gcc_jit_type *result_type = promote_types(a_rv, b_rv, &a_casted_rv, &b_casted_rv);
+    DEBUG_ASSERT(result_type_emc == result_type, "Not anticipated type");
+
     gcc_jit_rvalue *rv_result = gcc_jit_context_new_binary_op(
                                     context, nullptr, GCC_JIT_BINARY_OP_MINUS,
-                                    result_type, a_rv, b_rv);
+                                    result_type, a_casted_rv, b_casted_rv);
     *current_rvalue = rv_result;
 }
 
@@ -255,8 +313,8 @@ void jit::walk_tree_mul(ast_node *node, gcc_jit_rvalue **current_rvalue)
     /* Resolve types. */
 
     /* Get r-value a */
-    emc_type rt = t_node->resolve();
-    gcc_jit_type *result_type = emc_type_to_jit_type(rt);
+    emc_type rt = t_node->value_type;
+    gcc_jit_type *result_type_emc = emc_type_to_jit_type(rt);
 
     gcc_jit_rvalue *a_rv = nullptr;
     walk_tree(t_node->first, 0, 0, &a_rv);
@@ -267,9 +325,14 @@ void jit::walk_tree_mul(ast_node *node, gcc_jit_rvalue **current_rvalue)
     if (b_rv == nullptr)
         throw std::runtime_error("mul b is null");
 
+    gcc_jit_rvalue *a_casted_rv = nullptr;
+    gcc_jit_rvalue *b_casted_rv = nullptr;
+    gcc_jit_type *result_type = promote_types(a_rv, b_rv, &a_casted_rv, &b_casted_rv);
+    DEBUG_ASSERT(result_type_emc == result_type, "Not anticipated type");
+
     gcc_jit_rvalue *rv_result = gcc_jit_context_new_binary_op(
                                     context, nullptr, GCC_JIT_BINARY_OP_MULT,
-                                    result_type, a_rv, b_rv);
+                                    result_type, a_casted_rv, b_casted_rv);
     *current_rvalue = rv_result;
 }
 
@@ -279,8 +342,8 @@ void jit::walk_tree_rdiv(ast_node *node, gcc_jit_rvalue **current_rvalue)
     /* Resolve types. */
 
     /* Get r-value a */
-    emc_type rt = t_node->resolve();
-    gcc_jit_type *result_type = emc_type_to_jit_type(rt);
+    emc_type rt = t_node->value_type;
+    gcc_jit_type *result_type_emc = emc_type_to_jit_type(rt);
 
     gcc_jit_rvalue *a_rv = nullptr;
     walk_tree(t_node->first, 0, 0, &a_rv);
@@ -291,9 +354,14 @@ void jit::walk_tree_rdiv(ast_node *node, gcc_jit_rvalue **current_rvalue)
     if (b_rv == nullptr)
         throw std::runtime_error("RDIV b is null");
 
+    gcc_jit_rvalue *a_casted_rv = nullptr;
+    gcc_jit_rvalue *b_casted_rv = nullptr;
+    gcc_jit_type *result_type = promote_types(a_rv, b_rv, &a_casted_rv, &b_casted_rv);
+    DEBUG_ASSERT(result_type_emc == result_type, "Not anticipated type");
+
     gcc_jit_rvalue *rv_result = gcc_jit_context_new_binary_op(
                                     context, nullptr, GCC_JIT_BINARY_OP_DIVIDE,
-                                    result_type, a_rv, b_rv);
+                                    result_type, a_casted_rv, b_casted_rv);
     *current_rvalue = rv_result;
 }
 
@@ -326,9 +394,13 @@ gcc_jit_rvalue *b_rv = nullptr; \
 walk_tree(t_node->sec.get(), 0, 0, &b_rv); \
 DEBUG_ASSERT(b_rv != nullptr, "b is null"); \
 \
+gcc_jit_rvalue *a_casted_rv = nullptr; \
+gcc_jit_rvalue *b_casted_rv = nullptr; \
+promote_types(a_rv, b_rv, &a_casted_rv, &b_casted_rv); \
+\
 gcc_jit_rvalue *rv_result = gcc_jit_context_new_comparison(\
                                 context, nullptr, gcc_jit_type,\
-                                a_rv, b_rv);\
+                                a_casted_rv, b_casted_rv);\
 *current_rvalue = rv_result;\
 
 void jit::walk_tree_geq(ast_node *node, gcc_jit_rvalue **current_rvalue)
@@ -367,7 +439,7 @@ void jit::walk_tree_uminus(ast_node *node, gcc_jit_rvalue **current_rvalue)
     /* Resolve types. */
 
     /* Get r-value a */
-    emc_type rt = t_node->resolve();
+    emc_type rt = t_node->value_type;
     gcc_jit_type *result_type = emc_type_to_jit_type(rt);
 
     gcc_jit_rvalue *a_rv = nullptr;
@@ -385,6 +457,14 @@ void jit::walk_tree_dlit(ast_node *node, gcc_jit_rvalue **current_rvalue)
     auto dlit_node = dynamic_cast<ast_node_double_literal*>(node);
     *current_rvalue = gcc_jit_context_new_rvalue_from_double(context, DOUBLE_TYPE, dlit_node->d);
     DEBUG_ASSERT(*current_rvalue != nullptr, "DOUBLE_LITERAL current_rvalue is null");        
+}
+
+void jit::walk_tree_ilit(ast_node *node, gcc_jit_rvalue **current_rvalue)
+{
+    /* A double literal is an rvalue. */
+    auto ilit_node = dynamic_cast<ast_node_int_literal*>(node);
+    *current_rvalue = gcc_jit_context_new_rvalue_from_int(context, INT_TYPE, ilit_node->i);
+    DEBUG_ASSERT(*current_rvalue != nullptr, "INT_LITERAL current_rvalue is null");        
 }
 
 void jit::walk_tree_fcall(ast_node *node, gcc_jit_rvalue **current_rvalue)
@@ -405,12 +485,12 @@ void jit::walk_tree_fcall(ast_node *node, gcc_jit_rvalue **current_rvalue)
     object_func *fnobj = dynamic_cast<object_func*>(fnobj_);
     if (!fnobj)
         throw std::runtime_error("Function " + fcall_node->name + " not defined/found.");
-    auto *par_list = dynamic_cast<ast_node_parlist*>(fnobj->para_list);
+    auto *par_list = dynamic_cast<ast_node_vardef_list*>(fnobj->para_list);
     DEBUG_ASSERT(par_list != nullptr, "par_list is null");
     auto arg_t = dynamic_cast<ast_node_arglist*>(fcall_node->arg_list);
     DEBUG_ASSERT(arg_t != nullptr, "arg_t is null");
 
-    if (par_list->v_func_paras.size() != arg_t->v_ast_args.size())
+    if (par_list->v_defs.size() != arg_t->v_ast_args.size())
         throw std::runtime_error("Function " + fcall_node->name + " incorrect number of arguments.");
 
     std::vector<gcc_jit_rvalue*> v_arg_rv;
@@ -421,7 +501,13 @@ void jit::walk_tree_fcall(ast_node *node, gcc_jit_rvalue **current_rvalue)
 
         walk_tree(arg_node, 0, 0, &arg_rv);
         DEBUG_ASSERT(arg_node, "Could not produce rval from argument");
-        v_arg_rv.push_back(arg_rv);
+        /* The actual type of the parameter in question. */
+        gcc_jit_type *arg_type = gcc_jit_rvalue_get_type(
+                                    gcc_jit_param_as_rvalue(
+                                        gcc_jit_function_get_param(func, i)));
+        gcc_jit_rvalue *casted_rv = cast_to(arg_rv, arg_type);                                  
+        DEBUG_ASSERT_NOTNULL(casted_rv);
+        v_arg_rv.push_back(casted_rv);
     }
 
     gcc_jit_rvalue *fncall_rval = gcc_jit_context_new_call(context, 0, func, v_arg_rv.size(), v_arg_rv.data());
@@ -434,18 +520,22 @@ void jit::walk_tree_fdec(ast_node *node, gcc_jit_rvalue **current_rvalue)
     DEBUG_ASSERT(node != nullptr, "node was null");
     auto ast_funcdec = dynamic_cast<ast_node_funcdec*>(node);
     DEBUG_ASSERT(ast_funcdec != nullptr, "ast_funcdec was null");
-    auto ast_parlist = dynamic_cast<ast_node_parlist*>(ast_funcdec->parlist);
+    auto ast_parlist = dynamic_cast<ast_node_vardef_list*>(ast_funcdec->parlist);
+    DEBUG_ASSERT_NOTNULL(ast_parlist);
 
-    gcc_jit_type *return_type = emc_type_to_jit_type(ast_funcdec->vardef_list->resolve());
+    gcc_jit_type *return_type = emc_type_to_jit_type(ast_funcdec->vardef_list->value_type);
     v_return_type.push_back(return_type); /* Filescope vector used at return statements ... */
     /* TODO: Add suport for other types than double ... */
     push_scope();
     std::vector<gcc_jit_param*> v_params;
-    for (func_para &e : ast_parlist->v_func_paras) {
-        gcc_jit_param *para = gcc_jit_context_new_param(context, 0, DOUBLE_TYPE, e.name.c_str());
+    for (auto e : ast_parlist->v_defs) {
+        auto vardef = dynamic_cast<ast_node_def*>(e);
+        gcc_jit_type *type = emc_type_to_jit_type(vardef->value_type);
+        gcc_jit_param *para = gcc_jit_context_new_param(context, 
+                    0, type, vardef->var_name.c_str());
         v_params.push_back(para);
         /* Add the parameters to the scope as lvalues. */
-        push_lval(e.name, gcc_jit_param_as_lvalue(para));
+        push_lval(vardef->var_name, gcc_jit_param_as_lvalue(para));
     }
 
     gcc_jit_function *fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_INTERNAL,
@@ -459,9 +549,14 @@ void jit::walk_tree_fdec(ast_node *node, gcc_jit_rvalue **current_rvalue)
     extern scope_stack resolve_scope; /* TODO: Borde inte behöva detta i compile.cc ... refactor */
     resolve_scope.push_new_scope();
     auto &top_scope = resolve_scope.get_top_scope();
-    for (func_para &par : ast_parlist->v_func_paras) {
-        object_double *od = new object_double{par.name, 0};
-        top_scope.push_object(od);
+    for (auto e : ast_parlist->v_defs) {
+        auto vardef = dynamic_cast<ast_node_def*>(e);
+        obj *obj = nullptr;
+        if (vardef->type_name == "Double") /* TODO: Borde göras i funktion eg obj_from_typename */
+            obj = new object_double{vardef->var_name, 0};
+        else if (vardef->type_name == "Int")
+            obj = new object_int{vardef->var_name, 0};
+        top_scope.push_object(obj);
     }
 
     gcc_jit_block *last_block = fn_block;
@@ -499,7 +594,7 @@ void jit::walk_tree_ret(ast_node *node, gcc_jit_block **current_block)
     gcc_jit_rvalue *casted_rval = nullptr;
 
     gcc_jit_type *rv_type = gcc_jit_rvalue_get_type(rval);
-    emc_type emc_type = ret_node->resolve();
+    emc_type emc_type = ret_node->value_type;
 
     DEBUG_ASSERT(v_return_type.size() >= 1, "Return type stack 0 sized");
     gcc_jit_type *return_type = v_return_type.back();
@@ -536,11 +631,21 @@ void jit::walk_tree_assign(ast_node *node, gcc_jit_block **current_block,
     }
     /* Resolve the lval */
     auto gcc_lval = find_lval_in_scopes(lval->name);
-    if (gcc_lval != nullptr) {
-        /* Add the assignment */
-        gcc_jit_block_add_assignment(*current_block, 0, gcc_lval, rval);
-    } else
-        std::runtime_error("Could not resolve lval of object: " + lval->name);
+    if (gcc_lval == nullptr)
+        std::runtime_error("Could not resolve lval of object: " + lval->name);    
+
+    gcc_jit_type *lv_as_rv_t = gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(gcc_lval));
+    gcc_jit_type *rv_t = gcc_jit_rvalue_get_type(rval);
+
+    gcc_jit_rvalue *casted_rval = nullptr;
+    if (lv_as_rv_t == rv_t)
+        casted_rval = rval;
+    else {
+        casted_rval = gcc_jit_context_new_cast(context, 0, rval, lv_as_rv_t);
+    }
+    /* Add the assignment */
+    gcc_jit_block_add_assignment(*current_block, 0, gcc_lval, casted_rval);
+    
 }
 
 void jit::walk_tree_var(ast_node *node, gcc_jit_rvalue **current_rvalue)
@@ -576,6 +681,7 @@ void jit::walk_tree_def( ast_node *node,
         gcc_jit_rvalue *cast_rv = gcc_jit_context_new_cast(context, 0, rv_assignment, var_type);
         /* Assign the value in the root_block (i.e. not really like a filescope var in c */
         gcc_jit_block_add_assignment(root_block, 0, lval, cast_rv);
+       
     } else { /* Local */
         gcc_jit_type *var_type = emc_type_to_jit_type(ast_def->value_type);
         gcc_jit_lvalue *lval = gcc_jit_function_new_local(*current_function, 0, var_type, ast_def->var_name.c_str());
@@ -587,6 +693,17 @@ void jit::walk_tree_def( ast_node *node,
         gcc_jit_rvalue *cast_rv = gcc_jit_context_new_cast(context, 0, rv_assignment, var_type);
         /* Assign the value */
         gcc_jit_block_add_assignment(*current_block, 0, lval, cast_rv);
+
+        /* TODO: Bör göras i emc.hh */
+        extern scope_stack resolve_scope;
+        object_double *od = nullptr;
+        if (ast_def->value_type.is_double())
+            od = new object_double{ast_def->var_name, 0};
+        else if (ast_def->value_type.is_int())
+            od = new object_double{ast_def->var_name, 0};
+        else
+            throw std::runtime_error("Type not implemented walk_tree_def");
+        resolve_scope.get_top_scope().push_object(od);
     }
 }
 
@@ -691,6 +808,115 @@ void jit::walk_tree_if( ast_node *node,
     }    
 }
 
+void jit::walk_tree_while( ast_node *node, 
+                    gcc_jit_block **current_block, 
+                    gcc_jit_function **current_function)
+{
+    /*
+     * For WHILE cond DO ... ELSE DO ... END
+     * 
+     *  first_cond_block:
+     *      if (cond) goto while_block;
+     *      else goto else_block;
+     *  cond_block:
+     *      if (cond) goto while_block;
+     *      else goto after_block;
+     *  while_block:
+     *      ...
+     *      goto cond_block; (unless returns for all paths)
+     *  else_block:
+     *      ...
+     *      goto after_block; (unless returns for all paths)
+     *  after_block: (unless both while and else returns for all paths in them)
+     *      ...
+     * 
+     * For WHILE cond DO .... END
+     *  
+     *  cond_block:
+     *      if (cond) goto while_block;
+     *      else goto after_block;
+     *  while_block:
+     *      ...
+     *      goto cond_block (unless returns)
+     *  else_block:
+     *      ...
+     */
+
+
+    auto while_ast = dynamic_cast<ast_node_while*>(node);
+    DEBUG_ASSERT_NOTNULL(while_ast);
+    /* Create the while-block */
+    gcc_jit_block_add_comment(*current_block, 0, "WHILE");
+    /* WHILE needs a condition block to be able to jump back to. */
+    gcc_jit_block *first_cond_block = nullptr;
+    if (while_ast->else_el) /* If there is an else we need a first condition block tested only once */
+        first_cond_block = gcc_jit_function_new_block(*current_function, new_unique_name("first_while_cond_block").c_str());
+    gcc_jit_block *cond_block = gcc_jit_function_new_block(*current_function, new_unique_name("while_cond_block").c_str());
+
+    if (while_ast->else_el) {
+        gcc_jit_block_end_with_jump(*current_block, 0, first_cond_block);
+    } else 
+        gcc_jit_block_end_with_jump(*current_block, 0, cond_block);
+
+    gcc_jit_block *while_block = gcc_jit_function_new_block(*current_function, new_unique_name("while_block").c_str());
+    /* Walk the tree and append any blocks to the if block or any statements to the block in question */
+    gcc_jit_rvalue *while_rv = nullptr;
+    gcc_jit_block *last_while_block = while_block;
+    v_block_terminated.push_back(false);
+    walk_tree(while_ast->if_el, &last_while_block, current_function, &while_rv);
+    bool while_was_terminated = v_block_terminated.back();
+    v_block_terminated.pop_back();   
+    /* Create the else block */
+    gcc_jit_block *else_block = gcc_jit_function_new_block(*current_function, new_unique_name("else_block").c_str());
+    /* Walk the tree and append any blocks to the if block or any statements to the block in question */
+    gcc_jit_rvalue *else_rv = nullptr;
+    gcc_jit_block *last_else_block = else_block;
+
+    v_block_terminated.push_back(false);
+    if (while_ast->else_el) {
+        walk_tree(while_ast->else_el, &last_else_block, current_function, &else_rv);
+    }
+    bool else_was_terminated = v_block_terminated.back();
+    v_block_terminated.pop_back();
+
+    /* With the if and else block created we can end the current block with a conditional jump to either of these. */
+    gcc_jit_rvalue *cond_rv = nullptr;
+    walk_tree(while_ast->cond_e, 0, 0, &cond_rv);
+    DEBUG_ASSERT(cond_rv != nullptr, "If condition rvalue is null");
+
+    gcc_jit_rvalue *bool_cond_rv = gcc_jit_context_new_cast(
+            context, 0,
+            gcc_jit_context_new_cast(context, 0, cond_rv, INT_TYPE),
+            BOOL_TYPE);
+
+    if (while_ast->else_el) {
+        gcc_jit_block *after_block = nullptr;
+        if (!while_was_terminated || !else_was_terminated) /* Unless the quite silly while block where all paths return */
+            after_block = gcc_jit_function_new_block(*current_function, new_unique_name("after_block").c_str());
+        gcc_jit_block_end_with_conditional(first_cond_block, 0, bool_cond_rv, while_block, else_block);
+
+        if (after_block)
+            gcc_jit_block_end_with_conditional(cond_block, 0, bool_cond_rv, while_block, after_block);
+        else
+            gcc_jit_block_end_with_jump(cond_block, 0, while_block); /* All paths in the while block return. */ 
+
+        if (!else_was_terminated)
+            gcc_jit_block_end_with_jump(else_block, 0, after_block);
+        
+        if (after_block)            
+            *current_block = after_block;
+        else
+            v_block_terminated.back() = true;    
+    } else {
+        gcc_jit_block_end_with_conditional(cond_block, 0, bool_cond_rv, while_block, else_block);
+        *current_block = else_block;
+    }
+
+    /* Unless all paths in the while block are terminted it need to end in an jump back to the cond block. */
+    if (!while_was_terminated)
+        gcc_jit_block_end_with_jump(while_block, 0, cond_block);    
+}
+
 void jit::walk_tree(ast_node *node, 
         gcc_jit_block **current_block,
         gcc_jit_function **current_function, 
@@ -724,6 +950,8 @@ void jit::walk_tree(ast_node *node,
         walk_tree_uminus(node, current_rvalue);
     } else if (type == ast_type::DOUBLE_LITERAL) {
         walk_tree_dlit(node, current_rvalue);
+    } else if (type == ast_type::INT_LITERAL) {
+        walk_tree_ilit(node, current_rvalue);
     } else if (type == ast_type::FUNCTION_CALL) {
         walk_tree_fcall(node, current_rvalue);
     } else if (type == ast_type::FUNCTION_DECLARATION) {
@@ -742,6 +970,8 @@ void jit::walk_tree(ast_node *node,
         walk_tree_doblock(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::IF) {
         walk_tree_if(node, current_block, current_function);
+    } else if (type == ast_type::WHILE) {
+        walk_tree_while(node, current_block, current_function);
     } else
         throw std::runtime_error("walk_tree not implemented: " + std::to_string((int)node->type));
 }
