@@ -13,8 +13,39 @@
 #define VOID_TYPE this->types->void_type
 #define BOOL_TYPE this->types->bool_type
 
+
+std::string new_unique_name(std::string prefix = "")
+{
+    static long i;
+    std::ostringstream ss;
+    ss << prefix << "_" << std::setw(7) << std::setfill('0') <<  i++;
+
+    return ss.str();
+}
+
 std::vector<gcc_jit_type*> v_return_type; /* Stack to keep track of return type of function defs. */
 std::vector<bool> v_block_terminated;     /* To keep track off if the block was terminated depper in the tree. */
+
+
+void jit::push_lval(std::string name, gcc_jit_lvalue* lval)
+{
+    auto &scope = get_current_scope();
+    if (scope.find(name) != scope.end())
+        throw std::runtime_error("Scope already contains the lval: " + name);
+    scope[name] = lval;
+}
+
+gcc_jit_lvalue* jit::find_lval_in_scopes(std::string name)
+{
+    /* Search backwards since most nested scope has priority. */
+    for (auto rit = v_of_map_of_varname_to_lval.rbegin();
+            rit != v_of_map_of_varname_to_lval.rend(); rit++) {
+        auto ans = rit->find(name);
+        if (ans != rit->end())
+            return ans->second;
+    }
+    return nullptr;
+}
 
 gcc_jit_rvalue* jit::cast_to(gcc_jit_rvalue *a_rv,
                         gcc_jit_type *target_type)
@@ -70,14 +101,6 @@ gcc_jit_type* jit::emc_type_to_jit_type(emc_type t)
     return 0;
 }
 
-std::string new_unique_name(std::string prefix = "")
-{
-    static long i;
-    std::ostringstream ss;
-    ss << prefix << "_" << std::setw(7) << std::setfill('0') <<  i++;
-
-    return ss.str();
-}
 
 void jit::compile()
 {
@@ -523,7 +546,7 @@ void jit::walk_tree_fcall(ast_node *node, gcc_jit_rvalue **current_rvalue)
 void jit::walk_tree_fdec(ast_node *node, gcc_jit_rvalue **current_rvalue)
 {
     DEBUG_ASSERT(node != nullptr, "node was null");
-    auto ast_funcdec = dynamic_cast<ast_node_funcdec*>(node);
+    auto ast_funcdec = dynamic_cast<ast_node_funcdef*>(node);
     DEBUG_ASSERT(ast_funcdec != nullptr, "ast_funcdec was null");
     auto ast_parlist = dynamic_cast<ast_node_vardef_list*>(ast_funcdec->parlist);
     DEBUG_ASSERT_NOTNULL(ast_parlist);
@@ -595,7 +618,7 @@ void jit::walk_tree_fdec(ast_node *node, gcc_jit_rvalue **current_rvalue)
 void jit::walk_tree_fdef(ast_node *node, gcc_jit_rvalue **current_rvalue)
 {
     DEBUG_ASSERT(node != nullptr, "node was null");
-    auto ast_funcdef = dynamic_cast<ast_node_funcdef*>(node);
+    auto ast_funcdef = dynamic_cast<ast_node_funcdec*>(node);
     DEBUG_ASSERT(ast_funcdef != nullptr, "ast_funcdef was null");
     auto ast_parlist = dynamic_cast<ast_node_vardef_list*>(ast_funcdef->parlist);
     DEBUG_ASSERT_NOTNULL(ast_parlist);

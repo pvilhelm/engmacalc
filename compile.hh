@@ -96,25 +96,8 @@ private:
         return v_of_map_of_varname_to_lval.back();
     }
 
-    gcc_jit_lvalue* find_lval_in_scopes(std::string name)
-    {
-        /* Search backwards since most nested scope has priority. */
-        for (auto rit = v_of_map_of_varname_to_lval.rbegin();
-                rit != v_of_map_of_varname_to_lval.rend(); rit++) {
-            auto ans = rit->find(name);
-            if (ans != rit->end())
-                return ans->second;
-        }
-        return nullptr;
-    }
-
-    void push_lval(std::string name, gcc_jit_lvalue* lval)
-    {
-        auto &scope = get_current_scope();
-        if (scope.find(name) != scope.end())
-            throw std::runtime_error("Scope already contains the lval: " + name);
-        scope[name] = lval;
-    }
+    gcc_jit_lvalue* find_lval_in_scopes(std::string name);
+    void push_lval(std::string name, gcc_jit_lvalue* lval);
     int scope_n_nested() { return v_of_map_of_varname_to_lval.size(); }
 
     std::vector<std::map<std::string, gcc_jit_lvalue*>> v_of_map_of_varname_to_lval;

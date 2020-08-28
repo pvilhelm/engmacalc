@@ -16,20 +16,11 @@ extern int yydebug;
 extern ast_node *ast_root; /* Bison writes to this after each parse(). */
 extern bool parsed_eol;
 
-/* Scope during runtime, tree walking interpretion */
-scope_stack scopes;
 /* Scope during resolving of the ast node tree. */
 scope_stack resolve_scope;
 
 int main(int argc, char **argv)
 {
-    bool interpret = false;
-    for (int i = 1; i < argc; i++) {
-        std::string arg{argv[i]};
-        if (arg == "-i")
-            interpret = true;
-    }
-
     init_builtin_functions();
     init_standard_variables(); /* pi, e ... */
     init_linked_cfunctions();  /* Initialice function objects for statically linked cfunctions. */
@@ -67,28 +58,7 @@ int main(int argc, char **argv)
 
     } else if (isatty(0) && ast_root && err == 0) {
         emc_type type = ast_root->resolve();
-        if (interpret) {
-            auto val = ast_root->eval();
-            delete ast_root;
-            /* Print value if stdin is from a terminal. */
-            if (isatty(0)) {
-                if (val->type == value_type::DOUBLE) {
-                    auto vald = static_cast<expr_value_double*>(val);
-                    std::cout << std::endl << "> " << vald->d << std::endl;
-                } else if (val->type == value_type::STRING) {
-                    auto vals = static_cast<expr_value_string*>(val);
-                    std::cout << std::endl << "> " << vals->s << std::endl;
-                } else if (val->type == value_type::INT) {
-                    auto vali = static_cast<expr_value_int*>(val);
-                    std::cout << std::endl << "> " << vali->i << std::endl;
-                } else
-                    throw std::runtime_error("Not implemented qweqe");
-            }
-            delete val;
-
-            //DEBUG_ASSERT(ast_node_count == 0, "ast nodes seems to be leaking: " << ast_node_count);
-            //DEBUG_ASSERT(value_expr_count == 0, "value_expr seems to be leaking: " << value_expr_count);
-        } else {
+        {
 
             jit jit;
             jit.init_as_root_context();
@@ -125,7 +95,6 @@ int main(int argc, char **argv)
         delete e;
     v_nodes.clear();
     resolve_scope.clear();
-    scopes.clear();
 
     DEBUG_ASSERT(ast_node_count == 0, "ast nodes seems to be leaking: " << ast_node_count);
     DEBUG_ASSERT(value_expr_count == 0, "value_expr seems to be leaking: " << value_expr_count);

@@ -130,56 +130,56 @@ se: e                      {$$ = $1;}
     /* Function definition */
     | FUNC vardef_list '=' NAME '(' vardef_list ')' code_block
                             {
-                                auto p = new ast_node_funcdec{$6, $8, *$4, "", $2};
+                                auto p = new ast_node_funcdef{$6, $8, *$4, "", $2};
                                 delete $4;
                                 $$ = p;
                             }
     /* Function definition without parameters that returns something */
     | FUNC vardef_list '=' NAME '(' ')' code_block
                             {
-                                auto p = new ast_node_funcdec{nullptr, $7, *$4, "", $2};
+                                auto p = new ast_node_funcdef{nullptr, $7, *$4, "", $2};
                                 delete $4;
                                 $$ = p;
                             }
     /* Function definition without parameters that returns nothing */
     | FUNC NAME '(' ')' code_block
                             {
-                                auto p = new ast_node_funcdec{nullptr, $5, *$2, "", nullptr};
+                                auto p = new ast_node_funcdef{nullptr, $5, *$2, "", nullptr};
                                 delete $2;
                                 $$ = p;
                             }
     /* Function definition with parameters that returns nothing */
     | FUNC NAME '(' vardef_list ')' code_block
                             {
-                                auto p = new ast_node_funcdec{$4, $6, *$2, "", nullptr};
+                                auto p = new ast_node_funcdef{$4, $6, *$2, "", nullptr};
                                 delete $2;
                                 $$ = p;
                             }
     /* Function declaration */
     | FUNC vardef_list '=' NAME '(' vardef_list ')'
                             {
-                                auto p = new ast_node_funcdef{$6, *$4, "", $2};
+                                auto p = new ast_node_funcdec{$6, *$4, "", $2};
                                 delete $4;
                                 $$ = p;
                             }
     /* Function declaration without parameters that returns something */
     | FUNC vardef_list '=' NAME '(' ')'
                             {
-                                auto p = new ast_node_funcdef{nullptr, *$4, "", $2};
+                                auto p = new ast_node_funcdec{nullptr, *$4, "", $2};
                                 delete $4;
                                 $$ = p;
                             }
     /* Function declaration without parameters that returns nothing */
     | FUNC NAME '(' ')' 
                             {
-                                auto p = new ast_node_funcdef{nullptr, *$2, "", nullptr};
+                                auto p = new ast_node_funcdec{nullptr, *$2, "", nullptr};
                                 delete $2;
                                 $$ = p;
                             }
     /* Function declaration with parameters that returns nothing */
     | FUNC NAME '(' vardef_list ')'
                             {
-                                auto p = new ast_node_funcdef{$4, *$2, "", nullptr};
+                                auto p = new ast_node_funcdec{$4, *$2, "", nullptr};
                                 delete $2;
                                 $$ = p;
                             }
