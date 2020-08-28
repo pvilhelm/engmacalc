@@ -1,17 +1,36 @@
 
-FUNC Double sq = square(Int a) DO
-    RETURN a * a
+FUNC printnl_int(Int i)
+FUNC printnl_double(Double d)
+
+FUNC Double c = sin(Double d)
+FUNC putchar(Int c)
+FUNC Double result = log10(Double x)
+
+Double pi = 3.14159265358979323846
+Double e = 2.7182818284590452354
+
+FUNC test2() DO
+    printnl_int(3)
+    RETURN
 END
 
-FUNC Double avg = avg(Double a, Double b) DO
-    RETURN (a + b)/2
+FUNC Int i = test3() DO
+    RETURN 2
 END
 
-square(4)
-square(8)
-square(16)
-square(32)
+FUNC Double int = integrate_sin() DO
+    Double sum = 0
+    Double dx = 1/500.
+    Int i = 0
+    WHILE i < 500 DO
+        Double x = i*2*pi/1000
+        sum = sum + sin(x) * dx
+        i = i + 1
+    END
+    RETURN sum
+END
+/* putchar(74) */
+log10(100)
+sin(pi/2)
 
-avg(2,3)
-avg(7,14)
-avg(101,-100)
+integrate_sin()

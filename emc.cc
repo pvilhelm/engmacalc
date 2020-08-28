@@ -39,11 +39,35 @@ emc_type ast_node_funcdec::resolve()
 
     /* Hack to allow for return names with same names as other things ... */
     resolve_scope.push_new_scope();
-    vardef_list->resolve();
+    return_list->resolve();
     resolve_scope.pop_scope();
 
     auto fobj = new object_func { code_block->clone(), name, nspace,
-            parlist->clone() , vardef_list->clone()};
+            parlist->clone() , return_list->clone()};
+    resolve_scope.get_top_scope().push_object(fobj);
+
+    return value_type = emc_type{emc_types::FUNCTION}; /* TODO: Add types too */
+}
+
+emc_type ast_node_funcdef::resolve()
+{
+    extern scope_stack resolve_scope;
+    parlist->resolve();
+    
+    resolve_scope.push_new_scope();
+    auto parlist_t = dynamic_cast<ast_node_vardef_list*>(parlist);
+    DEBUG_ASSERT_NOTNULL(parlist_t);
+    parlist_t->resolve();
+
+    resolve_scope.pop_scope();
+
+    /* Hack to allow for return names with same names as other things ... */
+    resolve_scope.push_new_scope();
+    return_list->resolve();
+    resolve_scope.pop_scope();
+
+    auto fobj = new object_func { 0, name, nspace,
+            parlist->clone() , return_list->clone()};
     resolve_scope.get_top_scope().push_object(fobj);
 
     return value_type = emc_type{emc_types::FUNCTION}; /* TODO: Add types too */
@@ -51,15 +75,15 @@ emc_type ast_node_funcdec::resolve()
 
 emc_type ast_node_vardef_list::resolve()
 {
-    if (v_defs.size() == 0)
-        throw std::runtime_error("0 vars in deflist not supported yet");
-    
     for (auto e : v_defs) {
         auto ee = dynamic_cast<ast_node_def*>(e);
         emc_type value = ee->resolve_no_push();
     }
 
-    return value_type = v_defs.front()->value_type;
+    if (v_defs.size() == 0)
+        return value_type = emc_type{emc_types::NONE};
+    else
+        return value_type = v_defs.front()->value_type;
 }
 
 void scope_stack::clear()
@@ -126,7 +150,7 @@ emc_type standard_type_promotion_or_invalid(const emc_type &a, const emc_type &b
             throw std::runtime_error("Either emc_type has no elements");
 
     auto at = a.types[0];
-    auto bt = a.types[0];
+    auto bt = b.types[0];
 
     if (at == bt)
         return emc_type{at};
@@ -603,6 +627,7 @@ static expr_value* static_cfunc__printf__(expr_value_list *arg_value_list)
 
     return new expr_value_double { (double) ans };
 }
+ 
 
 /* Helper function for init_linked_cfunctions */
 void register_static_cfunc(std::string name, cfunc_callwrapper fptr)

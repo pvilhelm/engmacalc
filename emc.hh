@@ -57,6 +57,7 @@ enum class ast_type {
     PARAMETER_LIST, /* Parameters are in the function signature. */
     ARGUMENT_LIST,
     FUNCTION_DECLARATION,
+    FUNCTION_DEFINITION,
     FUNCTION_CALL,
     ANDCHAIN, /* Dummy node for chained comparations. */
     WHILE,
@@ -91,7 +92,7 @@ enum class emc_types {
     BOOL,
     DOUBLE,
     STRING,
-    VOID,
+    /*VOID,*/
     CONST,
     REFERENCE, /* e.g. REFERENCE, INT (reference to an int object) */
     FUNCTION,
@@ -121,6 +122,11 @@ struct emc_type {
     bool is_int()
     {
         if (types.size() && types[0] == emc_types::INT) return true;
+        return false;
+    }
+    bool is_void()
+    {
+        if (types.size() && types[0] == emc_types::NONE) return true;
         return false;
     }
 
@@ -638,7 +644,7 @@ public:
         this->nspace = nspace;
     }
 
-    ast_node *root;
+    ast_node *root; /* TODO: remove */
     ast_node *para_list;
     ast_node *var_list;
     expr_value* eval()
@@ -831,22 +837,23 @@ public:
 
     emc_type resolve()
     {
-        return value_type = first->resolve();
+        if (first)
+            return value_type = first->resolve();
+        else /* Nothing to return .. */
+            return value_type = emc_type{emc_types::NONE};
     }
 
     expr_value* eval()
     {
-        throw return_exception{first->eval()};
+        throw return_exception{ first ? first->eval() : 0 };
     }
 
     ast_node* clone()
     {
-        auto c = new ast_node_return {first->clone()};
+        auto c = new ast_node_return { first ? first->clone() : 0 };
         c->value_type = value_type;
         return c;
     }
-
-   
 };
 
 class ast_node_double_literal: public ast_node {
@@ -2259,24 +2266,29 @@ public:
 class ast_node_funcdec: public ast_node {
 public:
     ast_node_funcdec(ast_node *parlist, ast_node *code_block,
-            std::string name, std::string nspace, ast_node *vardef_list)
+            std::string name, std::string nspace, ast_node *return_list)
     :
             parlist(parlist), code_block(code_block),
-                    name(name), nspace(nspace), vardef_list(vardef_list)
+                    name(name), nspace(nspace), return_list(return_list)
     {
         type = ast_type::FUNCTION_DECLARATION;
+        
+        if (!parlist)
+            this->parlist = new ast_node_vardef_list{};   
+        if (!return_list)
+            this->return_list = new ast_node_vardef_list{};  
     }
     /* fobj äger ast_noderna kanske är dumt? */
     ~ast_node_funcdec()
     {
         delete code_block;
         delete parlist;
-        delete vardef_list;
+        delete return_list;
     }
     
-    ast_node *vardef_list;
+    ast_node *return_list;
     ast_node *code_block;
-    ast_node *parlist;
+    ast_node *parlist; /* Is a return_list */
     std::string name;
     std::string nspace;
 
@@ -2286,7 +2298,7 @@ public:
     {
         auto c =  new ast_node_funcdec { parlist->clone(),
                 code_block->clone(),
-                name, nspace, vardef_list->clone() };
+                name, nspace, return_list->clone() };
         c->value_type = value_type;
         return c;
     }
@@ -2296,12 +2308,9 @@ public:
      */
     expr_value* eval()
     {
-        auto aa = dynamic_cast<ast_node_parlist*>(parlist);
-        if (!aa)
-            throw std::runtime_error("qweqweqweqweqweesasdfdsasdffd");
         extern scope_stack scopes;
         auto fobj = new object_func { code_block->clone(), name, nspace,
-                parlist->clone(), vardef_list->clone()};
+                parlist->clone(), return_list->clone()};
         scopes.get_top_scope().push_object(fobj);
 
         return new expr_value_double { 0. };
@@ -2314,6 +2323,8 @@ public:
             nspace(nspace), arg_list(arg_list), name(name)
     {
         type = ast_type::FUNCTION_CALL;
+        if (!arg_list) 
+            this->arg_list = new ast_node_arglist{}; /* Make empty dummy arg list for no arg fn:s. */
     }
 
     ~ast_node_funccall()
@@ -2379,6 +2390,49 @@ public:
         }
 
         return fobj->feval(val);
+    }
+};
+
+class ast_node_funcdef: public ast_node {
+public:
+    ast_node_funcdef(ast_node *parlist, 
+            std::string name, std::string nspace, ast_node *return_list)
+    :
+            parlist(parlist),
+                    name(name), nspace(nspace), return_list(return_list)
+    {
+        type = ast_type::FUNCTION_DEFINITION;
+        
+        if (!parlist)
+            this->parlist = new ast_node_vardef_list{};   
+        if (!return_list)
+            this->return_list = new ast_node_vardef_list{};  
+    }
+    /* fobj äger ast_noderna kanske är dumt? */
+    ~ast_node_funcdef()
+    {
+        delete parlist;
+        delete return_list;
+    }
+    
+    ast_node *return_list;
+    ast_node *parlist; /* Is a return_list */
+    std::string name;
+    std::string nspace;
+
+    emc_type resolve();
+
+    ast_node* clone()
+    {
+        auto c =  new ast_node_funcdef { parlist->clone(),
+                name, nspace, return_list->clone() };
+        c->value_type = value_type;
+        return c;
+    }
+ 
+    expr_value* eval()
+    {
+        throw std::runtime_error("Not implemented");
     }
 };
 

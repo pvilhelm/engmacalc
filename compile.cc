@@ -63,6 +63,8 @@ gcc_jit_type* jit::emc_type_to_jit_type(emc_type t)
         return DOUBLE_TYPE;
     else if (t.is_int())
         return INT_TYPE;
+    else if (t.is_void())
+        return VOID_TYPE;
     else
         DEBUG_ASSERT(false, "Not implemented");
     return 0;
@@ -207,7 +209,8 @@ void jit::add_ast_node(ast_node *node)
      * to wrap them but use the root init function in the case of global vars and just
      * define themself at filescope for functions. 
      */
-    if (node->type == ast_type::DEF || node->type == ast_type::FUNCTION_DECLARATION) {
+    if (node->type == ast_type::DEF || node->type == ast_type::FUNCTION_DECLARATION ||
+        node->type == ast_type::FUNCTION_DEFINITION) {
         gcc_jit_rvalue *rval = nullptr;
         walk_tree(node, 0, 0, &rval, 0);
     } else {
@@ -234,9 +237,11 @@ void jit::add_ast_node(ast_node *node)
                 rv_call = gcc_jit_context_new_call(context, 0, map_fnname_to_gccfnobj["printnl_int"], 1, &rval);
             } else if (t == DOUBLE_TYPE)
                 rv_call = gcc_jit_context_new_call(context, 0, map_fnname_to_gccfnobj["printnl_double"], 1, &rval);
-            /* Else ignore. */
+
             if (rv_call)
                 gcc_jit_block_add_eval(node_block, 0, rv_call);
+            else
+                gcc_jit_block_add_eval(node_block, 0, rval);
         }
 
         /* End the root block with a "return;" */
@@ -523,7 +528,7 @@ void jit::walk_tree_fdec(ast_node *node, gcc_jit_rvalue **current_rvalue)
     auto ast_parlist = dynamic_cast<ast_node_vardef_list*>(ast_funcdec->parlist);
     DEBUG_ASSERT_NOTNULL(ast_parlist);
 
-    gcc_jit_type *return_type = emc_type_to_jit_type(ast_funcdec->vardef_list->value_type);
+    gcc_jit_type *return_type = emc_type_to_jit_type(ast_funcdec->return_list->value_type);
     v_return_type.push_back(return_type); /* Filescope vector used at return statements ... */
     /* TODO: Add suport for other types than double ... */
     push_scope();
@@ -538,9 +543,15 @@ void jit::walk_tree_fdec(ast_node *node, gcc_jit_rvalue **current_rvalue)
         push_lval(vardef->var_name, gcc_jit_param_as_lvalue(para));
     }
 
-    gcc_jit_function *fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_INTERNAL,
+    gcc_jit_function *fn = nullptr;
+    if (v_params.size())
+        fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_INTERNAL,
                                     return_type, ast_funcdec->name.c_str(),
                                     v_params.size(), v_params.data(), 0);
+    else 
+        fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_INTERNAL,
+                                    return_type, ast_funcdec->name.c_str(),
+                                    0, 0, 0);
     int block_depth = v_block_terminated.size();
     v_block_terminated.push_back(false);
     gcc_jit_block *fn_block = gcc_jit_function_new_block(fn, new_unique_name("fn_start").c_str());
@@ -581,33 +592,74 @@ void jit::walk_tree_fdec(ast_node *node, gcc_jit_rvalue **current_rvalue)
 
 }
 
+void jit::walk_tree_fdef(ast_node *node, gcc_jit_rvalue **current_rvalue)
+{
+    DEBUG_ASSERT(node != nullptr, "node was null");
+    auto ast_funcdef = dynamic_cast<ast_node_funcdef*>(node);
+    DEBUG_ASSERT(ast_funcdef != nullptr, "ast_funcdef was null");
+    auto ast_parlist = dynamic_cast<ast_node_vardef_list*>(ast_funcdef->parlist);
+    DEBUG_ASSERT_NOTNULL(ast_parlist);
+
+    gcc_jit_type *return_type = emc_type_to_jit_type(ast_funcdef->return_list->value_type);
+
+    std::vector<gcc_jit_param*> v_params;
+    for (auto e : ast_parlist->v_defs) {
+        auto vardef = dynamic_cast<ast_node_def*>(e);
+        gcc_jit_type *type = emc_type_to_jit_type(vardef->value_type);
+        gcc_jit_param *para = gcc_jit_context_new_param(context, 
+                    0, type, vardef->var_name.c_str());
+        v_params.push_back(para);
+    }
+
+    gcc_jit_function *fn = nullptr;
+    if (v_params.size())
+        fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_IMPORTED,
+                                    return_type, ast_funcdef->name.c_str(),
+                                    v_params.size(), v_params.data(), 0);
+    else 
+        fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_IMPORTED,
+                                    return_type, ast_funcdef->name.c_str(),
+                                    0, 0, 0);
+ 
+    map_fnname_to_gccfnobj[ast_funcdef->name] = fn;
+}
+
 void jit::walk_tree_ret(ast_node *node, gcc_jit_block **current_block)
 {
     DEBUG_ASSERT(node != nullptr, "node was null");
     auto ret_node = dynamic_cast<ast_node_return*>(node);
     DEBUG_ASSERT(ret_node != nullptr, "ret_node was null");
 
-    gcc_jit_rvalue *rval = nullptr;
-    walk_tree(ret_node->first, 0, 0, &rval);
-    DEBUG_ASSERT(rval != nullptr, "Invalid rval for return");
+    
 
-    gcc_jit_rvalue *casted_rval = nullptr;
+    /* Is there anything to return? "RETURN x" */
+    if (ret_node->first) {
+        gcc_jit_rvalue *rval = nullptr;
+        walk_tree(ret_node->first, 0, 0, &rval);
+        DEBUG_ASSERT(rval != nullptr, "Invalid rval for return");
 
-    gcc_jit_type *rv_type = gcc_jit_rvalue_get_type(rval);
-    emc_type emc_type = ret_node->value_type;
+        gcc_jit_rvalue *casted_rval = nullptr;
 
-    DEBUG_ASSERT(v_return_type.size() >= 1, "Return type stack 0 sized");
-    gcc_jit_type *return_type = v_return_type.back();
+        gcc_jit_type *rv_type = gcc_jit_rvalue_get_type(rval);
+        emc_type emc_type = ret_node->value_type;
 
-    if (return_type == rv_type)
-        casted_rval = rval;
-    else {
-        casted_rval = gcc_jit_context_new_cast(
-                            context, 0, rval, return_type);
+        DEBUG_ASSERT(v_return_type.size() >= 1, "Return type stack 0 sized");
+        gcc_jit_type *return_type = v_return_type.back();
+
+        if (return_type == rv_type)
+            casted_rval = rval;
+        else {
+            casted_rval = gcc_jit_context_new_cast(
+                                context, 0, rval, return_type);
+        }
+        
+        gcc_jit_block_end_with_return(*current_block, 0, casted_rval);
+        /* TODO: Ensure there are no more returns in the block ... */
+    } else { /* void return */
+        gcc_jit_block_end_with_void_return(*current_block, 0);
     }
+
     v_block_terminated.back() = true;
-    gcc_jit_block_end_with_return(*current_block, 0, casted_rval);
-    /* TODO: Ensure there are no more returns in the block ... */
 }
 
 void jit::walk_tree_assign(ast_node *node, gcc_jit_block **current_block, 
@@ -972,6 +1024,8 @@ void jit::walk_tree(ast_node *node,
         walk_tree_if(node, current_block, current_function);
     } else if (type == ast_type::WHILE) {
         walk_tree_while(node, current_block, current_function);
+    } else if (type == ast_type::FUNCTION_DEFINITION) {
+        walk_tree_fdef(node, current_rvalue);
     } else
         throw std::runtime_error("walk_tree not implemented: " + std::to_string((int)node->type));
 }

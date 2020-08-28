@@ -41,7 +41,7 @@ typedef void* yyscan_t;
 
 %start program
 
-%type <node> exp cmp_exp e se cse exp_list code_block arg_list param_list vardef elseif_list sl_elseif_list vardef_list
+%type <node> exp cmp_exp e se cse exp_list code_block arg_list vardef elseif_list sl_elseif_list vardef_list
 
 %define parse.trace
     
@@ -86,6 +86,7 @@ cse: EOL                    {$$ = 0;}
 
  /* Statement expression */
 se: e                      {$$ = $1;}
+    | RETURN               {$$ = new ast_node_return{0};}
     | RETURN e             {$$ = new ast_node_return{$2};}
     /* IFs with ELSE:s are a headache to make grammar for. So ... */
     /* These with se are for one line if:s */
@@ -126,10 +127,60 @@ se: e                      {$$ = $1;}
                             }                             
 
     | code_block
+    /* Function definition */
     | FUNC vardef_list '=' NAME '(' vardef_list ')' code_block
                             {
                                 auto p = new ast_node_funcdec{$6, $8, *$4, "", $2};
                                 delete $4;
+                                $$ = p;
+                            }
+    /* Function definition without parameters that returns something */
+    | FUNC vardef_list '=' NAME '(' ')' code_block
+                            {
+                                auto p = new ast_node_funcdec{nullptr, $7, *$4, "", $2};
+                                delete $4;
+                                $$ = p;
+                            }
+    /* Function definition without parameters that returns nothing */
+    | FUNC NAME '(' ')' code_block
+                            {
+                                auto p = new ast_node_funcdec{nullptr, $5, *$2, "", nullptr};
+                                delete $2;
+                                $$ = p;
+                            }
+    /* Function definition with parameters that returns nothing */
+    | FUNC NAME '(' vardef_list ')' code_block
+                            {
+                                auto p = new ast_node_funcdec{$4, $6, *$2, "", nullptr};
+                                delete $2;
+                                $$ = p;
+                            }
+    /* Function declaration */
+    | FUNC vardef_list '=' NAME '(' vardef_list ')'
+                            {
+                                auto p = new ast_node_funcdef{$6, *$4, "", $2};
+                                delete $4;
+                                $$ = p;
+                            }
+    /* Function declaration without parameters that returns something */
+    | FUNC vardef_list '=' NAME '(' ')'
+                            {
+                                auto p = new ast_node_funcdef{nullptr, *$4, "", $2};
+                                delete $4;
+                                $$ = p;
+                            }
+    /* Function declaration without parameters that returns nothing */
+    | FUNC NAME '(' ')' 
+                            {
+                                auto p = new ast_node_funcdef{nullptr, *$2, "", nullptr};
+                                delete $2;
+                                $$ = p;
+                            }
+    /* Function declaration with parameters that returns nothing */
+    | FUNC NAME '(' vardef_list ')'
+                            {
+                                auto p = new ast_node_funcdef{$4, *$2, "", nullptr};
+                                delete $2;
                                 $$ = p;
                             }
     | WHILE e DO exp_list END 
@@ -169,21 +220,6 @@ vardef: TYPENAME NAME     {$$ = new ast_node_def{*$1, *$2, nullptr}; delete $1; 
 
 code_block: DO exp_list END     { $$ = new ast_node_doblock{$2};}
 
-
-
-
-
-param_list: NAME                        {
-                                            auto p = new ast_node_parlist;
-                                            $$ = p;
-                                            p->append_parameter(*$1);
-                                            delete $1; 
-                                        }
-        | param_list ',' NAME           {
-                                            auto p = static_cast<ast_node_parlist*>($$);
-                                            p->append_parameter(*$3); delete $3;
-                                        }
-
 arg_list: e                 {
                                 auto p = new ast_node_arglist;
                                 p->append_arg($1); $$ = p;
@@ -212,6 +248,7 @@ exp: exp '+' exp             {$$ = new ast_node_add{$1, $3};}
      | NAME                  {$$ = new ast_node_var{*$1, ""}; delete $1;}
      | NUMBER                {$$ = $1;}
      | NAME '(' arg_list ')' {$$ = new ast_node_funccall{"", *$1, $3}; delete $1;}
+     | NAME '(' ')'          {$$ = new ast_node_funccall{"", *$1, 0}; delete $1;}
      | ESC_STRING			 {$$ = new ast_node_string_literal{*$1}; delete $1;}
      ;
   

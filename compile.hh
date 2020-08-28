@@ -146,6 +146,7 @@ private:
     void walk_tree_ilit(ast_node *node, gcc_jit_rvalue **current_rvalue);
 
     void walk_tree_fcall(ast_node *node, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_fdef(ast_node *node, gcc_jit_rvalue **current_rvalue);
     void walk_tree_fdec(ast_node *node, gcc_jit_rvalue **current_rvalue);
     void walk_tree_ret(ast_node *node, gcc_jit_block **current_block);
     void walk_tree_assign(  ast_node *node, 
