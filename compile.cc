@@ -468,6 +468,39 @@ void jit::walk_tree_and(ast_node *node,
     *current_rvalue = rv_result;
 }
 
+void jit::walk_tree_not(ast_node *node, 
+                        gcc_jit_block **current_block, 
+                        gcc_jit_function **current_function, 
+                        gcc_jit_rvalue **current_rvalue)
+{
+    DEBUG_ASSERT_NOTNULL(current_rvalue);
+    DEBUG_ASSERT_NOTNULL(node);
+    auto t_node = dynamic_cast<ast_node_not*>(node);
+    DEBUG_ASSERT_NOTNULL(t_node);
+    /* Resolve types. */
+
+    /* Get r-value a */
+    emc_type rt = t_node->value_type;
+
+    gcc_jit_rvalue *a_rv = nullptr;
+    walk_tree(t_node->first, current_block, current_function, &a_rv);
+    DEBUG_ASSERT_NOTNULL(a_rv);
+
+    gcc_jit_rvalue *a_casted_rv = cast_to(a_rv, INT_TYPE);
+    
+    /* Create locals to store the rvals (to only eval them once) */
+    gcc_jit_lvalue *temp_a_lv = gcc_jit_function_new_local(*current_function, 0,
+                                        INT_TYPE, new_unique_name("not_a_tmp").c_str());
+    gcc_jit_block_add_assignment(*current_block, 0, temp_a_lv, a_casted_rv);
+    gcc_jit_rvalue *temp_a_rv = gcc_jit_lvalue_as_rvalue(temp_a_lv);
+
+    gcc_jit_rvalue *rv_result = gcc_jit_context_new_unary_op(
+                                    context, nullptr, GCC_JIT_UNARY_OP_LOGICAL_NEGATE,
+                                    INT_TYPE, temp_a_rv);
+    DEBUG_ASSERT_NOTNULL(rv_result);                                
+    *current_rvalue = rv_result;
+}
+
 void jit::walk_tree_or(ast_node *node, 
                         gcc_jit_block **current_block, 
                         gcc_jit_function **current_function, 
@@ -1523,6 +1556,8 @@ void jit::walk_tree(ast_node *node,
         walk_tree_nor(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::XNOR) {
         walk_tree_xnor(node, current_block, current_function, current_rvalue);
+    } else if (type == ast_type::NOT) {
+        walk_tree_not(node, current_block, current_function, current_rvalue);
     } else
         throw std::runtime_error("walk_tree not implemented: " + std::to_string((int)node->type));
 }

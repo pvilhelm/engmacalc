@@ -69,12 +69,14 @@ program:
      	;
 
     /* List of expressions */
-exp_list: cse           		{ast_node* p;
-                                 if ($1) /* If $1 is null the cse was an EOL */
+exp_list: cse           	{
+                                ast_node* p;
+                                if ($1) /* If $1 is null the cse was an EOL */
                                     p = new ast_node_explist{$1};
-                                 else
+                                else
                                     p = new ast_node_explist{}; 
-                                 $$ = p;}
+                                $$ = p;
+                            }
      	| exp_list cse 	    {
 	                            if ($2) {
 	                               auto p_exl = static_cast<ast_node_explist*>($1);
@@ -255,6 +257,7 @@ exp: exp '+' exp             {$$ = new ast_node_add{$1, $3};}
      | exp NAND exp          {$$ = new ast_node_nand{$1, $3};}
      | exp NOR exp           {$$ = new ast_node_nor{$1, $3};}
      | exp XNOR exp          {$$ = new ast_node_xnor{$1, $3};}
+     | NOT exp               {$$ = new ast_node_not{$2};}
 
      | exp CMP exp           {$$ = new ast_node_cmp{$1, $3};}
      | '-' exp %prec UMINUS  {$$ = new ast_node_uminus{$2};}
