@@ -27,13 +27,16 @@ typedef void* yyscan_t;
 %token <s> TYPENAME 
 %token <s> ESC_STRING
 
-%token EOL IF DO END ELSE WHILE ENDOFFILE FUNC ELSEIF ALSO RETURN
+%token EOL IF DO END ELSE WHILE ENDOFFILE FUNC ELSEIF ALSO RETURN STRUCT TYPE
 
 %right '='
+%left OR NOR XOR XNOR
+%left AND NAND
+%right NOT
 %left CMP LEQ GEQ EQU NEQ '>' '<'
-%left '+' '-'
-%left '*' '/'
-%right '^'
+%left '+' '-' 
+%left '*' '/' 
+%right '^' 
 
 %nonassoc DO
 %nonassoc END        
@@ -41,7 +44,8 @@ typedef void* yyscan_t;
 
 %start program
 
-%type <node> exp cmp_exp e se cse exp_list code_block arg_list vardef elseif_list sl_elseif_list vardef_list
+%type <node> exp cmp_exp e se cse exp_list code_block arg_list
+%type <node> vardef elseif_list sl_elseif_list vardef_list field_list struct_def
 
 %define parse.trace
     
@@ -85,9 +89,14 @@ cse: EOL                    {$$ = 0;}
     |se EOL                 {$$ = $1;}
 
  /* Statement expression */
-se: e                      {$$ = $1;}
-    | RETURN               {$$ = new ast_node_return{0};}
-    | RETURN e             {$$ = new ast_node_return{$2};}
+se: e                           {$$ = $1;}
+    | TYPE TYPENAME '=' struct_def  {
+                                        auto t = new ast_node_type{*$2, $4};
+                                        delete $2;
+                                        $$ = t;
+                                    }
+    | RETURN                    {$$ = new ast_node_return{0};}
+    | RETURN e                  {$$ = new ast_node_return{$2};}
     /* IFs with ELSE:s are a headache to make grammar for. So ... */
     /* These with se are for one line if:s */
 	| IF e DO se END { $$ = new ast_node_if{$2, $4};}
@@ -230,8 +239,7 @@ arg_list: e                 {
                             }
     
  /* Top expression */
-e: exp
-   | cmp_exp
+e: exp  
    | e '=' e                 {$$ = new ast_node_assign{$1, $3};}
    ;
 
@@ -240,6 +248,14 @@ exp: exp '+' exp             {$$ = new ast_node_add{$1, $3};}
      | exp '-' exp           {$$ = new ast_node_sub{$1, $3};}
      | exp '*' exp           {$$ = new ast_node_mul{$1, $3};}
      | exp '/' exp           {$$ = new ast_node_rdiv{$1, $3};}
+
+     | exp AND exp           {$$ = new ast_node_and{$1, $3};}
+     | exp OR exp            {$$ = new ast_node_or{$1, $3};}
+     | exp XOR exp           {$$ = new ast_node_xor{$1, $3};}
+     | exp NAND exp          {$$ = new ast_node_nand{$1, $3};}
+     | exp NOR exp           {$$ = new ast_node_nor{$1, $3};}
+     | exp XNOR exp          {$$ = new ast_node_xnor{$1, $3};}
+
      | exp CMP exp           {$$ = new ast_node_cmp{$1, $3};}
      | '-' exp %prec UMINUS  {$$ = new ast_node_uminus{$2};}
      | '(' exp ')'           {$$ = $2;}
@@ -250,9 +266,28 @@ exp: exp '+' exp             {$$ = new ast_node_add{$1, $3};}
      | NAME '(' arg_list ')' {$$ = new ast_node_funccall{"", *$1, $3}; delete $1;}
      | NAME '(' ')'          {$$ = new ast_node_funccall{"", *$1, 0}; delete $1;}
      | ESC_STRING			 {$$ = new ast_node_string_literal{*$1}; delete $1;}
+     | cmp_exp
      ;
+
+struct_def : STRUCT EOL field_list EOL END { $$ = $3; }
+
+    /* TODO: Make a ast_node_list to accumulate ast_nodes to a generic list and 
+    * then constreuct stuff from it etc. */
+field_list: vardef          {  
+                                auto fl = new ast_node_struct_def{};
+                                fl->append_field($1);
+                                $$ = fl;
+                            }
+            | field_list EOL vardef
+                            {
+                                auto fl = dynamic_cast<ast_node_struct_def*>($1);
+                                fl->append_field($3);
+                                $$ = fl;
+                            }
+
   
- /* Compare expressions. */
+ /* Compare expressions. They can be chained 3 > 2 > 1 is 3 > 2 AND 2 > 1 etc
+  * with only one evaluation per operand. */
 cmp_exp:  exp '>' exp        {
                                 auto gre = new ast_node_gre{$1, $3};
                                 $$ = new ast_node_andchain{gre};

@@ -64,12 +64,21 @@ extern int yydebug;
     ELSEIF = 270,
     ALSO = 271,
     RETURN = 272,
-    CMP = 273,
-    LEQ = 274,
-    GEQ = 275,
-    EQU = 276,
-    NEQ = 277,
-    UMINUS = 278
+    STRUCT = 273,
+    TYPE = 274,
+    OR = 275,
+    NOR = 276,
+    XOR = 277,
+    XNOR = 278,
+    AND = 279,
+    NAND = 280,
+    NOT = 281,
+    CMP = 282,
+    LEQ = 283,
+    GEQ = 284,
+    EQU = 285,
+    NEQ = 286,
+    UMINUS = 287
   };
 #endif
 
@@ -83,7 +92,7 @@ union YYSTYPE
     ast_node *node;
     std::string *s;
 
-#line 87 "emc.tab.h" /* yacc.c:1921  */
+#line 96 "emc.tab.h" /* yacc.c:1921  */
 };
 
 typedef union YYSTYPE YYSTYPE;

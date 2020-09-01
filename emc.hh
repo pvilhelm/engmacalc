@@ -63,7 +63,16 @@ enum class ast_type {
     WHILE,
     DEF,
     RETURN,
-    VARDEF_LIST
+    VARDEF_LIST,
+    AND,
+    OR,
+    XOR,
+    NAND,
+    NOR,
+    XNOR,
+    NOT,
+    TYPE,
+    STRUCT
 };
 
 enum class object_type {
@@ -125,7 +134,7 @@ struct emc_type {
 
 emc_type standard_type_promotion(const emc_type &a, const emc_type &b);
 emc_type standard_type_promotion_or_invalid(const emc_type &a, const emc_type &b);
-
+emc_type string_to_type(std::string);
 /* Forward declarations. */
 class scope;
 class scope_stack;
@@ -624,6 +633,242 @@ public:
     ast_node* clone()
     {
         auto c = new ast_node_string_literal { s };
+        c->value_type = value_type;
+        return c;
+    }
+};
+
+class ast_node_and: public ast_node {
+public:
+    ast_node_and() :
+            ast_node_and(nullptr, nullptr)
+    {
+    }
+    ast_node_and(ast_node *first, ast_node *sec) :
+            first(first), sec(sec)
+    {
+        type = ast_type::AND;
+    }
+
+    ~ast_node_and()
+    {
+        delete first;
+        delete sec;
+    }
+
+    ast_node *first;
+    ast_node *sec;
+
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::INT};
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_and { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
+    }
+};
+
+class ast_node_or: public ast_node {
+public:
+    ast_node_or() :
+            ast_node_or(nullptr, nullptr)
+    {
+    }
+    ast_node_or(ast_node *first, ast_node *sec) :
+            first(first), sec(sec)
+    {
+        type = ast_type::OR;
+    }
+
+    ~ast_node_or()
+    {
+        delete first;
+        delete sec;
+    }
+
+    ast_node *first;
+    ast_node *sec;
+
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::INT};
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_or { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
+    }
+};
+
+class ast_node_xor: public ast_node {
+public:
+    ast_node_xor() :
+            ast_node_xor(nullptr, nullptr)
+    {
+    }
+    ast_node_xor(ast_node *first, ast_node *sec) :
+            first(first), sec(sec)
+    {
+        type = ast_type::XOR;
+    }
+
+    ~ast_node_xor()
+    {
+        delete first;
+        delete sec;
+    }
+
+    ast_node *first;
+    ast_node *sec;
+
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::INT};
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_xor { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
+    }
+};
+
+class ast_node_nor: public ast_node {
+public:
+    ast_node_nor() :
+            ast_node_nor(nullptr, nullptr)
+    {
+    }
+    ast_node_nor(ast_node *first, ast_node *sec) :
+            first(first), sec(sec)
+    {
+        type = ast_type::NOR;
+    }
+
+    ~ast_node_nor()
+    {
+        delete first;
+        delete sec;
+    }
+
+    ast_node *first;
+    ast_node *sec;
+
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::INT};
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_nor { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
+    }
+};
+
+class ast_node_nand: public ast_node {
+public:
+    ast_node_nand() :
+            ast_node_nand(nullptr, nullptr)
+    {
+    }
+    ast_node_nand(ast_node *first, ast_node *sec) :
+            first(first), sec(sec)
+    {
+        type = ast_type::NAND;
+    }
+
+    ~ast_node_nand()
+    {
+        delete first;
+        delete sec;
+    }
+
+    ast_node *first;
+    ast_node *sec;
+
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::INT};
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_nand { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
+    }
+};
+
+class ast_node_xnor: public ast_node {
+public:
+    ast_node_xnor() :
+            ast_node_xnor(nullptr, nullptr)
+    {
+    }
+    ast_node_xnor(ast_node *first, ast_node *sec) :
+            first(first), sec(sec)
+    {
+        type = ast_type::XNOR;
+    }
+
+    ~ast_node_xnor()
+    {
+        delete first;
+        delete sec;
+    }
+
+    ast_node *first;
+    ast_node *sec;
+
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::INT};
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_xnor { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
+    }
+};
+
+class ast_node_not: public ast_node {
+public:
+    ast_node_not() :
+            ast_node_not(nullptr)
+    {
+    }
+    ast_node_not(ast_node *first) :
+            first(first)
+    {
+        type = ast_type::NOT;
+    }
+
+    ~ast_node_not()
+    {
+        delete first;
+    }
+
+    ast_node *first;
+
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::INT};
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_not { first->clone() };
         c->value_type = value_type;
         return c;
     }
@@ -1482,7 +1727,7 @@ public:
     {
         DEBUG_ASSERT(node != nullptr, "node is null");
         DEBUG_ASSERT(v_children.size(), "v_children is empty");
-        DEBUG_ASSERT(node->first == nullptr, "node->first not a nullptr");
+        DEBUG_ASSERT(node->first == nullptr, "*node->first not a nullptr");
         node->first = v_children.back()->sec;
         v_children.push_back(node);
     }
@@ -1646,6 +1891,7 @@ public:
             ast_node_neq(nullptr, nullptr)
     {
     }
+
     ast_node_neq(ast_node *first, ast_node *sec)
     {
         this->first = std::shared_ptr<ast_node>(first);
@@ -1656,11 +1902,13 @@ public:
     ~ast_node_neq()
     {
     }
+
     emc_type resolve()
     {
         first->resolve(); sec->resolve();
         return value_type = emc_type{emc_types::INT};
     }
+
     ast_node* clone()
     {
         auto c = new ast_node_neq { first->clone(), sec->clone() };
@@ -1683,7 +1931,7 @@ public:
         if (value_node) delete value_node;
     }
     
-    std::string type_name;
+    std::string type_name; /* TODO: Borde va ngt object istället. */
     std::string var_name;
     ast_node *value_node = nullptr;
 
@@ -1694,6 +1942,7 @@ public:
         c->value_type = value_type;
         return c;        
     }
+
     emc_type resolve()
     {
         extern scope_stack resolve_scope;
@@ -1709,23 +1958,81 @@ public:
             value_node->resolve();
 
         /* TODO: This wont work for user types ... */
-        if (type_name == "Int")
-            return value_type = emc_type{emc_types::INT};
-        else if (type_name == "Double")
-            return value_type = emc_type{emc_types::DOUBLE};
-        else if (type_name == "String")
-            return value_type = emc_type{emc_types::STRING};
-        throw std::runtime_error("Not implemented proper types ... ");
+        return value_type = string_to_type(type_name);
     }
+
     emc_type resolve_no_push()
     {
-        /* TODO: This wont work for user types ... */
-        if (type_name == "Int")
-            return value_type = emc_type{emc_types::INT};
-        else if (type_name == "Double")
-            return value_type = emc_type{emc_types::DOUBLE};
-        else if (type_name == "String")
-            return value_type = emc_type{emc_types::STRING};
-        throw std::runtime_error("Not implemented proper types ... ");
+        return value_type = string_to_type(type_name);
     }
+};
+
+
+class ast_node_type: public ast_node {
+public:
+    ast_node_type(std::string type_name, ast_node *first) :
+        first(first), type_name(type_name)
+    {
+        type = ast_type::TYPE;
+    }
+
+    ~ast_node_type() { delete first; }
+
+    ast_node *first;
+    std::string type_name;
+
+    emc_type resolve()
+    {
+        first->resolve(); 
+        return value_type = emc_type{emc_types::NONE};
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_type { type_name, first->clone() };
+        c->value_type = value_type;
+        return c;        
+    }
+
+};
+
+class ast_node_struct_def: public ast_node {
+public:
+    ast_node_struct_def()
+    {
+        type = ast_type::STRUCT;
+    }
+
+    ~ast_node_struct_def() 
+    {
+        for (auto e : v_fields)
+            delete e;
+    }
+
+    std::vector<ast_node_def*> v_fields;
+
+    void append_field(ast_node *node)
+    {
+        DEBUG_ASSERT_NOTNULL(node);
+        DEBUG_ASSERT(node->type == ast_type::DEF, "Wrong node type");
+        auto field = dynamic_cast<ast_node_def*>(node);
+        DEBUG_ASSERT_NOTNULL(field);
+        
+        v_fields.push_back(field);
+    }
+
+    emc_type resolve()
+    {
+        for (auto e : v_fields)
+            e->resolve_no_push();
+        return value_type = emc_type{emc_types::NONE};
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_struct_def {};
+        c->value_type = value_type;
+        return c;        
+    }
+
 };

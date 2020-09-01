@@ -517,7 +517,7 @@ extern int yylex \
 #undef yyTABLES_NAME
 #endif
 
-#line 113 "emc_lexer.l"
+#line 123 "emc_lexer.l"
 
 
 #line 524 "lexer.h"

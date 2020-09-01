@@ -9,6 +9,16 @@ int ast_node_count;
 int value_expr_count;
 #endif
 
+emc_type string_to_type(std::string type_name) {
+    if (type_name == "Int")
+        return emc_type{emc_types::INT};
+    else if (type_name == "Double")
+        return emc_type{emc_types::DOUBLE};
+    else if (type_name == "String")
+        return emc_type{emc_types::STRING};
+    throw std::runtime_error("Not implemented proper types ... ");
+}
+
 emc_type ast_node_funcdef::resolve()
 {
     extern scope_stack resolve_scope;

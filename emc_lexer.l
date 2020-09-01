@@ -25,8 +25,9 @@ int n_nested_comments = 0;
 %option bison-bridge reentrant bison-locations
 
     /* float exponent */
-EXP([Ee][-+]?[0-9]+)
-WS([ \t])
+EXP [Ee][-+]?[0-9]+
+WS [ \t]
+ENDLN "\r\n"|"\n"
 
 %x IN_COMMENT
 
@@ -34,27 +35,27 @@ WS([ \t])
 
     /* Single character operators */
 
-"+"({WS}*\n)? |
-"-"({WS}*\n)? |
-"*"({WS}*\n)? |
-"/"({WS}*\n)? |
-"="({WS}*\n)? |
+"+"({WS}*{ENDLN})? |
+"-"({WS}*{ENDLN})? |
+"*"({WS}*{ENDLN})? |
+"/"({WS}*{ENDLN})? |
+"="({WS}*{ENDLN})? |
 "|" |
-","({WS}*\n)? |
+","({WS}*{ENDLN})? |
 ";" |
 "{" |
 "}" |
 "(" |
 ")" |
 "^" |
-"<"{WS}*\n? |
-">"{WS}*\n? { return yytext[0]; }
+"<"{WS}*{ENDLN}? |
+">"{WS}*{ENDLN}? { return yytext[0]; }
 
-"<=>"({WS}*\n)? return CMP;
-"<="({WS}*\n)?  return LEQ;
-">="({WS}*\n)?  return GEQ;
-"=="({WS}*\n)?  return EQU;
-"!="({WS}*\n)?  return NEQ;
+"<=>"({WS}*{ENDLN})? return CMP;
+"<="({WS}*{ENDLN})?  return LEQ;
+">="({WS}*{ENDLN})?  return GEQ;
+"=="({WS}*{ENDLN})?  return EQU;
+"!="({WS}*{ENDLN})?  return NEQ;
 
 "IF" return IF;
 "DO" return DO;
@@ -64,6 +65,15 @@ WS([ \t])
 "FUNC" return FUNC;  
 "ALSO" return ALSO;   
 "RETURN" return RETURN;
+"TYPE" return TYPE;
+"STRUCT" return STRUCT;
+"AND" return AND;
+"OR" return OR;
+"XOR" return XOR;
+"XNOR" return XNOR;
+"NAND" return NAND;
+"NOR" return NOR;
+"NOT" return NOT;
 
  /* Symbol names */
 [a-z][a-z0-9\-_]*    { yylval->s = new std::string{yytext}; return NAME; }
@@ -104,8 +114,8 @@ WS([ \t])
 {WS}                    /* ignore white space */
 \\\n                    /* ignore line continuation */
  /*^{WS}*\n*/           /* ignore empty new lines */
-"\r\n"         			{ return EOL; }
-"\n"         			{ return EOL; }
+{ENDLN}        			{ return EOL; }
+ 
 <<EOF>>                 { return ENDOFFILE; }
 .                       { fprintf(stderr, "Mystery character %c %i\n", *yytext, (int)*yytext); }
 
