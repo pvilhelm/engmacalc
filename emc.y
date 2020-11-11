@@ -247,30 +247,30 @@ e: exp
 
  /* Not compare or assign expressions */
 exp: exp '+' exp             {$$ = new ast_node_add{$1, $3};}
-     | exp '-' exp           {$$ = new ast_node_sub{$1, $3};}
-     | exp '*' exp           {$$ = new ast_node_mul{$1, $3};}
-     | exp '/' exp           {$$ = new ast_node_rdiv{$1, $3};}
+    | exp '-' exp           {$$ = new ast_node_sub{$1, $3};}
+    | exp '*' exp           {$$ = new ast_node_mul{$1, $3};}
+    | exp '/' exp           {$$ = new ast_node_rdiv{$1, $3};}
 
-     | exp AND exp           {$$ = new ast_node_and{$1, $3};}
-     | exp OR exp            {$$ = new ast_node_or{$1, $3};}
-     | exp XOR exp           {$$ = new ast_node_xor{$1, $3};}
-     | exp NAND exp          {$$ = new ast_node_nand{$1, $3};}
-     | exp NOR exp           {$$ = new ast_node_nor{$1, $3};}
-     | exp XNOR exp          {$$ = new ast_node_xnor{$1, $3};}
-     | NOT exp               {$$ = new ast_node_not{$2};}
+    | exp AND exp           {$$ = new ast_node_and{$1, $3};}
+    | exp OR exp            {$$ = new ast_node_or{$1, $3};}
+    | exp XOR exp           {$$ = new ast_node_xor{$1, $3};}
+    | exp NAND exp          {$$ = new ast_node_nand{$1, $3};}
+    | exp NOR exp           {$$ = new ast_node_nor{$1, $3};}
+    | exp XNOR exp          {$$ = new ast_node_xnor{$1, $3};}
+    | NOT exp               {$$ = new ast_node_not{$2};}
 
-     | exp CMP exp           {$$ = new ast_node_cmp{$1, $3};}
-     | '-' exp %prec UMINUS  {$$ = new ast_node_uminus{$2};}
-     | '(' exp ')'           {$$ = $2;}
-     | '|' exp '|'           {$$ = new ast_node_abs{$2};}
-     | exp '^' exp           {$$ = new ast_node_pow{$1, $3};}
-     | NAME                  {$$ = new ast_node_var{*$1, ""}; delete $1;}
-     | NUMBER                {$$ = $1;}
-     | NAME '(' arg_list ')' {$$ = new ast_node_funccall{"", *$1, $3}; delete $1;}
-     | NAME '(' ')'          {$$ = new ast_node_funccall{"", *$1, 0}; delete $1;}
-     | ESC_STRING			 {$$ = new ast_node_string_literal{*$1}; delete $1;}
-     | cmp_exp
-     ;
+    | exp CMP exp           {$$ = new ast_node_cmp{$1, $3};}
+    | '-' exp %prec UMINUS  {$$ = new ast_node_uminus{$2};}
+    | '(' exp ')'           {$$ = $2;}
+    | '|' exp '|'           {$$ = new ast_node_abs{$2};}
+    | exp '^' exp           {$$ = new ast_node_pow{$1, $3};}
+    | NAME                  {$$ = new ast_node_var{*$1, ""}; delete $1;}
+    | NUMBER                {$$ = $1;}
+    | NAME '(' arg_list ')' {$$ = new ast_node_funccall{"", *$1, $3}; delete $1;}
+    | NAME '(' ')'          {$$ = new ast_node_funccall{"", *$1, 0}; delete $1;}
+    | ESC_STRING			 {$$ = new ast_node_string_literal{*$1}; delete $1;}
+    | cmp_exp
+    ;
 
 struct_def : STRUCT EOL field_list EOL END { $$ = $3; }
 
@@ -295,63 +295,63 @@ cmp_exp:  exp '>' exp        {
                                 auto gre = new ast_node_gre{$1, $3};
                                 $$ = new ast_node_andchain{gre};
                              }
-         | exp '<' exp       {
+        | exp '<' exp       {
                                 auto cmp = new ast_node_les{$1, $3};
                                 $$ = new ast_node_andchain{cmp};
                              }
-         | exp EQU exp       {
+        | exp EQU exp       {
                                 auto cmp = new ast_node_equ{$1, $3};
                                 $$ = new ast_node_andchain{cmp};
                              }
-         | exp LEQ exp       {
+        | exp LEQ exp       {
                                 auto cmp = new ast_node_leq{$1, $3};
                                 $$ = new ast_node_andchain{cmp};
                              }
-         | exp GEQ exp       {
+        | exp GEQ exp       {
                                 auto cmp = new ast_node_geq{$1, $3};
                                 $$ = new ast_node_andchain{cmp};
                              }
-         | exp NEQ exp       {
+        | exp NEQ exp       {
                                 auto cmp = new ast_node_neq{$1, $3};
                                 $$ = new ast_node_andchain{cmp};
                              }
-         | cmp_exp '>' exp   {
+        | cmp_exp '>' exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
                                 auto gre = new ast_node_gre{nullptr, $3};
                                 chain->append_next(gre);
                                 $$ = chain;
                              }
-         | cmp_exp '<' exp   {
+        | cmp_exp '<' exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
                                 auto les = new ast_node_les{nullptr, $3};
                                 chain->append_next(les);
                                 $$ = chain;
                              }
-         | cmp_exp EQU exp   {
+        | cmp_exp EQU exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
                                 auto equ = new ast_node_equ{nullptr, $3};
                                 chain->append_next(equ);
                                 $$ = chain;
                              }
-         | cmp_exp LEQ exp   {
+        | cmp_exp LEQ exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
                                 auto leq = new ast_node_leq{nullptr, $3};
                                 chain->append_next(leq);
                                 $$ = chain;
                              }
-         | cmp_exp GEQ exp   {
+        | cmp_exp GEQ exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
                                 auto geq = new ast_node_geq{nullptr, $3};
                                 chain->append_next(geq);
                                 $$ = chain;
                              }
-         | cmp_exp NEQ exp   {
+        | cmp_exp NEQ exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
                                 auto neq = new ast_node_neq{nullptr, $3};
                                 chain->append_next(neq);
                                 $$ = chain;
                              }                             
-         ;
+        ;
 
 %%
 

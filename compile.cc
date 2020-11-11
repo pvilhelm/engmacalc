@@ -1212,6 +1212,51 @@ void jit::walk_tree_assign(ast_node *node,
     
 }
 
+std::string walk_tree_type_typename;
+void jit::walk_tree_struct(ast_node *node, 
+                            gcc_jit_block **current_block, 
+                            gcc_jit_function **current_function, 
+                            gcc_jit_rvalue **current_rvalue)
+{
+    DEBUG_ASSERT(node != nullptr, "node was null");
+    auto var_struct = dynamic_cast<ast_node_struct_def*>(node);
+    DEBUG_ASSERT(var_struct != nullptr, "var_struct was null");
+
+    std::vector<gcc_jit_field*> v_fields;
+    for (auto e : var_struct->v_fields) {
+        const char *field_name = e->var_name.c_str();
+        gcc_jit_type *field_type = emc_type_to_jit_type(string_to_type(e->type_name));
+        gcc_jit_field *field = gcc_jit_context_new_field(context, 0, field_type, field_name);
+        v_fields.push_back(field);
+    }
+
+    gcc_jit_struct *str = gcc_jit_context_new_struct_type(context, 0, 
+                                    walk_tree_type_typename.c_str(), 
+                                    v_fields.size(), v_fields.data());
+    /* Add the struct to the structmap */
+    if (map_typename_to_gccstructobj.find(walk_tree_type_typename) !=
+        map_typename_to_gccstructobj.end())
+        throw std::runtime_error("STRUCT " + walk_tree_type_typename + " allready exists");
+    map_typename_to_gccstructobj[walk_tree_type_typename] = str;
+
+}
+
+void jit::walk_tree_type(   ast_node *node, 
+                            gcc_jit_block **current_block, 
+                            gcc_jit_function **current_function, 
+                            gcc_jit_rvalue **current_rvalue)
+{
+    DEBUG_ASSERT(node != nullptr, "node was null");
+    auto var_type = dynamic_cast<ast_node_type*>(node);
+    DEBUG_ASSERT(var_type != nullptr, "var_type was null");
+
+    if (var_type->first->type == ast_type::STRUCT) {
+        walk_tree_type_typename = var_type->type_name;
+        walk_tree(var_type->first, current_block, current_function, current_rvalue);
+    } else
+        throw std::runtime_error("Not implemented walk_tree_type");
+}
+
 void jit::walk_tree_var(ast_node *node, 
                         gcc_jit_block **current_block, 
                         gcc_jit_function **current_function, 
@@ -1558,6 +1603,10 @@ void jit::walk_tree(ast_node *node,
         walk_tree_xnor(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::NOT) {
         walk_tree_not(node, current_block, current_function, current_rvalue);
+    } else if (type == ast_type::TYPE) {
+        walk_tree_type(node, current_block, current_function, current_rvalue);
+    } else if (type == ast_type::STRUCT) {
+        walk_tree_struct(node, current_block, current_function, current_rvalue);
     } else
         throw std::runtime_error("walk_tree not implemented: " + std::to_string((int)node->type));
 }

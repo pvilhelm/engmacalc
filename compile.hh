@@ -57,6 +57,7 @@ private:
     void setup_default_root_environment();
 
     default_types *types;
+    std::map<std::string, gcc_jit_type*> map_typename_to_gcctypeobj;
 
     std::map<std::string, gcc_jit_function*> map_fnname_to_gccfnobj;
     int call_depth = 0;
@@ -138,6 +139,8 @@ private:
     void walk_tree_dlit(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
     void walk_tree_ilit(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
 
+    void walk_tree_struct(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_type(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
     void walk_tree_fcall(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
     void walk_tree_fdef(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
     void walk_tree_fdec(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);

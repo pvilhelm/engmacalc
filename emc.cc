@@ -319,17 +319,13 @@ obj* scope_stack::find_object(std::string name, std::string nspace)
     return nullptr;
 }
 
-type_object* scope_stack::find_type(std::string name)
+emc_type scope_stack::find_type(std::string name)
 {
-    /* Search backwards so that the top scope matches first. */
-    for (auto it = vec_scope.rbegin(); it != vec_scope.rend(); it++)
-            {
-        type_object *p = it->find_type(name);
-        if (p)
-            return p;
-    }
-
-    return nullptr;
+    auto it = map_typename_to_type.find(name);
+    if (it == map_typename_to_type.end())
+        throw std::runtime_error("Type not found: " + name);
+    else
+        return it->second;
 }
 
 void init_linked_cfunctions()
@@ -362,9 +358,9 @@ void init_builtin_functions()
 void init_builtin_types()
 {
     extern scope_stack resolve_scope;
-
+/*
     resolve_scope.get_top_scope().push_type(new type_double);
     resolve_scope.get_top_scope().push_type(new type_int);
-    resolve_scope.get_top_scope().push_type(new type_string);
+    resolve_scope.get_top_scope().push_type(new type_string);*/
 }
 

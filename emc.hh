@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <cerrno>
 #include <limits>
+#include <map>
 
 #include "emc_assert.hh"
 
@@ -84,19 +85,16 @@ enum class object_type {
 };
 
 enum class emc_types {
-    INVALID,
+    INVALID = 0,
     NONE, /* The node have no type. */
     POINTER,
     INT,
     BOOL,
     DOUBLE,
     STRING,
-    /*VOID,*/
     CONST,
-    REFERENCE, /* e.g. REFERENCE, INT (reference to an int object) */
-    FUNCTION,
-    RETURNING,
-    LIST_COMMA, /* For declaring type lists eg. "int, int, double" */
+    STRUCT,
+    FUNCTION
 };
 
 struct emc_type {
@@ -108,6 +106,7 @@ struct emc_type {
         for (auto e : l)
             types.push_back(e);
     }
+  
     bool is_valid()
     {
         if (types.size() && types[0] != emc_types::INVALID) return true;
@@ -128,7 +127,14 @@ struct emc_type {
         if (types.size() && types[0] == emc_types::NONE) return true;
         return false;
     }
-
+    bool is_struct()
+    {
+        if (types.size() && types[0] == emc_types::STRUCT) return true;
+        return false;
+    }
+    /* For structs etc with children types. */
+    std::vector<emc_type> children_types;
+    
     std::vector<emc_types> types;
 };
 
@@ -215,9 +221,24 @@ public:
             "Trying to access scope in empty scope_stack");
         return vec_scope.back();
     }
+    scope& get_global_scope()
+    {
+        DEBUG_ASSERT(vec_scope.size() >= 1, 
+            "Trying to access scope in empty scope_stack");
+        return vec_scope.front();
+    }
     obj* find_object(std::string name, std::string nspace);
-    type_object* find_type(std::string name);
+    emc_type find_type(std::string name);
+    void push_type(std::string name, emc_type type)
+    {
+        auto it = map_typename_to_type.find(name);
+        if (it != map_typename_to_type.end())
+            throw std::runtime_error("Type " + name + " in map already");
+        map_typename_to_type[name] = type;
+    }
     std::vector<scope> vec_scope;
+
+    std::map<std::string, emc_type> map_typename_to_type;
 
     void debug_print();
 
@@ -255,33 +276,16 @@ public:
                     + obj->nspace + obj->name);
         vec_objs.push_back(obj);
     }
-    void push_type(type_object *type)
-    {
-        if (find_type(type->name))
-            throw std::runtime_error("push_type: Pushing existing type:"
-                    + type->name);
-        vec_types.push_back(type);
-    }
+
     void pop_object()
     {
         vec_objs.pop_back();
     }
-    void pop_type()
-    {
-        vec_types.pop_back();
-    }
+
     obj* find_object(std::string name, std::string nspace)
     {
         for (auto p : vec_objs)
             if (p->name == name && p->nspace == nspace)
-                return p;
-        return nullptr;
-    }
-
-    type_object* find_type(std::string name)
-    {
-        for (auto p : vec_types)
-            if (p->name == name)
                 return p;
         return nullptr;
     }
@@ -1945,20 +1949,25 @@ public:
 
     emc_type resolve()
     {
+        /* TODO: Typ implementationen är ful ... */
         extern scope_stack resolve_scope;
 
-        type_object *type = resolve_scope.find_type(type_name);
-        obj *obj;
-        obj = type->ctor();
-        obj->name = var_name;
-
-        resolve_scope.get_top_scope().push_object(obj);
+        emc_type type = resolve_scope.find_type(type_name);
+ 
+        obj *od = nullptr;
+        if (type.is_double())
+            od = new object_double{var_name, 0};
+        else if (type.is_int())
+            od = new object_int{var_name, 0};
+        else
+            throw std::runtime_error("Type not implemented ast_node_def");
+        resolve_scope.get_top_scope().push_object(od);
+ 
 
         if (value_node)
             value_node->resolve();
-
-        /* TODO: This wont work for user types ... */
-        return value_type = string_to_type(type_name);
+ 
+        return value_type = type;
     }
 
     emc_type resolve_no_push()
@@ -2023,9 +2032,18 @@ public:
 
     emc_type resolve()
     {
+        extern scope_stack resolve_scope;
+
         for (auto e : v_fields)
             e->resolve_no_push();
-        return value_type = emc_type{emc_types::NONE};
+
+        auto t = emc_type{emc_types::STRUCT};
+        for (auto e : v_fields)
+            t.children_types.push_back(e->value_type);
+
+        resolve_scope.push_type(t);
+
+        return value_type = t;
     }
 
     ast_node* clone()
@@ -2034,5 +2052,4 @@ public:
         c->value_type = value_type;
         return c;        
     }
-
 };
