@@ -1,7 +1,7 @@
 
 FUNC printnl_int(Int i)
 
-Short ii = 678
+Int ii = 678
 
 printnl_int(ii)
 
