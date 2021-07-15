@@ -8,17 +8,61 @@
 #include "emc.hh"
 
 struct default_types {
-    gcc_jit_type *void_type;
-    gcc_jit_type *int_type;
-    gcc_jit_type *double_type;
-    gcc_jit_type *bool_type;
+    gcc_jit_type *void_type = 0;
+    gcc_jit_type *void_ptr_type = 0;
+    gcc_jit_type *bool_type = 0;
+    gcc_jit_type *char_type = 0;
+    gcc_jit_type *schar_type = 0;
+    gcc_jit_type *uchar_type = 0;
+    gcc_jit_type *short_type = 0;
+    gcc_jit_type *ushort_type = 0;
+    gcc_jit_type *int_type = 0;
+    gcc_jit_type *uint_type = 0;
+    gcc_jit_type *long_type = 0;
+    gcc_jit_type *ulong_type = 0;
+    gcc_jit_type *float_type = 0;
+    gcc_jit_type *double_type = 0;
+    
 
     default_types(gcc_jit_context *context)
     {
+        /* TODO: Make this platform independent */
         int_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_INT);
+        uint_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_UNSIGNED_INT);
+        long_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_LONG);
+        uint_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_UNSIGNED_LONG);
         double_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_DOUBLE);
         void_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_VOID);
         bool_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_BOOL);
+        uchar_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_UNSIGNED_CHAR);
+        schar_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_SIGNED_CHAR);
+        short_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_SHORT);
+        ushort_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_UNSIGNED_SHORT);
+        float_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_FLOAT);
+        /*
+        GCC_JIT_TYPE_VOID,
+        GCC_JIT_TYPE_VOID_PTR,
+        GCC_JIT_TYPE_BOOL,
+        GCC_JIT_TYPE_CHAR,
+        GCC_JIT_TYPE_SIGNED_CHAR,
+        GCC_JIT_TYPE_UNSIGNED_CHAR,
+        GCC_JIT_TYPE_SHORT,
+        GCC_JIT_TYPE_UNSIGNED_SHORT,
+        GCC_JIT_TYPE_INT,
+        GCC_JIT_TYPE_UNSIGNED_INT,
+        GCC_JIT_TYPE_LONG,
+        GCC_JIT_TYPE_UNSIGNED_LONG,
+        GCC_JIT_TYPE_LONG_LONG, 
+        GCC_JIT_TYPE_UNSIGNED_LONG_LONG,
+        GCC_JIT_TYPE_FLOAT,
+        GCC_JIT_TYPE_DOUBLE,
+        GCC_JIT_TYPE_LONG_DOUBLE,
+        GCC_JIT_TYPE_CONST_CHAR_PTR,
+        GCC_JIT_TYPE_SIZE_T,
+        GCC_JIT_TYPE_FILE_PTR,
+        GCC_JIT_TYPE_COMPLEX_FLOAT,
+        GCC_JIT_TYPE_COMPLEX_DOUBLE,
+        GCC_JIT_TYPE_COMPLEX_LONG_DOUBLE */
     }
 };
 

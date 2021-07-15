@@ -21,6 +21,7 @@
 #include <cerrno>
 #include <limits>
 #include <map>
+#include <cinttypes>
 
 #include "emc_assert.hh"
 
@@ -81,7 +82,14 @@ enum class object_type {
     FUNC,
     STATIC_CFUNC,
     STRING,
-    INT
+    INT,
+    UINT,
+    BYTE,
+    SHORT,
+    USHORT,
+    FLOAT,
+    LONG,
+    ULONG
 };
 
 enum class emc_types {
@@ -89,15 +97,24 @@ enum class emc_types {
     NONE, /* The node have no type. */
     POINTER,
     INT,
+    UINT,
     BOOL,
+    BYTE,
+    SBYTE,
     DOUBLE,
     STRING,
     CONST,
     STRUCT,
-    FUNCTION
+    FUNCTION,
+    FLOAT,
+    SHORT,
+    USHORT,
+    LONG,
+    ULONG
 };
 
 struct emc_type {
+    emc_type() {}
     /* First element is inner element. I.e.
      * c type "const int *" => POINTER, CONST, INT
      */
@@ -112,6 +129,8 @@ struct emc_type {
         if (types.size() && types[0] != emc_types::INVALID) return true;
         return false;
     }
+
+    /* TODO: Fugly. Should be direct lookup here and in jit::emc_type_to_jit_type() */
     bool is_double()
     {
         if (types.size() && types[0] == emc_types::DOUBLE) return true;
@@ -122,9 +141,54 @@ struct emc_type {
         if (types.size() && types[0] == emc_types::INT) return true;
         return false;
     }
+    bool is_short()
+    {
+        if (types.size() && types[0] == emc_types::SHORT) return true;
+        return false;
+    }
+    bool is_sbyte()
+    {
+        if (types.size() && types[0] == emc_types::SBYTE) return true;
+        return false;
+    }
+    bool is_byte()
+    {
+        if (types.size() && types[0] == emc_types::BYTE) return true;
+        return false;
+    }
+    bool is_uint()
+    {
+        if (types.size() && types[0] == emc_types::UINT) return true;
+        return false;
+    }
+    bool is_ushort()
+    {
+        if (types.size() && types[0] == emc_types::USHORT) return true;
+        return false;
+    }
+    bool is_long()
+    {
+        if (types.size() && types[0] == emc_types::LONG) return true;
+        return false;
+    }
+    bool is_ulong()
+    {
+        if (types.size() && types[0] == emc_types::ULONG) return true;
+        return false;
+    }
+    bool is_float()
+    {
+        if (types.size() && types[0] == emc_types::FLOAT) return true;
+        return false;
+    }
     bool is_void()
     {
         if (types.size() && types[0] == emc_types::NONE) return true;
+        return false;
+    }
+    bool is_bool()
+    {
+        if (types.size() && types[0] == emc_types::BOOL) return true;
         return false;
     }
     bool is_struct()
@@ -135,6 +199,8 @@ struct emc_type {
     /* For structs etc with children types. */
     std::vector<emc_type> children_types;
     
+    /* TODO: Should be flags for const etc instead? Do a "root type" and then have
+             vector only for structs etc. */
     std::vector<emc_types> types;
 };
 
@@ -209,26 +275,31 @@ public:
     scope_stack operator=(const scope_stack&) = delete;
 
     void push_new_scope();
+
     void pop_scope()
     {
         DEBUG_ASSERT(vec_scope.size() >= 1, 
             "Trying to pop scope_stack too far");
         vec_scope.pop_back();
     }
+
     scope& get_top_scope()
     {
         DEBUG_ASSERT(vec_scope.size() >= 1, 
             "Trying to access scope in empty scope_stack");
         return vec_scope.back();
     }
+
     scope& get_global_scope()
     {
         DEBUG_ASSERT(vec_scope.size() >= 1, 
             "Trying to access scope in empty scope_stack");
         return vec_scope.front();
     }
+
     obj* find_object(std::string name, std::string nspace);
     emc_type find_type(std::string name);
+
     void push_type(std::string name, emc_type type)
     {
         auto it = map_typename_to_type.find(name);
@@ -301,118 +372,55 @@ public:
     }
 };
 
-class object_string: public obj {
-public:
-    ~object_string()
-    {
-    }
-    ;
+#define OBJCLASS_DEF(classname, object_type, emc_ret_type, c_type)\
+class classname: public obj {\
+public:\
+    ~classname()\
+    {\
+    }\
+    ;\
+\
+    classname(std::string name, std::string nspace, c_type val)\
+    :\
+            val(val)\
+    {\
+        type = object_type;\
+        this->name = name;\
+        this->nspace = nspace;\
+    }\
+    ;\
+    classname(std::string name, c_type val) :\
+            classname(name, "", val)\
+    {\
+    }\
+    classname(c_type val) :\
+            classname("", "", val)\
+    {\
+    }\
+    classname() :\
+            classname("", "", (c_type){})\
+    {\
+    }\
+\
+    c_type val;\
+\
+    emc_type resolve()\
+    {\
+        return emc_ret_type;\
+    }\
+};\
 
-    object_string(std::string name, std::string nspace, std::string val)
-    :
-            s(val)
-    {
-        type = object_type::STRING;
-        this->name = name;
-        this->nspace = nspace;
-    }
-    ;
-    object_string(std::string name, std::string val) :
-            object_string(name, "", val)
-    {
-    }
-    object_string(std::string val) :
-            object_string("", "", val)
-    {
-    }
-    object_string() :
-            object_string("", "", "")
-    {
-    }
+/* TODO: Architecture independent types ie. uint8_t etc */
+OBJCLASS_DEF(object_string, object_type::STRING, emc_type{emc_types::STRING}, std::string)
+OBJCLASS_DEF(object_double, object_type::DOUBLE, emc_type{emc_types::DOUBLE}, double)
+OBJCLASS_DEF(object_int, object_type::INT, emc_type{emc_types::INT}, int32_t)
+OBJCLASS_DEF(object_uint, object_type::UINT, emc_type{emc_types::UINT}, uint32_t)
+OBJCLASS_DEF(object_short, object_type::SHORT, emc_type{emc_types::SHORT}, int16_t)
+OBJCLASS_DEF(object_ushort, object_type::USHORT, emc_type{emc_types::USHORT}, uint16_t)
 
-    std::string s;
+OBJCLASS_DEF(object_long, object_type::LONG, emc_type{emc_types::LONG}, int64_t)
+OBJCLASS_DEF(object_ulong, object_type::ULONG, emc_type{emc_types::ULONG}, uint64_t)
 
-    emc_type resolve()
-    {
-        return emc_type{emc_types::STRING};
-    }
-};
-
-class object_double: public obj {
-public:
-    ~object_double()
-    {
-    }
-    ;
-
-    object_double(std::string name, std::string nspace, double val)
-    :
-            d(val)
-    {
-        type = object_type::DOUBLE;
-        this->name = name;
-        this->nspace = nspace;
-    }
-    ;
-    object_double(std::string name, double val)
-    :
-            object_double(name, "", val)
-    {
-    }
-    object_double(double val) :
-            object_double("", "", val)
-    {
-    }
-    object_double() :
-            object_double("", "", 0.)
-    {
-    }
-
-    double d;
-
-    emc_type resolve()
-    {
-        return emc_type{emc_types::DOUBLE};
-    }
-};
-
-class object_int: public obj {
-public:
-    ~object_int()
-    {
-    }
-    ;
-
-    object_int(std::string name, std::string nspace, int val)
-    :
-            i(val)
-    {
-        type = object_type::INT;
-        this->name = name;
-        this->nspace = nspace;
-    }
-    ;
-    object_int(std::string name, int val)
-    :
-            object_int(name, "", val)
-    {
-    }
-    object_int(int val) :
-            object_int("", "", val)
-    {
-    }
-    object_int() :
-            object_int("", "", 0)
-    {
-    }
-
-    int i;
-
-    emc_type resolve()
-    {
-        return emc_type{emc_types::INT};
-    }
-};
 
 class object_func_base: public obj {
 public:
@@ -438,52 +446,6 @@ public:
 
     emc_type resolve();
 };
-
-class type_double: public type_object {
-public:
-    ~type_double()
-    {
-    }
-    type_double()
-    {
-        name = "Double";
-    }
-    obj* ctor()
-    {
-        return new object_double { };
-    }
-};
-
-class type_int: public type_object {
-public:
-    ~type_int()
-    {
-    }
-    type_int()
-    {
-        name = "Int";
-    }
-    obj* ctor()
-    {
-        return new object_int { };
-    }
-};
-
-class type_string: public type_object {
-public:
-    ~type_string()
-    {
-    }
-    type_string()
-    {
-        name = "String";
-    }
-    obj* ctor()
-    {
-        return new object_string { };
-    }
-};
-
 
 /* Base class for a node in the abstract syntax tree. */
 class ast_node {
@@ -2041,7 +2003,7 @@ public:
         for (auto e : v_fields)
             t.children_types.push_back(e->value_type);
 
-        resolve_scope.push_type(t);
+        //resolve_scope.push_type(t); //TODO: Need to be in TYPE's ast_node
 
         return value_type = t;
     }

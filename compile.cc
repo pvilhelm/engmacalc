@@ -4,14 +4,26 @@
 #include <string>
 #include <sstream>
 #include <iomanip>
+#include <map>
 
 #include "compile.hh"
 #include "common.hh"
 
 #define INT_TYPE this->types->int_type
+#define UINT_TYPE this->types->uint_type
+#define LONG_TYPE this->types->long_type
+#define ULONG_TYPE this->types->ulong_type
+#define SHORT_TYPE this->types->short_type
+#define USHORT_TYPE this->types->ushort_type
+#define SCHAR_TYPE this->types->schar_type
+#define UCHAR_TYPE this->types->uchar_type
 #define DOUBLE_TYPE this->types->double_type
+#define FLOAT_TYPE this->types->float_type
 #define VOID_TYPE this->types->void_type
 #define BOOL_TYPE this->types->bool_type
+
+/* map of gccstructobjects to typename for Engma structs */
+std::map<std::string, gcc_jit_struct*> map_structtypename_to_gccstructobj;
 
 
 std::string new_unique_name(std::string prefix = "")
@@ -56,6 +68,7 @@ gcc_jit_rvalue* jit::cast_to(gcc_jit_rvalue *a_rv,
     return gcc_jit_context_new_cast(context, 0, a_rv, target_type);
 }
 
+/* TODO: Duplicates logic with standard_type_promotion_or_invalid() ? */
 gcc_jit_type* jit::promote_types(gcc_jit_rvalue *a_rv,
                         gcc_jit_rvalue *b_rv,
                         gcc_jit_rvalue **a_casted_rv,
@@ -64,7 +77,7 @@ gcc_jit_type* jit::promote_types(gcc_jit_rvalue *a_rv,
     gcc_jit_type *at = gcc_jit_rvalue_get_type(a_rv);
     gcc_jit_type *bt = gcc_jit_rvalue_get_type(b_rv);
 
-    /* TODO: Kanske borde göra en LuT för casterna? */
+    /* TODO: Kanske borde göra en LuT för casterna? Typ en map med mapar ... */
     if (at == bt) { /* Same types no cast needed. */
         *a_casted_rv = a_rv;
         *b_casted_rv = b_rv;
@@ -79,7 +92,43 @@ gcc_jit_type* jit::promote_types(gcc_jit_rvalue *a_rv,
             *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, DOUBLE_TYPE);
             return at;
         }
-    } else if (at == INT_TYPE || bt == INT_TYPE) { /* In practice, cast bool to int */
+    } else if (at == FLOAT_TYPE || bt == FLOAT_TYPE) { /* Float has next highest prio. */
+        if (at != FLOAT_TYPE) {
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, FLOAT_TYPE);
+            *b_casted_rv = b_rv;
+            return bt;
+        } else {
+            *a_casted_rv = a_rv;
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, FLOAT_TYPE);
+            return at;
+        }
+    } else if (
+                at == LONG_TYPE && (bt == INT_TYPE || bt == SHORT_TYPE || bt == SCHAR_TYPE || 
+                                    bt == UINT_TYPE || bt == USHORT_TYPE || bt == UCHAR_TYPE || 
+                                    bt == BOOL_TYPE) ||
+                bt == LONG_TYPE && (at == INT_TYPE || at == SHORT_TYPE || at == SCHAR_TYPE || 
+                                    at == UINT_TYPE || at == USHORT_TYPE || at == UCHAR_TYPE || 
+                                    at == BOOL_TYPE)
+              ) 
+     { /* In practice, cast bool to int */
+        if (at != LONG_TYPE) {
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, LONG_TYPE);
+            *b_casted_rv = b_rv;
+            return bt;
+        } else {
+            *a_casted_rv = a_rv;
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, LONG_TYPE);
+            return at;
+        }
+    } else if (
+                at == INT_TYPE && (bt == SHORT_TYPE || bt == SCHAR_TYPE || 
+                                   bt == USHORT_TYPE || bt == UCHAR_TYPE || 
+                                   bt == BOOL_TYPE) ||
+                bt == INT_TYPE && (at == SHORT_TYPE || at == SCHAR_TYPE || 
+                                   at == USHORT_TYPE || at == UCHAR_TYPE || 
+                                   at == BOOL_TYPE)
+              ) 
+    {
         if (at != INT_TYPE) {
             *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, INT_TYPE);
             *b_casted_rv = b_rv;
@@ -89,6 +138,113 @@ gcc_jit_type* jit::promote_types(gcc_jit_rvalue *a_rv,
             *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, INT_TYPE);
             return at;
         }
+    
+    } else if (
+                at == SHORT_TYPE && (bt == SCHAR_TYPE || 
+                                     bt == UCHAR_TYPE || 
+                                     bt == BOOL_TYPE) ||
+                bt == SHORT_TYPE && (at == SCHAR_TYPE || 
+                                     at == UCHAR_TYPE || 
+                                     at == BOOL_TYPE)
+              ) 
+    {
+        if (at != SHORT_TYPE) {
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, SHORT_TYPE);
+            *b_casted_rv = b_rv;
+            return bt;
+        } else {
+            *a_casted_rv = a_rv;
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, SHORT_TYPE);
+            return at;
+        }
+    } else if (
+                at == SCHAR_TYPE && bt == BOOL_TYPE ||
+                bt == SCHAR_TYPE && at == BOOL_TYPE
+              ) 
+    {
+        if (at != SCHAR_TYPE) {
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, SCHAR_TYPE);
+            *b_casted_rv = b_rv;
+            return bt;
+        } else {
+            *a_casted_rv = a_rv;
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, SCHAR_TYPE);
+            return at;
+        }
+    } else if (
+                at == ULONG_TYPE && (bt == UINT_TYPE ||
+                                     bt == USHORT_TYPE ||
+                                     bt == UCHAR_TYPE || 
+                                     bt == BOOL_TYPE) ||
+                bt == ULONG_TYPE && (at == UINT_TYPE ||
+                                     at == USHORT_TYPE ||
+                                     at == UCHAR_TYPE || 
+                                     at == BOOL_TYPE)
+              ) 
+    {
+        if (at != ULONG_TYPE) {
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, ULONG_TYPE);
+            *b_casted_rv = b_rv;
+            return bt;
+        } else {
+            *a_casted_rv = a_rv;
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, ULONG_TYPE);
+            return at;
+        }
+    
+    } else if (
+                at == UINT_TYPE && (bt == USHORT_TYPE ||
+                                    bt == UCHAR_TYPE || 
+                                    bt == BOOL_TYPE) ||
+                bt == UINT_TYPE && (at == USHORT_TYPE || 
+                                    at == UCHAR_TYPE || 
+                                    at == BOOL_TYPE)
+              ) 
+    {
+        if (at != UINT_TYPE) {
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, UINT_TYPE);
+            *b_casted_rv = b_rv;
+            return bt;
+        } else {
+            *a_casted_rv = a_rv;
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, UINT_TYPE);
+            return at;
+        }
+    
+    } else if (
+                at == USHORT_TYPE && (bt == USHORT_TYPE ||
+                                      bt == UCHAR_TYPE || 
+                                      bt == BOOL_TYPE) ||
+                bt == USHORT_TYPE && (at == USHORT_TYPE || 
+                                      at == UCHAR_TYPE || 
+                                      at == BOOL_TYPE)
+              ) 
+    {
+        if (at != USHORT_TYPE) {
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, USHORT_TYPE);
+            *b_casted_rv = b_rv;
+            return bt;
+        } else {
+            *a_casted_rv = a_rv;
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, USHORT_TYPE);
+            return at;
+        }
+    
+    } else if (
+                at == UCHAR_TYPE && bt == BOOL_TYPE ||
+                bt == UCHAR_TYPE && at == BOOL_TYPE
+              ) 
+    {
+        if (at != UCHAR_TYPE) {
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, UCHAR_TYPE);
+            *b_casted_rv = b_rv;
+            return bt;
+        } else {
+            *a_casted_rv = a_rv;
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, UCHAR_TYPE);
+            return at;
+        }
+    
     } else 
         throw std::runtime_error("Cast not supported");
 }
@@ -101,10 +257,29 @@ void jit::dump(std::string path)
 
 gcc_jit_type* jit::emc_type_to_jit_type(emc_type t)
 {
+    /* TODO: STruct */
     if (t.is_double())
         return DOUBLE_TYPE;
+    else if (t.is_float())
+        return FLOAT_TYPE;
+    else if (t.is_long())
+        return LONG_TYPE;
     else if (t.is_int())
         return INT_TYPE;
+    else if (t.is_short())
+        return SHORT_TYPE;
+    else if (t.is_sbyte())
+        return SCHAR_TYPE;
+    else if (t.is_bool())
+        return BOOL_TYPE;
+    else if (t.is_ulong())
+        return ULONG_TYPE;
+    else if (t.is_uint())
+        return UINT_TYPE;
+    else if (t.is_ushort())
+        return USHORT_TYPE;
+    else if (t.is_byte())
+        return UCHAR_TYPE;
     else if (t.is_void())
         return VOID_TYPE;
     else
@@ -966,6 +1141,7 @@ void jit::walk_tree_ilit(ast_node *node,
 {
     /* A double literal is an rvalue. */
     auto ilit_node = dynamic_cast<ast_node_int_literal*>(node);
+    /* TODO: Handle long */
     *current_rvalue = gcc_jit_context_new_rvalue_from_int(context, INT_TYPE, ilit_node->i);
     DEBUG_ASSERT(*current_rvalue != nullptr, "INT_LITERAL current_rvalue is null");        
 }
@@ -1221,24 +1397,6 @@ void jit::walk_tree_struct(ast_node *node,
     DEBUG_ASSERT(node != nullptr, "node was null");
     auto var_struct = dynamic_cast<ast_node_struct_def*>(node);
     DEBUG_ASSERT(var_struct != nullptr, "var_struct was null");
-
-    std::vector<gcc_jit_field*> v_fields;
-    for (auto e : var_struct->v_fields) {
-        const char *field_name = e->var_name.c_str();
-        gcc_jit_type *field_type = emc_type_to_jit_type(string_to_type(e->type_name));
-        gcc_jit_field *field = gcc_jit_context_new_field(context, 0, field_type, field_name);
-        v_fields.push_back(field);
-    }
-
-    gcc_jit_struct *str = gcc_jit_context_new_struct_type(context, 0, 
-                                    walk_tree_type_typename.c_str(), 
-                                    v_fields.size(), v_fields.data());
-    /* Add the struct to the structmap */
-    if (map_typename_to_gccstructobj.find(walk_tree_type_typename) !=
-        map_typename_to_gccstructobj.end())
-        throw std::runtime_error("STRUCT " + walk_tree_type_typename + " allready exists");
-    map_typename_to_gccstructobj[walk_tree_type_typename] = str;
-
 }
 
 void jit::walk_tree_type(   ast_node *node, 
@@ -1252,7 +1410,29 @@ void jit::walk_tree_type(   ast_node *node,
 
     if (var_type->first->type == ast_type::STRUCT) {
         walk_tree_type_typename = var_type->type_name;
+
         walk_tree(var_type->first, current_block, current_function, current_rvalue);
+
+        DEBUG_ASSERT(var_type->first != nullptr, "first was null");
+        auto var_struct = dynamic_cast<ast_node_struct_def*>(var_type->first);
+        DEBUG_ASSERT(var_struct != nullptr, "var_struct was null");
+
+        /* Create a c-struct corrensponding to the struct */
+        std::vector<gcc_jit_field*> v_fields;
+        for (auto e : var_struct->v_fields) {
+            const char *field_name = e->var_name.c_str();
+            gcc_jit_type *field_type = emc_type_to_jit_type(string_to_type(e->type_name));
+            gcc_jit_field *field = gcc_jit_context_new_field(context, 0, field_type, field_name);
+            v_fields.push_back(field);
+        }
+        gcc_jit_struct *str = gcc_jit_context_new_struct_type(context, 0, 
+                            walk_tree_type_typename.c_str(), 
+                            v_fields.size(), v_fields.data());
+        /* Add the struct to the structmap */
+        if (map_structtypename_to_gccstructobj.find(walk_tree_type_typename) !=
+            map_structtypename_to_gccstructobj.end())
+            throw std::runtime_error("STRUCT " + walk_tree_type_typename + " allready exists");
+        map_structtypename_to_gccstructobj[walk_tree_type_typename] = str;
     } else
         throw std::runtime_error("Not implemented walk_tree_type");
 }
@@ -1300,6 +1480,7 @@ void jit::walk_tree_def(ast_node *node,
         gcc_jit_lvalue *lval = gcc_jit_function_new_local(*current_function, 0, var_type, ast_def->var_name.c_str());
         push_lval(ast_def->var_name, lval);
 
+        /* TODO: Add default assignment */
         gcc_jit_rvalue *rv_assignment = nullptr;
         walk_tree(ast_def->value_node, current_block, current_function, &rv_assignment);
         /* Cast to the local's type */

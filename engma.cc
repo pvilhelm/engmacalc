@@ -19,6 +19,7 @@ extern bool parsed_eol;
 /* Scope during resolving of the ast node tree. */
 scope_stack resolve_scope;
 
+
 int main(int argc, char **argv)
 {
     init_builtin_functions();

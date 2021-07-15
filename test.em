@@ -1,15 +1,11 @@
 
-IF 1 > 0 DO
-    IF NOT 0 DO
-        2
-    END
-    4
-ELSE DO
-    3
-END
+FUNC printnl_int(Int i)
 
+Short ii = 678
 
+printnl_int(ii)
+
+/* 789 */
 TYPE Tt = STRUCT
-    Int i1
-    Int i2
+    Int i
 END

@@ -117,6 +117,7 @@ emc_type standard_type_promotion(const emc_type &a, const emc_type &b)
     return ans;
 }
 
+/* Implicit type conversion for native types. */
 emc_type standard_type_promotion_or_invalid(const emc_type &a, const emc_type &b)
 {
     if (!a.types.size() || !b.types.size())
@@ -128,11 +129,69 @@ emc_type standard_type_promotion_or_invalid(const emc_type &a, const emc_type &b
     if (at == bt)
         return emc_type{at};
 
-    if ((at == emc_types::DOUBLE && bt == emc_types::INT)
-            || (bt == emc_types::DOUBLE && at == emc_types::INT))
+    bool a_is_intish = at == emc_types::INT || at == emc_types::SHORT || 
+                        at == emc_types::LONG || at == emc_types::SBYTE;
+    bool b_is_intish = bt == emc_types::INT || bt == emc_types::SHORT || 
+                        bt == emc_types::LONG || bt == emc_types::SBYTE;
+    bool a_is_uintish = at == emc_types::UINT || at == emc_types::USHORT || 
+                        at == emc_types::ULONG || at == emc_types::BYTE;
+    bool b_is_uintish = bt == emc_types::UINT || bt == emc_types::USHORT || 
+                        bt == emc_types::ULONG || bt == emc_types::BYTE;
+    bool a_is_xintish = a_is_intish || a_is_uintish;                                         
+    bool b_is_xintish = b_is_intish || b_is_uintish;
+
+    /* TODO: Make a array table instead maybe? */
+    if (        at == emc_types::DOUBLE && b_is_xintish || 
+                bt == emc_types::DOUBLE && a_is_xintish)
         return emc_type{emc_types::DOUBLE};
-    else if (at == emc_types::STRING && bt == emc_types::STRING)
-        return emc_type{emc_types::STRING};
+    else if (   at == emc_types::DOUBLE && bt == emc_types::FLOAT || 
+                bt == emc_types::DOUBLE && at == emc_types::FLOAT)
+        return emc_type{emc_types::DOUBLE};
+    else if (   at == emc_types::FLOAT && b_is_xintish || 
+                bt == emc_types::FLOAT && a_is_xintish)
+        return emc_type{emc_types::FLOAT};
+    else if (   at == emc_types::LONG && bt == emc_types::INT || 
+                bt == emc_types::LONG && at == emc_types::INT ||
+                at == emc_types::LONG && bt == emc_types::SHORT || 
+                bt == emc_types::LONG && at == emc_types::SHORT ||
+                at == emc_types::LONG && bt == emc_types::SBYTE || 
+                bt == emc_types::LONG && at == emc_types::SBYTE ||
+                at == emc_types::LONG && bt == emc_types::UINT || 
+                bt == emc_types::LONG && at == emc_types::UINT ||
+                at == emc_types::LONG && bt == emc_types::USHORT || 
+                bt == emc_types::LONG && at == emc_types::USHORT ||
+                at == emc_types::LONG && bt == emc_types::BYTE || 
+                bt == emc_types::LONG && at == emc_types::BYTE)
+        return emc_type{emc_types::LONG};
+    else if (   at == emc_types::INT && bt == emc_types::SHORT || 
+                bt == emc_types::INT && at == emc_types::SHORT ||
+                at == emc_types::INT && bt == emc_types::SBYTE || 
+                bt == emc_types::INT && at == emc_types::SBYTE ||
+                at == emc_types::INT && bt == emc_types::USHORT || 
+                bt == emc_types::INT && at == emc_types::USHORT ||
+                at == emc_types::INT && bt == emc_types::BYTE || 
+                bt == emc_types::INT && at == emc_types::BYTE)
+        return emc_type{emc_types::INT};
+    else if (   at == emc_types::SHORT && bt == emc_types::SBYTE || 
+                bt == emc_types::SHORT && at == emc_types::SBYTE ||
+                at == emc_types::SHORT && bt == emc_types::BYTE || 
+                bt == emc_types::SHORT && at == emc_types::BYTE)
+        return emc_type{emc_types::SHORT};
+    else if (   at == emc_types::ULONG && bt == emc_types::UINT || 
+                bt == emc_types::ULONG && at == emc_types::UINT ||
+                at == emc_types::ULONG && bt == emc_types::USHORT || 
+                bt == emc_types::ULONG && at == emc_types::USHORT ||
+                at == emc_types::ULONG && bt == emc_types::BYTE || 
+                bt == emc_types::ULONG && at == emc_types::BYTE)
+        return emc_type{emc_types::ULONG};
+    else if (   at == emc_types::UINT && bt == emc_types::USHORT || 
+                bt == emc_types::UINT && at == emc_types::USHORT ||
+                at == emc_types::UINT && bt == emc_types::BYTE || 
+                bt == emc_types::UINT && at == emc_types::BYTE)
+        return emc_type{emc_types::UINT};
+    else if (   at == emc_types::USHORT && bt == emc_types::BYTE || 
+                bt == emc_types::USHORT && at == emc_types::BYTE)
+        return emc_type{emc_types::USHORT};
     return emc_type{emc_types::INVALID};
 }
 
@@ -358,9 +417,15 @@ void init_builtin_functions()
 void init_builtin_types()
 {
     extern scope_stack resolve_scope;
-/*
-    resolve_scope.get_top_scope().push_type(new type_double);
-    resolve_scope.get_top_scope().push_type(new type_int);
-    resolve_scope.get_top_scope().push_type(new type_string);*/
+ 
+    resolve_scope.push_type("Byte", {emc_types::BYTE});
+    resolve_scope.push_type("Short", {emc_types::SHORT});
+    resolve_scope.push_type("Ushort", {emc_types::USHORT});
+    resolve_scope.push_type("Int", {emc_types::INT});
+    resolve_scope.push_type("Uint", {emc_types::UINT});
+    resolve_scope.push_type("Long", {emc_types::LONG});
+    resolve_scope.push_type("Ulong", {emc_types::ULONG});
+    resolve_scope.push_type("Double", {emc_types::DOUBLE});
+    resolve_scope.push_type("Float", {emc_types::FLOAT});
 }
 

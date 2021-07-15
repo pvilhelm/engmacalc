@@ -1,0 +1,62 @@
+
+/* Filters */
+
+List<Int> list = [1,2,3,4]
+
+/* . */
+list.filter(Args ...) statement
+/* <- */
+list <- filter (Args ...) statement
+/* .. */
+list .. filter(Args args) statement
+
+list .. filter(Args args) statement ..filter(Args args) statement
+
+list.each( FUNC(Int i) DO println(i) END) //Function
+list.each(Int i) println(i)            //expression
+list.each(Int i) DO println(it) END    //statement
+
+list.each_with_index(Int val, Int idx) DO println("$i $idx") END
+
+list.reduce(Int acc, Int val) DO 
+    acc += val
+END
+
+list.every(Int val) DO RETURN val != 0 END
+list.every(Int val) RETURN val != 0
+
+
+Bool any_true = list.any(Int val) RETURN val != 0
+Bool any_true = list.any(Int val) val != 0
+Bool any_foo = list.any(Int val) DO
+    IF val == "foo" DO
+        RETURN TRUE
+    ELSE DO
+        RETURN FALSE
+    END
+END
+
+
+Bool any_true = FALSE
+FOR Int val FROM list DO
+    IF val != 0 DO
+        any_true = TRUE
+    END
+END
+
+list.remove_all(Int val) val > 10
+list.remove_first(Int val) val > 10
+list.remove_last(Int val) val > 10
+
+list.count(Int val) val > 2
+
+list.max(Foo bar) bar.n_things
+
+RECORD book
+    String title
+    String author
+    
+    String isbn
+    Map<String, Array<Byte>> figures
+    String text
+END
