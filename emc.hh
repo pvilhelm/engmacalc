@@ -74,7 +74,8 @@ enum class ast_type {
     XNOR,
     NOT,
     TYPE,
-    STRUCT
+    STRUCT,
+    DOTOPERATOR
 };
 
 enum class object_type {
@@ -85,11 +86,13 @@ enum class object_type {
     INT,
     UINT,
     BYTE,
+    SBYTE,
     SHORT,
     USHORT,
     FLOAT,
     LONG,
-    ULONG
+    ULONG,
+    BOOL
 };
 
 enum class emc_types {
@@ -355,6 +358,7 @@ public:
 
     obj* find_object(std::string name, std::string nspace)
     {
+        /* TODO: Map ist för vec? */
         for (auto p : vec_objs)
             if (p->name == name && p->nspace == nspace)
                 return p;
@@ -410,16 +414,19 @@ public:\
     }\
 };\
 
-/* TODO: Architecture independent types ie. uint8_t etc */
 OBJCLASS_DEF(object_string, object_type::STRING, emc_type{emc_types::STRING}, std::string)
 OBJCLASS_DEF(object_double, object_type::DOUBLE, emc_type{emc_types::DOUBLE}, double)
+OBJCLASS_DEF(object_float, object_type::FLOAT, emc_type{emc_types::FLOAT}, float)
+OBJCLASS_DEF(object_long, object_type::LONG, emc_type{emc_types::LONG}, int64_t)
+OBJCLASS_DEF(object_ulong, object_type::ULONG, emc_type{emc_types::ULONG}, uint64_t)
 OBJCLASS_DEF(object_int, object_type::INT, emc_type{emc_types::INT}, int32_t)
 OBJCLASS_DEF(object_uint, object_type::UINT, emc_type{emc_types::UINT}, uint32_t)
 OBJCLASS_DEF(object_short, object_type::SHORT, emc_type{emc_types::SHORT}, int16_t)
 OBJCLASS_DEF(object_ushort, object_type::USHORT, emc_type{emc_types::USHORT}, uint16_t)
+OBJCLASS_DEF(object_byte, object_type::BYTE, emc_type{emc_types::BYTE}, uint8_t)
+OBJCLASS_DEF(object_sbyte, object_type::SBYTE, emc_type{emc_types::SBYTE}, int8_t)
+OBJCLASS_DEF(object_bool, object_type::BOOL, emc_type{emc_types::BOOL}, bool)
 
-OBJCLASS_DEF(object_long, object_type::LONG, emc_type{emc_types::LONG}, int64_t)
-OBJCLASS_DEF(object_ulong, object_type::ULONG, emc_type{emc_types::ULONG}, uint64_t)
 
 
 class object_func_base: public obj {
@@ -513,7 +520,7 @@ public:
     ast_node_double_literal(std::string s)
     {
         type = ast_type::DOUBLE_LITERAL;
-        d = stof(s);
+        d = stod(s);
     }
     ~ast_node_double_literal()
     {
@@ -1919,8 +1926,26 @@ public:
         obj *od = nullptr;
         if (type.is_double())
             od = new object_double{var_name, 0};
+        else if (type.is_float())
+            od = new object_float{var_name, 0};
+        else if (type.is_long())
+            od = new object_long{var_name, 0};
         else if (type.is_int())
             od = new object_int{var_name, 0};
+        else if (type.is_short())
+            od = new object_short{var_name, 0};
+        else if (type.is_sbyte())
+            od = new object_sbyte{var_name, 0};
+        else if (type.is_bool())
+            od = new object_bool{var_name, 0};
+        else if (type.is_ulong())
+            od = new object_ulong{var_name, 0};
+        else if (type.is_uint())
+            od = new object_uint{var_name, 0};
+        else if (type.is_ushort())
+            od = new object_ushort{var_name, 0};
+        else if (type.is_byte())
+            od = new object_byte{var_name, 0};
         else
             throw std::runtime_error("Type not implemented ast_node_def");
         resolve_scope.get_top_scope().push_object(od);
@@ -1935,6 +1960,35 @@ public:
     emc_type resolve_no_push()
     {
         return value_type = string_to_type(type_name);
+    }
+};
+
+class ast_node_dotop: public ast_node {
+public:
+    ast_node_dotop(ast_node *first, ast_node *sec) :
+            first(first), sec(sec)
+    {
+        type = ast_type::DOTOPERATOR;
+    }
+    ~ast_node_dotop()
+    {
+        delete first;
+        delete sec;
+    }
+    
+    ast_node *first;
+    ast_node *sec;
+
+    emc_type resolve()
+    {
+        return value_type = sec->resolve();
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_dotop { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
     }
 };
 

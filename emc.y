@@ -250,7 +250,8 @@ exp: exp '+' exp             {$$ = new ast_node_add{$1, $3};}
     | exp '-' exp           {$$ = new ast_node_sub{$1, $3};}
     | exp '*' exp           {$$ = new ast_node_mul{$1, $3};}
     | exp '/' exp           {$$ = new ast_node_rdiv{$1, $3};}
-
+    | exp '.' exp           {$$ = new ast_node_dotop{$1, $3};}
+    
     | exp AND exp           {$$ = new ast_node_and{$1, $3};}
     | exp OR exp            {$$ = new ast_node_or{$1, $3};}
     | exp XOR exp           {$$ = new ast_node_xor{$1, $3};}

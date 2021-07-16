@@ -1461,6 +1461,7 @@ void jit::walk_tree_def(ast_node *node,
     auto *ast_def = dynamic_cast<ast_node_def*>(node);
     /* Global or local? */
     if (scope_n_nested() == 1) { /* Global */
+    /* TODO: Exekveras denna aldrig? */
         gcc_jit_type *var_type = emc_type_to_jit_type(ast_def->value_type);
         gcc_jit_lvalue *lval = gcc_jit_context_new_global(
                 context, 0, GCC_JIT_GLOBAL_EXPORTED,
@@ -1488,13 +1489,31 @@ void jit::walk_tree_def(ast_node *node,
         /* Assign the value */
         gcc_jit_block_add_assignment(*current_block, 0, lval, cast_rv);
 
-        /* TODO: Bör göras i emc.hh */
+        /* TODO: Bör göras i emc.hh ast_node_def, eller tvärt om? Dup logik */
         extern scope_stack resolve_scope;
         obj *od = nullptr;
         if (ast_def->value_type.is_double())
             od = new object_double{ast_def->var_name, 0};
+        else if (ast_def->value_type.is_float())
+            od = new object_float{ast_def->var_name, 0};
+        else if (ast_def->value_type.is_long())
+            od = new object_long{ast_def->var_name, 0};
         else if (ast_def->value_type.is_int())
             od = new object_int{ast_def->var_name, 0};
+        else if (ast_def->value_type.is_short())
+            od = new object_short{ast_def->var_name, 0};
+        else if (ast_def->value_type.is_sbyte())
+            od = new object_sbyte{ast_def->var_name, 0};
+        else if (ast_def->value_type.is_bool())
+            od = new object_bool{ast_def->var_name, 0};
+        else if (ast_def->value_type.is_ulong())
+            od = new object_ulong{ast_def->var_name, 0};
+        else if (ast_def->value_type.is_uint())
+            od = new object_uint{ast_def->var_name, 0};
+        else if (ast_def->value_type.is_ushort())
+            od = new object_ushort{ast_def->var_name, 0};
+        else if (ast_def->value_type.is_byte())
+            od = new object_byte{ast_def->var_name, 0};
         else
             throw std::runtime_error("Type not implemented walk_tree_def");
         resolve_scope.get_top_scope().push_object(od);
