@@ -23,7 +23,30 @@
 #define BOOL_TYPE this->types->bool_type
 
 /* map of gccstructobjects to typename for Engma structs */
-std::map<std::string, gcc_jit_struct*> map_structtypename_to_gccstructobj;
+struct struct_wrapper {
+    gcc_jit_struct *gccjit_struct = nullptr;
+    std::string name;
+
+    std::vector<std::string> field_names;
+    std::vector<gcc_jit_field*> gccjit_fields;
+
+    void add_field(std::string name, gcc_jit_field* field) 
+    {
+        field_names.push_back(name);
+        gccjit_fields.push_back(field);
+    }
+
+    gcc_jit_field* get_field(std::string name)
+    {
+        DEBUG_ASSERT_NOTNULL(gccjit_struct);
+        for (int i = 0; i < field_names.size(); i++)
+            if (field_names[i] == name)
+                return gccjit_fields[i];
+        throw std::runtime_error("Struct " + this->name + " has no field " + name);
+    }
+};
+
+std::map<std::string, struct_wrapper> map_structtypename_to_gccstructobj;
 
 
 std::string new_unique_name(std::string prefix = "")
@@ -282,7 +305,14 @@ gcc_jit_type* jit::emc_type_to_jit_type(emc_type t)
         return UCHAR_TYPE;
     else if (t.is_void())
         return VOID_TYPE;
-    else
+    else if (t.is_struct()) {
+        std::string struct_name = t.name;
+        auto sw = map_structtypename_to_gccstructobj.find(struct_name);
+        if (sw == map_structtypename_to_gccstructobj.end())
+            throw std::runtime_error("Struct " + struct_name + " not defined");
+        
+        return gcc_jit_struct_as_type(sw->second.gccjit_struct);
+    } else
         DEBUG_ASSERT(false, "Not implemented");
     return 0;
 }
@@ -1353,14 +1383,10 @@ void jit::walk_tree_assign(ast_node *node,
                         gcc_jit_function **current_function, 
                         gcc_jit_rvalue **current_rvalue)
 {
-    /* A double literal is an rvalue. */
+    DEBUG_ASSERT_NOTNULL(current_rvalue);
     DEBUG_ASSERT(node != nullptr, "node was null");
     auto ass_node = dynamic_cast<ast_node_assign*>(node);
     DEBUG_ASSERT(ass_node != nullptr, "ass_node was null");
-
-    /* TODO: There should be support for rval lval here for eg getter fncs, and array access etc */
-    auto lval = dynamic_cast<ast_node_var*>(ass_node->first);
-    DEBUG_ASSERT(lval != nullptr, "Other types of left hand sides in assigned not implemented");
 
     /* Resolve the rval of the assignment */
     gcc_jit_rvalue *rval = nullptr;
@@ -1369,12 +1395,36 @@ void jit::walk_tree_assign(ast_node *node,
     if (last_block != *current_block) { /* Atleast one block was added */
         *current_block = last_block; /* Point the head to the last block added */
     }
-    /* Resolve the lval */
-    auto gcc_lval = find_lval_in_scopes(lval->name);
-    if (gcc_lval == nullptr)
-        std::runtime_error("Could not resolve lval of object: " + lval->name);    
 
-    gcc_jit_type *lv_as_rv_t = gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(gcc_lval));
+    gcc_jit_lvalue *assign_lv = nullptr;
+    /* TODO: There should be support for rval lval here for eg getter fncs, and array access etc */
+    if (ass_node->first->type == ast_type::DOTOPERATOR) {
+        auto dotop_node = dynamic_cast<ast_node_dotop*>(ass_node->first);
+        DEBUG_ASSERT_NOTNULL(dotop_node);
+        DEBUG_ASSERT(dotop_node->first->value_type.is_struct(), "Value type not struct");
+
+        gcc_jit_lvalue* left_lv = nullptr;
+        walk_tree(dotop_node->first, current_block, current_function, 0, &left_lv);
+        DEBUG_ASSERT_NOTNULL(left_lv);
+
+        /* Find the struct definition */
+        auto gcc_struct_it = map_structtypename_to_gccstructobj.find(dotop_node->first->value_type.name);
+                if (gcc_struct_it == map_structtypename_to_gccstructobj.end())
+                    throw std::runtime_error("Cant find struct type: " + dotop_node->first->value_type.name);
+        /* Get the field */
+        gcc_jit_field *field = gcc_struct_it->second.get_field(dotop_node->field_name);
+        assign_lv = gcc_jit_lvalue_access_field(left_lv, 0, field);
+    } else {
+        auto lval = dynamic_cast<ast_node_var*>(ass_node->first);
+        DEBUG_ASSERT(lval != nullptr, "Other types of left hand sides in assigned not implemented");
+
+        /* Resolve the lval */
+        assign_lv = find_lval_in_scopes(lval->name);
+        if (assign_lv == nullptr)
+            std::runtime_error("Could not resolve lval of object: " + lval->name);    
+    }
+    
+    gcc_jit_type *lv_as_rv_t = gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(assign_lv));
     gcc_jit_type *rv_t = gcc_jit_rvalue_get_type(rval);
 
     gcc_jit_rvalue *casted_rval = nullptr;
@@ -1384,19 +1434,61 @@ void jit::walk_tree_assign(ast_node *node,
         casted_rval = gcc_jit_context_new_cast(context, 0, rval, lv_as_rv_t);
     }
     /* Add the assignment */
-    gcc_jit_block_add_assignment(*current_block, 0, gcc_lval, casted_rval);
-    
+    gcc_jit_block_add_assignment(*current_block, 0, assign_lv, casted_rval);
+
+    /* The value of an assignment is the rvalue */
+    *current_rvalue = casted_rval;    
 }
 
-std::string walk_tree_type_typename;
-void jit::walk_tree_struct(ast_node *node, 
+/* TODO: walk_tree_xx should really return lvalues if they can. */
+/* TODO: Should the default be lvalue in the tree walk? If a lvalue is converted to a
+         rvalue will it mess up stuff? */
+void jit::walk_tree_dotop(  ast_node *node, 
+                            gcc_jit_block **current_block, 
+                            gcc_jit_function **current_function, 
+                            gcc_jit_rvalue **current_rvalue,
+                            gcc_jit_lvalue **current_lvalue)
+{
+    DEBUG_ASSERT(!(current_rvalue && current_lvalue), "Can't produce both r- and lvalue");
+    DEBUG_ASSERT(current_rvalue || current_lvalue, "Both rvalue and lvalue is null");
+    DEBUG_ASSERT_NOTNULL(node);
+    auto var_dotop = dynamic_cast<ast_node_dotop*>(node);
+    DEBUG_ASSERT_NOTNULL(var_dotop);
+
+    gcc_jit_rvalue* left_rv = nullptr;
+    gcc_jit_lvalue* left_lv = nullptr;
+    if (current_rvalue) { /* Caller wants a lvalue */
+        walk_tree(var_dotop->first, current_block, current_function, &left_rv);
+        DEBUG_ASSERT_NOTNULL(left_rv);
+    } else { /* Caller wants a rvalue */
+        walk_tree(var_dotop->first, current_block, current_function, 0, &left_lv);
+        DEBUG_ASSERT_NOTNULL(left_lv);
+    }
+
+    if (var_dotop->first->value_type.is_struct()) {
+        /* Find the struct definition */
+        auto gcc_struct_it = map_structtypename_to_gccstructobj.find(var_dotop->first->value_type.name);
+                if (gcc_struct_it == map_structtypename_to_gccstructobj.end())
+                    throw std::runtime_error("Cant find struct type: " + var_dotop->first->value_type.name);
+        /* Get the field */
+        gcc_jit_field *field = gcc_struct_it->second.get_field(var_dotop->field_name);
+
+        if (current_lvalue) /* Caller wants a lvalue */
+            *current_lvalue = gcc_jit_lvalue_access_field(left_lv, 0, field);
+        else /* Caller wants a rvalue */
+            *current_rvalue = gcc_jit_rvalue_access_field(left_rv, 0, field); 
+    } else
+        throw std::runtime_error("walk_tree_dotop(): Not implemented");
+}
+
+void jit::walk_tree_struct( ast_node *node, 
                             gcc_jit_block **current_block, 
                             gcc_jit_function **current_function, 
                             gcc_jit_rvalue **current_rvalue)
 {
-    DEBUG_ASSERT(node != nullptr, "node was null");
+    DEBUG_ASSERT_NOTNULL(node);
     auto var_struct = dynamic_cast<ast_node_struct_def*>(node);
-    DEBUG_ASSERT(var_struct != nullptr, "var_struct was null");
+    DEBUG_ASSERT_NOTNULL(var_struct);
 }
 
 void jit::walk_tree_type(   ast_node *node, 
@@ -1409,7 +1501,7 @@ void jit::walk_tree_type(   ast_node *node,
     DEBUG_ASSERT(var_type != nullptr, "var_type was null");
 
     if (var_type->first->type == ast_type::STRUCT) {
-        walk_tree_type_typename = var_type->type_name;
+        std::string walk_tree_type_typename = var_type->type_name;
 
         walk_tree(var_type->first, current_block, current_function, current_rvalue);
 
@@ -1417,22 +1509,26 @@ void jit::walk_tree_type(   ast_node *node,
         auto var_struct = dynamic_cast<ast_node_struct_def*>(var_type->first);
         DEBUG_ASSERT(var_struct != nullptr, "var_struct was null");
 
+        /* A container to store the gcc_jit struct with its fields and names. */
+        struct_wrapper sw;
         /* Create a c-struct corrensponding to the struct */
-        std::vector<gcc_jit_field*> v_fields;
         for (auto e : var_struct->v_fields) {
             const char *field_name = e->var_name.c_str();
             gcc_jit_type *field_type = emc_type_to_jit_type(string_to_type(e->type_name));
             gcc_jit_field *field = gcc_jit_context_new_field(context, 0, field_type, field_name);
-            v_fields.push_back(field);
+            sw.add_field(field_name, field);
         }
         gcc_jit_struct *str = gcc_jit_context_new_struct_type(context, 0, 
                             walk_tree_type_typename.c_str(), 
-                            v_fields.size(), v_fields.data());
+                            sw.gccjit_fields.size(), sw.gccjit_fields.data());
+        sw.gccjit_struct = str;
+        sw.name = walk_tree_type_typename;
         /* Add the struct to the structmap */
         if (map_structtypename_to_gccstructobj.find(walk_tree_type_typename) !=
             map_structtypename_to_gccstructobj.end())
             throw std::runtime_error("STRUCT " + walk_tree_type_typename + " allready exists");
-        map_structtypename_to_gccstructobj[walk_tree_type_typename] = str;
+ 
+        map_structtypename_to_gccstructobj[walk_tree_type_typename] = sw;
     } else
         throw std::runtime_error("Not implemented walk_tree_type");
 }
@@ -1440,7 +1536,8 @@ void jit::walk_tree_type(   ast_node *node,
 void jit::walk_tree_var(ast_node *node, 
                         gcc_jit_block **current_block, 
                         gcc_jit_function **current_function, 
-                        gcc_jit_rvalue **current_rvalue)
+                        gcc_jit_rvalue **current_rvalue,
+                        gcc_jit_lvalue **current_lvalue)
 {
     DEBUG_ASSERT(node != nullptr, "node was null");
     auto var_node = dynamic_cast<ast_node_var*>(node);
@@ -1450,7 +1547,12 @@ void jit::walk_tree_var(ast_node *node,
     if (!lval)
         throw std::runtime_error("Could not resolve lval in the current scope: " + var_node->name);
 
-    *current_rvalue = gcc_jit_lvalue_as_rvalue(lval);
+    if (current_rvalue)
+        *current_rvalue = gcc_jit_lvalue_as_rvalue(lval);
+    else if (current_lvalue)
+        *current_lvalue = lval;
+    else
+        throw std::runtime_error("Bug");
 }
 
 void jit::walk_tree_def(ast_node *node, 
@@ -1461,7 +1563,7 @@ void jit::walk_tree_def(ast_node *node,
     auto *ast_def = dynamic_cast<ast_node_def*>(node);
     /* Global or local? */
     if (scope_n_nested() == 1) { /* Global */
-    /* TODO: Exekveras denna aldrig? */
+        /* TODO: Exekveras denna aldrig? */
         gcc_jit_type *var_type = emc_type_to_jit_type(ast_def->value_type);
         gcc_jit_lvalue *lval = gcc_jit_context_new_global(
                 context, 0, GCC_JIT_GLOBAL_EXPORTED,
@@ -1469,25 +1571,44 @@ void jit::walk_tree_def(ast_node *node,
                 ast_def->var_name.c_str());
         push_lval(ast_def->var_name, lval);
 
-        gcc_jit_rvalue *rv_assignment = nullptr;
-        walk_tree(ast_def->value_node, current_block, current_function, &rv_assignment);
-        /* Cast to the global's type */
-        gcc_jit_rvalue *cast_rv = gcc_jit_context_new_cast(context, 0, rv_assignment, var_type);
-        /* Assign the value in the root_block (i.e. not really like a filescope var in c */
-        gcc_jit_block_add_assignment(root_block, 0, lval, cast_rv);
+        if (ast_def->value_node) {
+            if (!ast_def->value_type.is_primitive())
+                throw std::runtime_error("Not implemented yet");
+            gcc_jit_rvalue *rv_assignment = nullptr;
+            walk_tree(ast_def->value_node, current_block, current_function, &rv_assignment);
+            /* Cast to the global's type */
+            gcc_jit_rvalue *cast_rv = gcc_jit_context_new_cast(context, 0, rv_assignment, var_type);
+            /* Assign the value in the root_block (i.e. not really like a filescope var in c */
+            gcc_jit_block_add_assignment(root_block, 0, lval, cast_rv); /* TODO: USe new initializer in gcc_jit instead? */
+        }
        
     } else { /* Local */
         gcc_jit_type *var_type = emc_type_to_jit_type(ast_def->value_type);
         gcc_jit_lvalue *lval = gcc_jit_function_new_local(*current_function, 0, var_type, ast_def->var_name.c_str());
         push_lval(ast_def->var_name, lval);
 
-        /* TODO: Add default assignment */
-        gcc_jit_rvalue *rv_assignment = nullptr;
-        walk_tree(ast_def->value_node, current_block, current_function, &rv_assignment);
-        /* Cast to the local's type */
-        gcc_jit_rvalue *cast_rv = gcc_jit_context_new_cast(context, 0, rv_assignment, var_type);
-        /* Assign the value */
-        gcc_jit_block_add_assignment(*current_block, 0, lval, cast_rv);
+        /* Is there a "= blabla" */
+        if (ast_def->value_node) {
+            if (ast_def->value_type.is_primitive()) {
+                gcc_jit_rvalue *rv_assignment = nullptr;
+                walk_tree(ast_def->value_node, current_block, current_function, &rv_assignment);
+                /* Cast to the local's type */
+                gcc_jit_rvalue *cast_rv = gcc_jit_context_new_cast(context, 0, rv_assignment, var_type);
+                /* Assign the value */
+                gcc_jit_block_add_assignment(*current_block, 0, lval, cast_rv);
+            } else
+                throw std::runtime_error("Not implemented");
+        } else { /* Default initialization, i.e. 0 for primitive types. */
+            if (ast_def->value_type.is_primitive()) {
+                gcc_jit_rvalue *rv_assignment = nullptr;
+                rv_assignment = gcc_jit_context_zero(context, var_type);
+                /* Assign the value */
+                gcc_jit_block_add_assignment(*current_block, 0, lval, rv_assignment);
+            } else if (ast_def->value_type.is_struct()) {
+                /* TODO: Zero fields */
+            } else 
+                throw std::runtime_error("Not implemented");
+        }
 
         /* TODO: Bör göras i emc.hh ast_node_def, eller tvärt om? Dup logik */
         extern scope_stack resolve_scope;
@@ -1557,6 +1678,7 @@ void jit::walk_tree_doblock(    ast_node *node,
     if (last_block != *current_block) { /* Atleast one block was added */
         *current_block = last_block; /* Point the head to the last block added */
     } else if (0 && rval) { /* There was only expressions so add it/them to the current block. */
+        /* TODO: Remove. Is commented out? */
         gcc_jit_block_add_eval(*current_block, 0, rval);
     }
     /* The last rval of the expression list is its value. */
@@ -1606,7 +1728,7 @@ void jit::walk_tree_if(ast_node *node,
     gcc_jit_block_end_with_conditional(*current_block, 0, bool_cond_rv, if_block, else_block);
 
     /* The last block in the if and else part need to jump to the after_block,
-        * unless both the if and else block are terminated. */
+     * unless both the if and else block are terminated. */
     if (!if_was_terminated || !else_was_terminated) {
         gcc_jit_block *after_block = gcc_jit_function_new_block(*current_function, new_unique_name("after_block").c_str());
         if (!if_was_terminated)
@@ -1617,7 +1739,7 @@ void jit::walk_tree_if(ast_node *node,
         *current_block = after_block;
     } else {
         /* Both the if and else was terminated so there can be no after-block. I.e.
-            * both returned. */
+         * both returned. */
         v_block_terminated.back() = true;
     }    
 }
@@ -1776,7 +1898,7 @@ void jit::walk_tree(ast_node *node,
     } else if (type == ast_type::ASSIGN) {
         walk_tree_assign(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::VAR) {
-        walk_tree_var(node, current_block, current_function, current_rvalue);
+        walk_tree_var(node, current_block, current_function, current_rvalue, current_lvalue);
     } else if(type == ast_type::DEF) {
         walk_tree_def(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::EXPLIST) {
@@ -1807,6 +1929,8 @@ void jit::walk_tree(ast_node *node,
         walk_tree_type(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::STRUCT) {
         walk_tree_struct(node, current_block, current_function, current_rvalue);
+    } else if (type == ast_type::DOTOPERATOR) {
+        walk_tree_dotop(node, current_block, current_function, current_rvalue, current_lvalue);
     } else
         throw std::runtime_error("walk_tree not implemented: " + std::to_string((int)node->type));
 }

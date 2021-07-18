@@ -198,7 +198,8 @@ se: e                           {$$ = $1;}
     						{ $$ = new ast_node_while{$2, $4};}
     | WHILE e DO exp_list ELSE exp_list END 
     						{ $$ = new ast_node_while{$2, $4, $6};}
-    | vardef '=' se         { $$ = $1; dynamic_cast<ast_node_def*>($1)->value_node = $3;}   						
+    | vardef '=' se         { $$ = $1; dynamic_cast<ast_node_def*>($1)->value_node = $3;}
+    | vardef                { $$ = $1;}
     ;
     
 /* A list of ifelses */
@@ -250,7 +251,7 @@ exp: exp '+' exp             {$$ = new ast_node_add{$1, $3};}
     | exp '-' exp           {$$ = new ast_node_sub{$1, $3};}
     | exp '*' exp           {$$ = new ast_node_mul{$1, $3};}
     | exp '/' exp           {$$ = new ast_node_rdiv{$1, $3};}
-    | exp '.' exp           {$$ = new ast_node_dotop{$1, $3};}
+    | exp '.' NAME          {$$ = new ast_node_dotop{$1, *$3}; delete $3;}
     
     | exp AND exp           {$$ = new ast_node_and{$1, $3};}
     | exp OR exp            {$$ = new ast_node_or{$1, $3};}

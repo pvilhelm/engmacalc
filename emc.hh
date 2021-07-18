@@ -92,7 +92,8 @@ enum class object_type {
     FLOAT,
     LONG,
     ULONG,
-    BOOL
+    BOOL,
+    STRUCT
 };
 
 enum class emc_types {
@@ -199,8 +200,24 @@ struct emc_type {
         if (types.size() && types[0] == emc_types::STRUCT) return true;
         return false;
     }
+    bool is_primitive()
+    {
+        return is_double() || is_int() || is_short() || is_sbyte() || is_byte() ||
+                is_uint() || is_ushort() || is_long() || is_ulong() || is_float() ||
+                is_bool() || is_ushort();
+    }
     /* For structs etc with children types. */
     std::vector<emc_type> children_types;
+    /* Used for fields in structs etc. */
+    std::string name;
+
+    emc_type find_type_of_child(std::string name)
+    {
+        for (auto child_type : children_types)
+            if (child_type.name == name)
+                return child_type;
+        throw std::runtime_error("Type " + this->name + " has no child " + name);
+    }
     
     /* TODO: Should be flags for const etc instead? Do a "root type" and then have
              vector only for structs etc. */
@@ -427,7 +444,32 @@ OBJCLASS_DEF(object_byte, object_type::BYTE, emc_type{emc_types::BYTE}, uint8_t)
 OBJCLASS_DEF(object_sbyte, object_type::SBYTE, emc_type{emc_types::SBYTE}, int8_t)
 OBJCLASS_DEF(object_bool, object_type::BOOL, emc_type{emc_types::BOOL}, bool)
 
+class object_struct: public obj {
+public:
+    ~object_struct()
+    {
+    }
+    
+    object_struct(std::string name, std::string nspace, emc_type struct_type)
+        : struct_type(struct_type)
+    {
+        type = object_type::STRUCT;
+        this->name = name;
+        this->nspace = nspace;
+    }
+    
+    object_struct() :
+            object_struct("", "", emc_type{emc_types::STRUCT})
+    {
+    }
 
+    emc_type struct_type;
+
+    emc_type resolve()
+    {
+        return struct_type;
+    }
+};
 
 class object_func_base: public obj {
 public:
@@ -1946,6 +1988,8 @@ public:
             od = new object_ushort{var_name, 0};
         else if (type.is_byte())
             od = new object_byte{var_name, 0};
+        else if (type.is_struct())
+            od = new object_struct{var_name, "", type};
         else
             throw std::runtime_error("Type not implemented ast_node_def");
         resolve_scope.get_top_scope().push_object(od);
@@ -1965,61 +2009,42 @@ public:
 
 class ast_node_dotop: public ast_node {
 public:
-    ast_node_dotop(ast_node *first, ast_node *sec) :
-            first(first), sec(sec)
+    ast_node_dotop(ast_node *first, std::string field_name) :
+            first(first), field_name(field_name)
     {
         type = ast_type::DOTOPERATOR;
     }
     ~ast_node_dotop()
     {
         delete first;
-        delete sec;
     }
     
     ast_node *first;
-    ast_node *sec;
+    std::string field_name;
 
     emc_type resolve()
     {
-        return value_type = sec->resolve();
+        extern scope_stack resolve_scope;
+
+        first->resolve();
+
+        auto struct_type = first->value_type;
+        
+        if (!struct_type.is_struct())
+            throw std::runtime_error("Dot operator on non struct");
+
+        return value_type = struct_type.find_type_of_child(field_name);
     }
 
     ast_node* clone()
     {
-        auto c = new ast_node_dotop { first->clone(), sec->clone() };
+        auto c = new ast_node_dotop { first->clone(), field_name};
         c->value_type = value_type;
         return c;
     }
 };
 
 
-class ast_node_type: public ast_node {
-public:
-    ast_node_type(std::string type_name, ast_node *first) :
-        first(first), type_name(type_name)
-    {
-        type = ast_type::TYPE;
-    }
-
-    ~ast_node_type() { delete first; }
-
-    ast_node *first;
-    std::string type_name;
-
-    emc_type resolve()
-    {
-        first->resolve(); 
-        return value_type = emc_type{emc_types::NONE};
-    }
-
-    ast_node* clone()
-    {
-        auto c = new ast_node_type { type_name, first->clone() };
-        c->value_type = value_type;
-        return c;        
-    }
-
-};
 
 class ast_node_struct_def: public ast_node {
 public:
@@ -2054,8 +2079,10 @@ public:
             e->resolve_no_push();
 
         auto t = emc_type{emc_types::STRUCT};
-        for (auto e : v_fields)
+        for (auto e : v_fields) {
             t.children_types.push_back(e->value_type);
+            t.children_types.back().name = e->var_name; /* def nodes does not store var name in type usually*/
+        }
 
         //resolve_scope.push_type(t); //TODO: Need to be in TYPE's ast_node
 
@@ -2068,4 +2095,42 @@ public:
         c->value_type = value_type;
         return c;        
     }
+};
+
+
+class ast_node_type: public ast_node {
+public:
+    ast_node_type(std::string type_name, ast_node *first) :
+        first(first), type_name(type_name)
+    {
+        type = ast_type::TYPE;
+    }
+
+    ~ast_node_type() { delete first; }
+
+    ast_node *first;
+    std::string type_name;
+
+    emc_type resolve()
+    {
+        extern scope_stack resolve_scope;
+
+        first->resolve(); 
+
+        auto struct_node = dynamic_cast<ast_node_struct_def*>(first);
+        /* We need to supply the value type with what the struct is 
+         * is called from here. */
+        struct_node->value_type.name = type_name;
+        resolve_scope.push_type(type_name, struct_node->value_type);
+
+        return value_type = emc_type{emc_types::NONE};
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_type { type_name, first->clone() };
+        c->value_type = value_type;
+        return c;        
+    }
+
 };
