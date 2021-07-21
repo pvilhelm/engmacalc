@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstdarg>
 
+#include "emc_assert.hh"
 #include "emc.hh"
 
 #ifndef NDEBUG
@@ -12,11 +13,29 @@ int value_expr_count;
 emc_type string_to_type(std::string type_name) {
     if (type_name == "Int")
         return emc_type{emc_types::INT};
+    else if (type_name == "Uint")
+        return emc_type{emc_types::UINT};
+    else if (type_name == "Short")
+        return emc_type{emc_types::SHORT};
+    else if (type_name == "Ushort")
+        return emc_type{emc_types::USHORT};
+    else if (type_name == "Byte")
+        return emc_type{emc_types::BYTE};
+    else if (type_name == "Sbyte")
+        return emc_type{emc_types::SBYTE};
+    else if (type_name == "Long")
+        return emc_type{emc_types::LONG};
+    else if (type_name == "Ulong")
+        return emc_type{emc_types::ULONG};
     else if (type_name == "Double")
         return emc_type{emc_types::DOUBLE};
+    else if (type_name == "Float")
+        return emc_type{emc_types::FLOAT};
+    else if (type_name == "Bool")
+        return emc_type{emc_types::BOOL};
     else if (type_name == "String")
         return emc_type{emc_types::STRING};
-    throw std::runtime_error("Not implemented proper types ... ");
+    THROW_NOT_IMPLEMENTED("Not implemented type: " + type_name);
 }
 
 emc_type ast_node_funcdef::resolve()
@@ -113,7 +132,7 @@ emc_type standard_type_promotion(const emc_type &a, const emc_type &b)
 {
     auto ans = standard_type_promotion_or_invalid(a, b);
     if (a.types[0] == emc_types::INVALID)
-        throw std::runtime_error("emc_types has no valid standard promotion");
+        THROW_BUG("emc_types has no valid standard promotion");
     return ans;
 }
 
@@ -121,7 +140,7 @@ emc_type standard_type_promotion(const emc_type &a, const emc_type &b)
 emc_type standard_type_promotion_or_invalid(const emc_type &a, const emc_type &b)
 {
     if (!a.types.size() || !b.types.size())
-            throw std::runtime_error("Either emc_type has no elements");
+        THROW_BUG("Either emc_type has no elements");
 
     auto at = a.types[0];
     auto bt = b.types[0];

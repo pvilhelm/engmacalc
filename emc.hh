@@ -75,7 +75,8 @@ enum class ast_type {
     NOT,
     TYPE,
     STRUCT,
-    DOTOPERATOR
+    DOTOPERATOR,
+    LISTLITERAL
 };
 
 enum class object_type {
@@ -114,7 +115,8 @@ enum class emc_types {
     SHORT,
     USHORT,
     LONG,
-    ULONG
+    ULONG,
+    LISTLIT
 };
 
 struct emc_type {
@@ -206,6 +208,10 @@ struct emc_type {
                 is_uint() || is_ushort() || is_long() || is_ulong() || is_float() ||
                 is_bool() || is_ushort();
     }
+    bool is_listlit()
+    {
+        return types.size() && types[0] == emc_types::LISTLIT;
+    }
     /* For structs etc with children types. */
     std::vector<emc_type> children_types;
     /* Used for fields in structs etc. */
@@ -216,7 +222,7 @@ struct emc_type {
         for (auto child_type : children_types)
             if (child_type.name == name)
                 return child_type;
-        throw std::runtime_error("Type " + this->name + " has no child " + name);
+        THROW_BUG("Type " + this->name + " has no child " + name);
     }
     
     /* TODO: Should be flags for const etc instead? Do a "root type" and then have
@@ -324,7 +330,7 @@ public:
     {
         auto it = map_typename_to_type.find(name);
         if (it != map_typename_to_type.end())
-            throw std::runtime_error("Type " + name + " in map already");
+            THROW_BUG("Type " + name + " in map already");
         map_typename_to_type[name] = type;
     }
     std::vector<scope> vec_scope;
@@ -363,7 +369,7 @@ public:
     void push_object(obj *obj)
     {
         if (find_object(obj->name, obj->nspace))
-            throw std::runtime_error("push_object: Pushing existing object:"
+            THROW_BUG("push_object: Pushing existing object:"
                     + obj->nspace + obj->name);
         vec_objs.push_back(obj);
     }
@@ -603,9 +609,9 @@ public:
 
         if (l > std::numeric_limits<int>::max() ||
             l < std::numeric_limits<int>::min())
-            throw std::runtime_error("Value out of Int range: " + s);
+            THROW_BUG("Value out of Int range: " + s);
         if (errno == ERANGE)
-            throw std::runtime_error("String not an valid Int: " + s);
+            THROW_BUG("String not an valid Int: " + s);
         i = (int)l;
     }
     ~ast_node_int_literal()
@@ -1142,8 +1148,7 @@ public:
         extern scope_stack resolve_scope;
         auto p = resolve_scope.find_object(name, nspace);
         if (!p) /* TODO: Kanske borde throwa "inte hittat än" för att kunna fortsätta? */
-            throw std::runtime_error("Object does not exist: >>" +
-                    nspace + name + "<<");
+            THROW_BUG("Object does not exist: >>" + nspace + name + "<<");
         return value_type = p->resolve();
     }
 
@@ -1259,7 +1264,7 @@ public:
         /* TODO: Fixa så att ctorn inte tar first och att alla element läggs till med append_node */
         auto iter = v_nodes.begin();
         if (iter == v_nodes.end())
-            throw std::runtime_error("Bugg ast_node_explist");
+            THROW_BUG("");
 
         auto pel = new ast_node_explist { (*iter)->clone() };
         pel->value_type = value_type;
@@ -1645,8 +1650,7 @@ public:
         extern scope_stack resolve_scope;
         auto obj = resolve_scope.find_object(name, nspace);
         if (!obj) /* TODO: Kolla så fn */
-            throw std::runtime_error(
-                    "Could not find function " + nspace + " " + name);
+            THROW_BUG("Could not find function " + nspace + " " + name);
         return value_type = obj->resolve();
     }
 };
@@ -1991,7 +1995,7 @@ public:
         else if (type.is_struct())
             od = new object_struct{var_name, "", type};
         else
-            throw std::runtime_error("Type not implemented ast_node_def");
+            THROW_NOT_IMPLEMENTED("Type not implemented ast_node_def");
         resolve_scope.get_top_scope().push_object(od);
  
 
@@ -2031,7 +2035,7 @@ public:
         auto struct_type = first->value_type;
         
         if (!struct_type.is_struct())
-            throw std::runtime_error("Dot operator on non struct");
+            THROW_BUG("Dot operator on non struct");
 
         return value_type = struct_type.find_type_of_child(field_name);
     }
@@ -2133,4 +2137,44 @@ public:
         return c;        
     }
 
+};
+
+class ast_node_listlit: public ast_node {
+public:
+    ~ast_node_listlit()
+    {
+        if (first) delete first;
+    }
+    ast_node_listlit(ast_node *first)
+    :
+            first(first)
+    {
+        type = ast_type::LISTLITERAL;
+    }
+    
+    ast_node *first;
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_listlit { first->clone()};
+        c->value_type = value_type;
+        return c;
+    }
+
+    emc_type resolve()
+    {
+        first->resolve();
+        value_type = emc_type{emc_types::LISTLIT};
+
+        /* Populate the type with the children's types in order */
+        if (first->type == ast_type::ARGUMENT_LIST) {
+            auto arg_list = dynamic_cast<ast_node_arglist*>(first);
+            DEBUG_ASSERT_NOTNULL(arg_list);
+            for (ast_node* node : arg_list->v_ast_args)
+                value_type.children_types.push_back(node->value_type);
+        } else
+            THROW_BUG("Child first is not an arglist");
+
+        return value_type;
+    }
 };

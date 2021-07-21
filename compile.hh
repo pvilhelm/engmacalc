@@ -110,9 +110,18 @@ private:
      * pointing to the original rvalues if no cast was done. 
      * 
      * The return value is of the type promoted to or the original type. */
-    gcc_jit_type* promote_types( gcc_jit_rvalue *a_rv,
+    gcc_jit_type* promote_rvals( gcc_jit_rvalue *a_rv,
                         gcc_jit_rvalue *b_rv,
                         gcc_jit_rvalue **a_casted_rv,
+                        gcc_jit_rvalue **b_casted_rv);
+
+    /* Promote a rval to a specific type. The casted value can be
+     * pointing to the original rvalue if no cast was done. 
+     * 
+     * Throws if the cast is not implicit.
+     */
+    gcc_jit_type* promote_rval( gcc_jit_type *at,
+                        gcc_jit_rvalue *b_rv,
                         gcc_jit_rvalue **b_casted_rv);
 
     /* Returns a rvalue that is a_rv with an cast to target_type applied to it.

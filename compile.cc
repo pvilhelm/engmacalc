@@ -42,7 +42,7 @@ struct struct_wrapper {
         for (int i = 0; i < field_names.size(); i++)
             if (field_names[i] == name)
                 return gccjit_fields[i];
-        throw std::runtime_error("Struct " + this->name + " has no field " + name);
+        THROW_BUG("Struct " + this->name + " has no field " + name);
     }
 };
 
@@ -66,7 +66,7 @@ void jit::push_lval(std::string name, gcc_jit_lvalue* lval)
 {
     auto &scope = get_current_scope();
     if (scope.find(name) != scope.end())
-        throw std::runtime_error("Scope already contains the lval: " + name);
+        THROW_BUG("Scope already contains the lval: " + name);
     scope[name] = lval;
 }
 
@@ -92,7 +92,7 @@ gcc_jit_rvalue* jit::cast_to(gcc_jit_rvalue *a_rv,
 }
 
 /* TODO: Duplicates logic with standard_type_promotion_or_invalid() ? */
-gcc_jit_type* jit::promote_types(gcc_jit_rvalue *a_rv,
+gcc_jit_type* jit::promote_rvals(gcc_jit_rvalue *a_rv,
                         gcc_jit_rvalue *b_rv,
                         gcc_jit_rvalue **a_casted_rv,
                         gcc_jit_rvalue **b_casted_rv)
@@ -269,7 +269,154 @@ gcc_jit_type* jit::promote_types(gcc_jit_rvalue *a_rv,
         }
     
     } else 
-        throw std::runtime_error("Cast not supported");
+        THROW_BUG("Cast not supported");
+}
+
+gcc_jit_type* jit::promote_rval(gcc_jit_type *at,
+                        gcc_jit_rvalue *b_rv,
+                        gcc_jit_rvalue **b_casted_rv)
+{
+    gcc_jit_type *bt = gcc_jit_rvalue_get_type(b_rv);
+
+    /* TODO: Kanske borde göra en LuT för casterna? Typ en map med mapar ... */
+    if (at == bt) { /* Same types no cast needed. */
+        *b_casted_rv = b_rv;
+        return bt;
+    } else if (at == DOUBLE_TYPE || bt == DOUBLE_TYPE) { /* Double has highest prio. */
+        if (at != DOUBLE_TYPE) {
+            THROW_BUG("Invalid implicit cast");
+        } else {
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, DOUBLE_TYPE);
+            return at;
+        }
+    } else if (at == FLOAT_TYPE || bt == FLOAT_TYPE) { /* Float has next highest prio. */
+        if (at != FLOAT_TYPE) {
+            THROW_BUG("Invalid implicit cast");
+        } else {
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, FLOAT_TYPE);
+            return at;
+        }
+    } else if (
+                at == LONG_TYPE && (bt == INT_TYPE || bt == SHORT_TYPE || bt == SCHAR_TYPE || 
+                                    bt == UINT_TYPE || bt == USHORT_TYPE || bt == UCHAR_TYPE || 
+                                    bt == BOOL_TYPE) ||
+                bt == LONG_TYPE && (at == INT_TYPE || at == SHORT_TYPE || at == SCHAR_TYPE || 
+                                    at == UINT_TYPE || at == USHORT_TYPE || at == UCHAR_TYPE || 
+                                    at == BOOL_TYPE)
+              ) 
+     { /* In practice, cast bool to int */
+        if (at != LONG_TYPE) {
+            THROW_BUG("Invalid implicit cast");
+        } else {
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, LONG_TYPE);
+            return at;
+        }
+    } else if (
+                at == INT_TYPE && (bt == SHORT_TYPE || bt == SCHAR_TYPE || 
+                                   bt == USHORT_TYPE || bt == UCHAR_TYPE || 
+                                   bt == BOOL_TYPE) ||
+                bt == INT_TYPE && (at == SHORT_TYPE || at == SCHAR_TYPE || 
+                                   at == USHORT_TYPE || at == UCHAR_TYPE || 
+                                   at == BOOL_TYPE)
+              ) 
+    {
+        if (at != INT_TYPE) {
+            THROW_BUG("Invalid implicit cast");
+        } else {
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, INT_TYPE);
+            return at;
+        }
+    
+    } else if (
+                at == SHORT_TYPE && (bt == SCHAR_TYPE || 
+                                     bt == UCHAR_TYPE || 
+                                     bt == BOOL_TYPE) ||
+                bt == SHORT_TYPE && (at == SCHAR_TYPE || 
+                                     at == UCHAR_TYPE || 
+                                     at == BOOL_TYPE)
+              ) 
+    {
+        if (at != SHORT_TYPE) {
+            THROW_BUG("Invalid implicit cast");
+        } else {
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, SHORT_TYPE);
+            return at;
+        }
+    } else if (
+                at == SCHAR_TYPE && bt == BOOL_TYPE ||
+                bt == SCHAR_TYPE && at == BOOL_TYPE
+              ) 
+    {
+        if (at != SCHAR_TYPE) {
+            THROW_BUG("Invalid implicit cast");
+        } else {
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, SCHAR_TYPE);
+            return at;
+        }
+    } else if (
+                at == ULONG_TYPE && (bt == UINT_TYPE ||
+                                     bt == USHORT_TYPE ||
+                                     bt == UCHAR_TYPE || 
+                                     bt == BOOL_TYPE) ||
+                bt == ULONG_TYPE && (at == UINT_TYPE ||
+                                     at == USHORT_TYPE ||
+                                     at == UCHAR_TYPE || 
+                                     at == BOOL_TYPE)
+              ) 
+    {
+        if (at != ULONG_TYPE) {
+            THROW_BUG("Invalid implicit cast");
+        } else {
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, ULONG_TYPE);
+            return at;
+        }
+    
+    } else if (
+                at == UINT_TYPE && (bt == USHORT_TYPE ||
+                                    bt == UCHAR_TYPE || 
+                                    bt == BOOL_TYPE) ||
+                bt == UINT_TYPE && (at == USHORT_TYPE || 
+                                    at == UCHAR_TYPE || 
+                                    at == BOOL_TYPE)
+              ) 
+    {
+        if (at != UINT_TYPE) {
+            THROW_BUG("Invalid implicit cast");
+        } else {
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, UINT_TYPE);
+            return at;
+        }
+    
+    } else if (
+                at == USHORT_TYPE && (bt == USHORT_TYPE ||
+                                      bt == UCHAR_TYPE || 
+                                      bt == BOOL_TYPE) ||
+                bt == USHORT_TYPE && (at == USHORT_TYPE || 
+                                      at == UCHAR_TYPE || 
+                                      at == BOOL_TYPE)
+              ) 
+    {
+        if (at != USHORT_TYPE) {
+            THROW_BUG("Invalid implicit cast");
+        } else {
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, USHORT_TYPE);
+            return at;
+        }
+    
+    } else if (
+                at == UCHAR_TYPE && bt == BOOL_TYPE ||
+                bt == UCHAR_TYPE && at == BOOL_TYPE
+              ) 
+    {
+        if (at != UCHAR_TYPE) {
+            THROW_BUG("Invalid implicit cast");
+        } else {
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, UCHAR_TYPE);
+            return at;
+        }
+    
+    } else 
+        THROW_BUG("Cast not supported");
 }
 
 void jit::dump(std::string path)
@@ -309,7 +456,7 @@ gcc_jit_type* jit::emc_type_to_jit_type(emc_type t)
         std::string struct_name = t.name;
         auto sw = map_structtypename_to_gccstructobj.find(struct_name);
         if (sw == map_structtypename_to_gccstructobj.end())
-            throw std::runtime_error("Struct " + struct_name + " not defined");
+            THROW_BUG("Struct " + struct_name + " not defined");
         
         return gcc_jit_struct_as_type(sw->second.gccjit_struct);
     } else
@@ -346,17 +493,14 @@ void jit::execute()
     typedef void (*root_fn_p)(void);
     root_fn_p root_func = (root_fn_p)gcc_jit_result_get_code(result, "root_fn");
     if (!root_func)
-    {
-      throw std::runtime_error("NULL root function after JIT compilation");
-    } else
+        THROW_BUG("NULL root function after JIT compilation");
+    else
         root_func();
 
     for (auto e : v_node_fn_names) {
         root_fn_p root_func = (root_fn_p)gcc_jit_result_get_code(result, e.c_str());
         if (!root_func)
-        {
-            throw std::runtime_error("NULL function " + e + " after JIT compilation");
-        }
+            THROW_BUG("NULL function " + e + " after JIT compilation");
         root_func();
     }
 }
@@ -415,10 +559,8 @@ void jit::init_as_root_context()
     /* Init a context */
     context = gcc_jit_context_acquire ();
     if (!context)
-    {
-      std::cerr << STREAM_FILE_FNC_LNO << "Could not acquire jit context";
-      throw std::runtime_error("Could not acquire jit context");
-    }
+        THROW_BUG("Could not acquire jit context");
+
 
     /* Optimazation level. O3 == 3 O0 == 0 */
     gcc_jit_context_set_int_option(context, GCC_JIT_INT_OPTION_OPTIMIZATION_LEVEL, 0);
@@ -518,7 +660,7 @@ void jit::walk_tree_add(ast_node *node, gcc_jit_block **current_block, gcc_jit_f
 
     gcc_jit_rvalue *a_casted_rv = nullptr;
     gcc_jit_rvalue *b_casted_rv = nullptr;
-    gcc_jit_type *result_type = promote_types(a_rv, b_rv, &a_casted_rv, &b_casted_rv);
+    gcc_jit_type *result_type = promote_rvals(a_rv, b_rv, &a_casted_rv, &b_casted_rv);
     DEBUG_ASSERT_NOTNULL(result_type);
     DEBUG_ASSERT(result_type_emc == result_type, "Not anticipated type");
 
@@ -551,7 +693,7 @@ void jit::walk_tree_sub(ast_node *node, gcc_jit_block **current_block, gcc_jit_f
  
     gcc_jit_rvalue *a_casted_rv = nullptr;
     gcc_jit_rvalue *b_casted_rv = nullptr;
-    gcc_jit_type *result_type = promote_types(a_rv, b_rv, &a_casted_rv, &b_casted_rv);
+    gcc_jit_type *result_type = promote_rvals(a_rv, b_rv, &a_casted_rv, &b_casted_rv);
     DEBUG_ASSERT_NOTNULL(result_type);
     DEBUG_ASSERT(result_type_emc == result_type, "Not anticipated type");
 
@@ -586,7 +728,7 @@ void jit::walk_tree_mul(ast_node *node,
 
     gcc_jit_rvalue *a_casted_rv = nullptr;
     gcc_jit_rvalue *b_casted_rv = nullptr;
-    gcc_jit_type *result_type = promote_types(a_rv, b_rv, &a_casted_rv, &b_casted_rv);
+    gcc_jit_type *result_type = promote_rvals(a_rv, b_rv, &a_casted_rv, &b_casted_rv);
     DEBUG_ASSERT_NOTNULL(result_type);
     DEBUG_ASSERT(result_type_emc == result_type, "Not anticipated type");
 
@@ -621,7 +763,7 @@ void jit::walk_tree_rdiv(ast_node *node,
 
     gcc_jit_rvalue *a_casted_rv = nullptr;
     gcc_jit_rvalue *b_casted_rv = nullptr;
-    gcc_jit_type *result_type = promote_types(a_rv, b_rv, &a_casted_rv, &b_casted_rv);
+    gcc_jit_type *result_type = promote_rvals(a_rv, b_rv, &a_casted_rv, &b_casted_rv);
     DEBUG_ASSERT_NOTNULL(result_type);
     DEBUG_ASSERT(result_type_emc == result_type, "Not anticipated type");
 
@@ -1064,7 +1206,7 @@ DEBUG_ASSERT_NOTNULL(a_rv); \
 \
 gcc_jit_rvalue *a_casted_rv = nullptr; \
 gcc_jit_rvalue *b_casted_rv = nullptr; \
-promote_types(a_rv, b_rv, &a_casted_rv, &b_casted_rv); \
+promote_rvals(a_rv, b_rv, &a_casted_rv, &b_casted_rv); \
 \
 gcc_jit_rvalue *rv_result = gcc_jit_context_new_comparison(\
                                 context, nullptr, gcc_jit_type,\
@@ -1188,7 +1330,7 @@ void jit::walk_tree_fcall(ast_node *node,
 
     auto it = map_fnname_to_gccfnobj.find(fcall_node->name);
     if (it == map_fnname_to_gccfnobj.end())
-        throw std::runtime_error("Function " + fcall_node->name + " not defined.");
+        THROW_BUG("Function " + fcall_node->name + " not defined.");
     gcc_jit_function *func = it->second;
 
     /* Find the ast node of the corrensponding function declaration. */
@@ -1196,14 +1338,14 @@ void jit::walk_tree_fcall(ast_node *node,
     obj* fnobj_ = resolve_scope.find_object(fcall_node->name, "");
     object_func *fnobj = dynamic_cast<object_func*>(fnobj_);
     if (!fnobj)
-        throw std::runtime_error("Function " + fcall_node->name + " not defined/found.");
+        THROW_BUG("Function " + fcall_node->name + " not defined/found.");
     auto *par_list = dynamic_cast<ast_node_vardef_list*>(fnobj->para_list);
     DEBUG_ASSERT(par_list != nullptr, "par_list is null");
     auto arg_t = dynamic_cast<ast_node_arglist*>(fcall_node->arg_list);
     DEBUG_ASSERT(arg_t != nullptr, "arg_t is null");
 
     if (par_list->v_defs.size() != arg_t->v_ast_args.size())
-        throw std::runtime_error("Function " + fcall_node->name + " incorrect number of arguments.");
+        THROW_BUG("Function " + fcall_node->name + " incorrect number of arguments.");
 
     std::vector<gcc_jit_rvalue*> v_arg_rv;
     for (int i = 0; i < arg_t->v_ast_args.size(); i++) {
@@ -1296,7 +1438,7 @@ void jit::walk_tree_fdec(ast_node *node,
     if (v_block_terminated.back())
         v_block_terminated.pop_back();
     else
-        throw std::runtime_error("Function's last block not terminated.");
+        THROW_BUG("Function's last block not terminated.");
 
     DEBUG_ASSERT(block_depth == v_block_terminated.size(), "Messup in terminations");
 
@@ -1410,7 +1552,7 @@ void jit::walk_tree_assign(ast_node *node,
         /* Find the struct definition */
         auto gcc_struct_it = map_structtypename_to_gccstructobj.find(dotop_node->first->value_type.name);
                 if (gcc_struct_it == map_structtypename_to_gccstructobj.end())
-                    throw std::runtime_error("Cant find struct type: " + dotop_node->first->value_type.name);
+                    THROW_BUG("Cant find struct type: " + dotop_node->first->value_type.name);
         /* Get the field */
         gcc_jit_field *field = gcc_struct_it->second.get_field(dotop_node->field_name);
         assign_lv = gcc_jit_lvalue_access_field(left_lv, 0, field);
@@ -1469,7 +1611,7 @@ void jit::walk_tree_dotop(  ast_node *node,
         /* Find the struct definition */
         auto gcc_struct_it = map_structtypename_to_gccstructobj.find(var_dotop->first->value_type.name);
                 if (gcc_struct_it == map_structtypename_to_gccstructobj.end())
-                    throw std::runtime_error("Cant find struct type: " + var_dotop->first->value_type.name);
+                    THROW_BUG("Cant find struct type: " + var_dotop->first->value_type.name);
         /* Get the field */
         gcc_jit_field *field = gcc_struct_it->second.get_field(var_dotop->field_name);
 
@@ -1478,7 +1620,7 @@ void jit::walk_tree_dotop(  ast_node *node,
         else /* Caller wants a rvalue */
             *current_rvalue = gcc_jit_rvalue_access_field(left_rv, 0, field); 
     } else
-        throw std::runtime_error("walk_tree_dotop(): Not implemented");
+        THROW_NOT_IMPLEMENTED("walk_tree_dotop(): Not implemented");
 }
 
 void jit::walk_tree_struct( ast_node *node, 
@@ -1526,11 +1668,11 @@ void jit::walk_tree_type(   ast_node *node,
         /* Add the struct to the structmap */
         if (map_structtypename_to_gccstructobj.find(walk_tree_type_typename) !=
             map_structtypename_to_gccstructobj.end())
-            throw std::runtime_error("STRUCT " + walk_tree_type_typename + " allready exists");
+            THROW_BUG("STRUCT " + walk_tree_type_typename + " allready exists");
  
         map_structtypename_to_gccstructobj[walk_tree_type_typename] = sw;
     } else
-        throw std::runtime_error("Not implemented walk_tree_type");
+        THROW_NOT_IMPLEMENTED("Not implemented walk_tree_type");
 }
 
 void jit::walk_tree_var(ast_node *node, 
@@ -1545,72 +1687,134 @@ void jit::walk_tree_var(ast_node *node,
 
     gcc_jit_lvalue *lval = find_lval_in_scopes(var_node->name);
     if (!lval)
-        throw std::runtime_error("Could not resolve lval in the current scope: " + var_node->name);
+        THROW_BUG("Could not resolve lval in the current scope: " + var_node->name);
 
     if (current_rvalue)
         *current_rvalue = gcc_jit_lvalue_as_rvalue(lval);
     else if (current_lvalue)
         *current_lvalue = lval;
     else
-        throw std::runtime_error("Bug");
+        THROW_BUG("");
 }
 
+/* TODO: A bit messy. No support for nested structs */
 void jit::walk_tree_def(ast_node *node, 
                         gcc_jit_block **current_block, 
                         gcc_jit_function **current_function, 
                         gcc_jit_rvalue **current_rvalue)
 {
     auto *ast_def = dynamic_cast<ast_node_def*>(node);
-    /* Global or local? */
-    if (scope_n_nested() == 1) { /* Global */
-        /* TODO: Exekveras denna aldrig? */
-        gcc_jit_type *var_type = emc_type_to_jit_type(ast_def->value_type);
-        gcc_jit_lvalue *lval = gcc_jit_context_new_global(
-                context, 0, GCC_JIT_GLOBAL_EXPORTED,
-                var_type,
-                ast_def->var_name.c_str());
-        push_lval(ast_def->var_name, lval);
+    bool is_file_scope = scope_n_nested() == 1;
+    
+    gcc_jit_type *var_type = nullptr;
+    gcc_jit_lvalue *lval = nullptr;
 
-        if (ast_def->value_node) {
-            if (!ast_def->value_type.is_primitive())
-                throw std::runtime_error("Not implemented yet");
+    if (!is_file_scope) { /* local */
+        var_type = emc_type_to_jit_type(ast_def->value_type);
+        lval = gcc_jit_function_new_local(*current_function, 0, var_type, ast_def->var_name.c_str());
+    } else {
+        var_type = emc_type_to_jit_type(ast_def->value_type);
+        lval = gcc_jit_context_new_global(
+            context, 0, GCC_JIT_GLOBAL_EXPORTED,
+            var_type,
+            ast_def->var_name.c_str());
+    }
+    push_lval(ast_def->var_name, lval);
+
+    /* Is there value node right of a equal sign? "Foo a = blabla" */
+    if (ast_def->value_node) {
+        if (ast_def->value_type.is_primitive()) {
             gcc_jit_rvalue *rv_assignment = nullptr;
             walk_tree(ast_def->value_node, current_block, current_function, &rv_assignment);
-            /* Cast to the global's type */
+            /* Cast to the local's type */
             gcc_jit_rvalue *cast_rv = gcc_jit_context_new_cast(context, 0, rv_assignment, var_type);
-            /* Assign the value in the root_block (i.e. not really like a filescope var in c */
-            gcc_jit_block_add_assignment(root_block, 0, lval, cast_rv); /* TODO: USe new initializer in gcc_jit instead? */
-        }
-       
-    } else { /* Local */
-        gcc_jit_type *var_type = emc_type_to_jit_type(ast_def->value_type);
-        gcc_jit_lvalue *lval = gcc_jit_function_new_local(*current_function, 0, var_type, ast_def->var_name.c_str());
-        push_lval(ast_def->var_name, lval);
+            /* Assign the value */
+            if (is_file_scope)
+                gcc_jit_block_add_assignment(root_block, 0, lval, cast_rv); /* TODO: USe new initializer in gcc_jit instead? */
+            else
+                gcc_jit_block_add_assignment(*current_block, 0, lval, cast_rv);
+        /* For structs */
+        } else if (ast_def->value_type.is_struct()) {
+            /* Assigning a list literal to the struct */
+            if (ast_def->value_node->value_type.is_listlit()) {
+                /* So we have some rvalue expressions that needs to be copied into the cstruct. */
+                auto listlit = dynamic_cast<ast_node_listlit*>(ast_def->value_node);
+                auto arglist = dynamic_cast<ast_node_arglist*>(listlit->first);
+                DEBUG_ASSERT_NOTNULL(arglist);
 
-        /* Is there a "= blabla" */
-        if (ast_def->value_node) {
-            if (ast_def->value_type.is_primitive()) {
+                auto gcc_struct_it = map_structtypename_to_gccstructobj.find(ast_def->value_type.name);
+                if (gcc_struct_it == map_structtypename_to_gccstructobj.end())
+                    THROW_BUG("Cant find struct type: " + ast_def->value_type.name);
+                
+                ASSERT(arglist->v_ast_args.size() == gcc_struct_it->second.gccjit_fields.size(), 
+                    "Arg list node and struct has different number of children");
+                for (int i = 0; i < arglist->v_ast_args.size(); i++) {
+                    ast_node *arg = arglist->v_ast_args[i];
+                    gcc_jit_field *field = gcc_struct_it->second.gccjit_fields[i];
+
+                    gcc_jit_lvalue *field_lv = gcc_jit_lvalue_access_field(lval, 0, field);
+                    gcc_jit_type *field_type = gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(field_lv));
+
+                    gcc_jit_rvalue *rv_arg = nullptr;
+                    walk_tree(arg, current_block, current_function, &rv_arg);
+
+                    gcc_jit_rvalue *rv_arg_casted = nullptr;
+                    promote_rval(field_type, rv_arg, &rv_arg_casted);
+                    if (is_file_scope)
+                        gcc_jit_block_add_assignment(root_block, 0, field_lv, rv_arg_casted); /* TODO: USe new initializer in gcc_jit instead? */
+                    else
+                        gcc_jit_block_add_assignment(*current_block, 0, field_lv, rv_arg_casted);
+                }
+            /* Copy "constructor". */
+            } else if (ast_def->value_node->value_type.is_struct()) {
+                DEBUG_ASSERT(ast_def->value_node->value_type.name == ast_def->value_type.name, "Struct name missmatch");
+                auto gcc_struct_it = map_structtypename_to_gccstructobj.find(ast_def->value_type.name);
+                if (gcc_struct_it == map_structtypename_to_gccstructobj.end())
+                    THROW_BUG("Cant find struct type: " + ast_def->value_type.name);
+                
                 gcc_jit_rvalue *rv_assignment = nullptr;
                 walk_tree(ast_def->value_node, current_block, current_function, &rv_assignment);
-                /* Cast to the local's type */
-                gcc_jit_rvalue *cast_rv = gcc_jit_context_new_cast(context, 0, rv_assignment, var_type);
+                
                 /* Assign the value */
-                gcc_jit_block_add_assignment(*current_block, 0, lval, cast_rv);
+                if (is_file_scope)
+                    gcc_jit_block_add_assignment(root_block, 0, lval, rv_assignment); /* TODO: USe new initializer in gcc_jit instead? */
+                else
+                    gcc_jit_block_add_assignment(*current_block, 0, lval, rv_assignment);
             } else
-                throw std::runtime_error("Not implemented");
-        } else { /* Default initialization, i.e. 0 for primitive types. */
-            if (ast_def->value_type.is_primitive()) {
-                gcc_jit_rvalue *rv_assignment = nullptr;
-                rv_assignment = gcc_jit_context_zero(context, var_type);
-                /* Assign the value */
-                gcc_jit_block_add_assignment(*current_block, 0, lval, rv_assignment);
-            } else if (ast_def->value_type.is_struct()) {
-                /* TODO: Zero fields */
-            } else 
-                throw std::runtime_error("Not implemented");
-        }
+                THROW_NOT_IMPLEMENTED(""); 
+        } else 
+            THROW_NOT_IMPLEMENTED("");
+    /* Default initialization, i.e. 0 for primitive types. */
+    } else { 
+        if (ast_def->value_type.is_primitive()) {
+            gcc_jit_rvalue *rv_assignment = nullptr;
+            rv_assignment = gcc_jit_context_zero(context, var_type);
+            /* Assign the value */
+            gcc_jit_block_add_assignment(*current_block, 0, lval, rv_assignment);
+        } else if (ast_def->value_type.is_struct()) {
+            /* TODO: Zero fields */
+            auto gcc_struct_it = map_structtypename_to_gccstructobj.find(ast_def->value_type.name);
+            if (gcc_struct_it == map_structtypename_to_gccstructobj.end())
+                THROW_BUG("Cant find struct type: " + ast_def->value_type.name);
+    
+            for (gcc_jit_field *field : gcc_struct_it->second.gccjit_fields) {
+                gcc_jit_lvalue *field_lv = gcc_jit_lvalue_access_field(lval, 0, field);
+                gcc_jit_type *field_type = gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(field_lv));
 
-        /* TODO: Bör göras i emc.hh ast_node_def, eller tvärt om? Dup logik */
+                gcc_jit_rvalue *rv_0 = gcc_jit_context_zero(context, field_type);
+                if (is_file_scope)
+                    gcc_jit_block_add_assignment(root_block, 0, field_lv, rv_0); /* TODO: USe new initializer in gcc_jit instead? */
+                else
+                    gcc_jit_block_add_assignment(*current_block, 0, field_lv, rv_0);
+            }
+        } else 
+            THROW_NOT_IMPLEMENTED("");
+    }
+
+    /* TODO: Bör göras i emc.hh ast_node_def, eller tvärt om? Dup logik */
+    /* TODO: Varför behövs de här? Känns fel att skapa nya ast_node grejer.
+     *       bör nog ske på annat sätt. Är nog för funktioners parametrar. */
+    if (!is_file_scope) {
         extern scope_stack resolve_scope;
         obj *od = nullptr;
         if (ast_def->value_type.is_double())
@@ -1635,8 +1839,10 @@ void jit::walk_tree_def(ast_node *node,
             od = new object_ushort{ast_def->var_name, 0};
         else if (ast_def->value_type.is_byte())
             od = new object_byte{ast_def->var_name, 0};
+        else if (ast_def->value_type.is_struct())
+            od = new object_struct{ast_def->var_name, "", ast_def->value_type};
         else
-            throw std::runtime_error("Type not implemented walk_tree_def");
+            THROW_NOT_IMPLEMENTED("Type not implemented walk_tree_def");
         resolve_scope.get_top_scope().push_object(od);
     }
 }
@@ -1932,5 +2138,5 @@ void jit::walk_tree(ast_node *node,
     } else if (type == ast_type::DOTOPERATOR) {
         walk_tree_dotop(node, current_block, current_function, current_rvalue, current_lvalue);
     } else
-        throw std::runtime_error("walk_tree not implemented: " + std::to_string((int)node->type));
+        THROW_NOT_IMPLEMENTED("walk_tree not implemented: " + std::to_string((int)node->type));
 }
