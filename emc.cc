@@ -35,7 +35,44 @@ emc_type string_to_type(std::string type_name) {
         return emc_type{emc_types::BOOL};
     else if (type_name == "String")
         return emc_type{emc_types::STRING};
-    THROW_NOT_IMPLEMENTED("Not implemented type: " + type_name);
+    
+    /* See if it is a user defined type */
+    extern scope_stack resolve_scope;
+
+    return resolve_scope.find_type(type_name); /* Throws if not found */
+}
+
+void push_dummyobject_to_resolve_scope(std::string var_name, emc_type type)
+{
+    extern scope_stack resolve_scope;
+    obj *od = nullptr;
+    if (type.is_double())
+        od = new object_double{var_name, 0};
+    else if (type.is_float())
+        od = new object_float{var_name, 0};
+    else if (type.is_long())
+        od = new object_long{var_name, 0};
+    else if (type.is_int())
+        od = new object_int{var_name, 0};
+    else if (type.is_short())
+        od = new object_short{var_name, 0};
+    else if (type.is_sbyte())
+        od = new object_sbyte{var_name, 0};
+    else if (type.is_bool())
+        od = new object_bool{var_name, 0};
+    else if (type.is_ulong())
+        od = new object_ulong{var_name, 0};
+    else if (type.is_uint())
+        od = new object_uint{var_name, 0};
+    else if (type.is_ushort())
+        od = new object_ushort{var_name, 0};
+    else if (type.is_byte())
+        od = new object_byte{var_name, 0};
+    else if (type.is_struct())
+        od = new object_struct{var_name, "", type};
+    else
+        THROW_NOT_IMPLEMENTED("Type not implemented: " + var_name);
+    resolve_scope.get_top_scope().push_object(od);
 }
 
 emc_type ast_node_funcdef::resolve()
@@ -53,15 +90,8 @@ emc_type ast_node_funcdef::resolve()
         auto par = dynamic_cast<ast_node_def*>(parlist_t->v_defs[i]);
         std::string var_name = par->var_name;
 
-        /* TODO: Måste tänka över typerna lite ... */
-        obj *obj = nullptr;
-        if (par->type_name == "Double")
-            obj = new object_double { var_name, "", 0 };
-        else if (par->type_name == "Int")
-            obj = new object_int { var_name, "", 0 };
-        else
-            throw std::runtime_error("Type not implemented: " + par->type_name);
-        resolve_scope.get_top_scope().push_object(obj);
+        push_dummyobject_to_resolve_scope(var_name, par->value_type);
+        
     }
     code_block->resolve();
     resolve_scope.pop_scope();
@@ -400,10 +430,9 @@ obj* scope_stack::find_object(std::string name, std::string nspace)
 emc_type scope_stack::find_type(std::string name)
 {
     auto it = map_typename_to_type.find(name);
-    if (it == map_typename_to_type.end())
-        throw std::runtime_error("Type not found: " + name);
-    else
-        return it->second;
+    ASSERT(it != map_typename_to_type.end(), "Type not found: " + name);
+        
+    return it->second;
 }
 
 void init_linked_cfunctions()

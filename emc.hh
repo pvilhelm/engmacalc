@@ -2178,3 +2178,5 @@ public:
         return value_type;
     }
 };
+
+void push_dummyobject_to_resolve_scope(std::string var_name, emc_type type);

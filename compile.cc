@@ -46,6 +46,8 @@ struct struct_wrapper {
     }
 };
 
+
+
 std::map<std::string, struct_wrapper> map_structtypename_to_gccstructobj;
 
 
@@ -1411,15 +1413,10 @@ void jit::walk_tree_fdec(ast_node *node,
     /* Add a new scope and push it with the parameter names. */
     extern scope_stack resolve_scope; /* TODO: Borde inte behöva detta i compile.cc ... refactor */
     resolve_scope.push_new_scope();
-    auto &top_scope = resolve_scope.get_top_scope();
+
     for (auto e : ast_parlist->v_defs) {
         auto vardef = dynamic_cast<ast_node_def*>(e);
-        obj *obj = nullptr;
-        if (vardef->type_name == "Double") /* TODO: Borde göras i funktion eg obj_from_typename */
-            obj = new object_double{vardef->var_name, 0};
-        else if (vardef->type_name == "Int")
-            obj = new object_int{vardef->var_name, 0};
-        top_scope.push_object(obj);
+        push_dummyobject_to_resolve_scope(vardef->var_name, vardef->value_type);
     }
 
     gcc_jit_block *last_block = fn_block;
@@ -1437,9 +1434,14 @@ void jit::walk_tree_fdec(ast_node *node,
     /* Was the last block terminated? */
     if (v_block_terminated.back())
         v_block_terminated.pop_back();
-    else
-        THROW_BUG("Function's last block not terminated.");
+    /* If the return type is void, add a implicit return if there is none */
+    else if (return_type == VOID_TYPE) {
+        gcc_jit_block_end_with_void_return(last_block, 0);
+        v_block_terminated.pop_back();
+    } else
+        THROW_BUG("Function " + ast_funcdec->name + "'s last block not terminated with return.");
 
+    /* Check so that we are back to the amount of terminations as when we started. */
     DEBUG_ASSERT(block_depth == v_block_terminated.size(), "Messup in terminations");
 
 }
@@ -1814,37 +1816,9 @@ void jit::walk_tree_def(ast_node *node,
     /* TODO: Bör göras i emc.hh ast_node_def, eller tvärt om? Dup logik */
     /* TODO: Varför behövs de här? Känns fel att skapa nya ast_node grejer.
      *       bör nog ske på annat sätt. Är nog för funktioners parametrar. */
-    if (!is_file_scope) {
-        extern scope_stack resolve_scope;
-        obj *od = nullptr;
-        if (ast_def->value_type.is_double())
-            od = new object_double{ast_def->var_name, 0};
-        else if (ast_def->value_type.is_float())
-            od = new object_float{ast_def->var_name, 0};
-        else if (ast_def->value_type.is_long())
-            od = new object_long{ast_def->var_name, 0};
-        else if (ast_def->value_type.is_int())
-            od = new object_int{ast_def->var_name, 0};
-        else if (ast_def->value_type.is_short())
-            od = new object_short{ast_def->var_name, 0};
-        else if (ast_def->value_type.is_sbyte())
-            od = new object_sbyte{ast_def->var_name, 0};
-        else if (ast_def->value_type.is_bool())
-            od = new object_bool{ast_def->var_name, 0};
-        else if (ast_def->value_type.is_ulong())
-            od = new object_ulong{ast_def->var_name, 0};
-        else if (ast_def->value_type.is_uint())
-            od = new object_uint{ast_def->var_name, 0};
-        else if (ast_def->value_type.is_ushort())
-            od = new object_ushort{ast_def->var_name, 0};
-        else if (ast_def->value_type.is_byte())
-            od = new object_byte{ast_def->var_name, 0};
-        else if (ast_def->value_type.is_struct())
-            od = new object_struct{ast_def->var_name, "", ast_def->value_type};
-        else
-            THROW_NOT_IMPLEMENTED("Type not implemented walk_tree_def");
-        resolve_scope.get_top_scope().push_object(od);
-    }
+    if (!is_file_scope)
+        push_dummyobject_to_resolve_scope(ast_def->var_name, ast_def->value_type);
+
 }
 
 void jit::walk_tree_explist( ast_node *node, 
