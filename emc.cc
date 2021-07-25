@@ -47,29 +47,29 @@ void push_dummyobject_to_resolve_scope(std::string var_name, emc_type type)
     extern scope_stack resolve_scope;
     obj *od = nullptr;
     if (type.is_double())
-        od = new object_double{var_name, 0};
+        od = new object_double{var_name, 0, type.n_pointer_indirections};
     else if (type.is_float())
-        od = new object_float{var_name, 0};
+        od = new object_float{var_name, 0, type.n_pointer_indirections};
     else if (type.is_long())
-        od = new object_long{var_name, 0};
+        od = new object_long{var_name, 0, type.n_pointer_indirections};
     else if (type.is_int())
-        od = new object_int{var_name, 0};
+        od = new object_int{var_name, 0, type.n_pointer_indirections};
     else if (type.is_short())
-        od = new object_short{var_name, 0};
+        od = new object_short{var_name, 0, type.n_pointer_indirections};
     else if (type.is_sbyte())
-        od = new object_sbyte{var_name, 0};
+        od = new object_sbyte{var_name, 0, type.n_pointer_indirections};
     else if (type.is_bool())
-        od = new object_bool{var_name, 0};
+        od = new object_bool{var_name, 0, type.n_pointer_indirections};
     else if (type.is_ulong())
-        od = new object_ulong{var_name, 0};
+        od = new object_ulong{var_name, 0, type.n_pointer_indirections};
     else if (type.is_uint())
-        od = new object_uint{var_name, 0};
+        od = new object_uint{var_name, 0, type.n_pointer_indirections};
     else if (type.is_ushort())
-        od = new object_ushort{var_name, 0};
+        od = new object_ushort{var_name, 0, type.n_pointer_indirections};
     else if (type.is_byte())
-        od = new object_byte{var_name, 0};
+        od = new object_byte{var_name, 0, type.n_pointer_indirections};
     else if (type.is_struct())
-        od = new object_struct{var_name, "", type};
+        od = new object_struct{var_name, "", type, type.n_pointer_indirections};
     else
         THROW_NOT_IMPLEMENTED("Type not implemented: " + var_name);
     resolve_scope.get_top_scope().push_object(od);
@@ -161,7 +161,7 @@ emc_type object_func::resolve()
 emc_type standard_type_promotion(const emc_type &a, const emc_type &b)
 {
     auto ans = standard_type_promotion_or_invalid(a, b);
-    if (a.types[0] == emc_types::INVALID)
+    if (a.is_valid())
         THROW_BUG("emc_types has no valid standard promotion");
     return ans;
 }
@@ -169,11 +169,8 @@ emc_type standard_type_promotion(const emc_type &a, const emc_type &b)
 /* Implicit type conversion for native types. */
 emc_type standard_type_promotion_or_invalid(const emc_type &a, const emc_type &b)
 {
-    if (!a.types.size() || !b.types.size())
-        THROW_BUG("Either emc_type has no elements");
-
-    auto at = a.types[0];
-    auto bt = b.types[0];
+    auto at = a.type;
+    auto bt = b.type;
 
     if (at == bt)
         return emc_type{at};
@@ -444,7 +441,7 @@ void init_linked_cfunctions()
 void register_double_var(std::string name, double d)
 {
     extern scope_stack resolve_scope;
-    auto obj = new object_double { name, "", d };
+    auto obj = new object_double {name, "", d, 0};
     resolve_scope.get_top_scope().push_object(obj);
 }
 

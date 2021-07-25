@@ -40,12 +40,13 @@ typedef void* yyscan_t;
 
 %nonassoc DO
 %nonassoc END        
-%nonassoc '|' UMINUS
+%nonassoc '|' UMINUS '@' '&'
 
 %start program
 
 %type <node> exp cmp_exp e se cse exp_list code_block arg_list
 %type <node> vardef elseif_list sl_elseif_list vardef_list field_list struct_def
+%type <node> ptrdef_list
 
 %define parse.trace
     
@@ -228,8 +229,27 @@ vardef_list: vardef                         {
                                                 p->append($3);
                                             }                                    
  
-vardef: TYPENAME NAME     {$$ = new ast_node_def{*$1, *$2, nullptr}; delete $1; delete $2; }    
+ptrdef_list: '&'                            {
+                                                auto p = new ast_node_ptrdef_list;
+                                                p->append_const(false); $$ = p;
+                                            }
+            | '&' ptrdef_list               {
+                                                auto p = dynamic_cast<ast_node_ptrdef_list*>($2);
+                                                p->append_const(false);
+                                                $$ = p;
+                                            }
 
+vardef: TYPENAME NAME                       {
+                                                $$ = new ast_node_def{*$1, *$2, nullptr};
+                                                delete $1; delete $2;
+                                            }
+        | ptrdef_list TYPENAME NAME         {
+                                                auto node = new ast_node_def{*$2, *$3, nullptr}; 
+                                                delete $2; delete $3; 
+                                                auto node_pdl = dynamic_cast<ast_node_ptrdef_list*>($1);
+                                                node->ptrdef_node = node_pdl;
+                                                $$ = node;
+                                            }
 code_block: DO exp_list END     { $$ = new ast_node_doblock{$2};}
 
 arg_list: e                 {
@@ -247,11 +267,15 @@ e: exp
    ;
 
  /* Not compare or assign expressions */
-exp: exp '+' exp             {$$ = new ast_node_add{$1, $3};}
+exp: exp '+' exp            {$$ = new ast_node_add{$1, $3};}
     | exp '-' exp           {$$ = new ast_node_sub{$1, $3};}
     | exp '*' exp           {$$ = new ast_node_mul{$1, $3};}
     | exp '/' exp           {$$ = new ast_node_rdiv{$1, $3};}
     | exp '.' NAME          {$$ = new ast_node_dotop{$1, *$3}; delete $3;}
+
+    /* Pointer manipulation */
+    | '@' exp               {$$ = new ast_node_deref{$2};}
+    | '&' exp               {$$ = new ast_node_address{$2};}
     
     | exp AND exp           {$$ = new ast_node_and{$1, $3};}
     | exp OR exp            {$$ = new ast_node_or{$1, $3};}

@@ -430,40 +430,46 @@ void jit::dump(std::string path)
 gcc_jit_type* jit::emc_type_to_jit_type(emc_type t)
 {
     /* TODO: STruct */
+    gcc_jit_type *var_type = nullptr;
+
     if (t.is_double())
-        return DOUBLE_TYPE;
+        var_type = DOUBLE_TYPE;
     else if (t.is_float())
-        return FLOAT_TYPE;
+        var_type = FLOAT_TYPE;
     else if (t.is_long())
-        return LONG_TYPE;
+        var_type = LONG_TYPE;
     else if (t.is_int())
-        return INT_TYPE;
+        var_type = INT_TYPE;
     else if (t.is_short())
-        return SHORT_TYPE;
+        var_type = SHORT_TYPE;
     else if (t.is_sbyte())
-        return SCHAR_TYPE;
+        var_type = SCHAR_TYPE;
     else if (t.is_bool())
-        return BOOL_TYPE;
+        var_type = BOOL_TYPE;
     else if (t.is_ulong())
-        return ULONG_TYPE;
+        var_type = ULONG_TYPE;
     else if (t.is_uint())
-        return UINT_TYPE;
+        var_type = UINT_TYPE;
     else if (t.is_ushort())
-        return USHORT_TYPE;
+        var_type = USHORT_TYPE;
     else if (t.is_byte())
-        return UCHAR_TYPE;
+        var_type = UCHAR_TYPE;
     else if (t.is_void())
-        return VOID_TYPE;
+        var_type = VOID_TYPE;
     else if (t.is_struct()) {
         std::string struct_name = t.name;
         auto sw = map_structtypename_to_gccstructobj.find(struct_name);
         if (sw == map_structtypename_to_gccstructobj.end())
             THROW_BUG("Struct " + struct_name + " not defined");
         
-        return gcc_jit_struct_as_type(sw->second.gccjit_struct);
+        var_type = gcc_jit_struct_as_type(sw->second.gccjit_struct);
     } else
         DEBUG_ASSERT(false, "Not implemented");
-    return 0;
+
+    /* Make it a n:th degree pointer if needed. */
+    for (int i = 0; i < t.n_pointer_indirections; i++)
+        var_type = gcc_jit_type_get_pointer(var_type);
+    return var_type;
 }
 
 
@@ -1558,14 +1564,17 @@ void jit::walk_tree_assign(ast_node *node,
         /* Get the field */
         gcc_jit_field *field = gcc_struct_it->second.get_field(dotop_node->field_name);
         assign_lv = gcc_jit_lvalue_access_field(left_lv, 0, field);
-    } else {
+    } else if (ass_node->first->type == ast_type::VAR) {
         auto lval = dynamic_cast<ast_node_var*>(ass_node->first);
-        DEBUG_ASSERT(lval != nullptr, "Other types of left hand sides in assigned not implemented");
+        DEBUG_ASSERT_NOTNULL(lval);
 
         /* Resolve the lval */
         assign_lv = find_lval_in_scopes(lval->name);
         if (assign_lv == nullptr)
             std::runtime_error("Could not resolve lval of object: " + lval->name);    
+    } else {
+        walk_tree(ass_node->first, current_block, current_function, 0, &assign_lv);
+        DEBUG_ASSERT_NOTNULL(assign_lv);
     }
     
     gcc_jit_type *lv_as_rv_t = gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(assign_lv));
@@ -1623,6 +1632,50 @@ void jit::walk_tree_dotop(  ast_node *node,
             *current_rvalue = gcc_jit_rvalue_access_field(left_rv, 0, field); 
     } else
         THROW_NOT_IMPLEMENTED("walk_tree_dotop(): Not implemented");
+}
+
+void jit::walk_tree_deref(  ast_node *node, 
+                            gcc_jit_block **current_block, 
+                            gcc_jit_function **current_function, 
+                            gcc_jit_rvalue **current_rvalue,
+                            gcc_jit_lvalue **current_lvalue)
+{
+    DEBUG_ASSERT(!(current_rvalue && current_lvalue), "Can't produce both r- and lvalue");
+    DEBUG_ASSERT(current_rvalue || current_lvalue, "Both rvalue and lvalue is null");
+    DEBUG_ASSERT_NOTNULL(node);
+    auto var_deref = dynamic_cast<ast_node_deref*>(node);
+    DEBUG_ASSERT_NOTNULL(var_deref);
+
+    /* The expression to dereference */
+    gcc_jit_rvalue *rv = nullptr;
+    walk_tree(var_deref->first, current_block, current_function, &rv);
+    DEBUG_ASSERT_NOTNULL(rv);
+
+    gcc_jit_lvalue *deref_lv = gcc_jit_rvalue_dereference(rv, 0);
+    DEBUG_ASSERT_NOTNULL(deref_lv);
+    if (current_lvalue) /* Caller wants a lvalue */
+        *current_lvalue = deref_lv;
+    else /* Caller wants a rvalue */
+        *current_rvalue = gcc_jit_lvalue_as_rvalue(deref_lv);
+}
+
+void jit::walk_tree_address(  ast_node *node, 
+                            gcc_jit_block **current_block, 
+                            gcc_jit_function **current_function, 
+                            gcc_jit_rvalue **current_rvalue)
+{
+    DEBUG_ASSERT_NOTNULL(current_rvalue);
+    DEBUG_ASSERT_NOTNULL(node);
+    auto address_node = dynamic_cast<ast_node_address*>(node);
+    DEBUG_ASSERT_NOTNULL(address_node);
+
+    gcc_jit_lvalue* lv = nullptr;
+    
+    walk_tree(address_node->first, current_block, current_function, 0, &lv);
+    DEBUG_ASSERT_NOTNULL(lv);
+
+    *current_rvalue = gcc_jit_lvalue_get_address(lv, 0);
+    DEBUG_ASSERT_NOTNULL(current_rvalue);
 }
 
 void jit::walk_tree_struct( ast_node *node, 
@@ -1707,20 +1760,21 @@ void jit::walk_tree_def(ast_node *node,
 {
     auto *ast_def = dynamic_cast<ast_node_def*>(node);
     bool is_file_scope = scope_n_nested() == 1;
-    
+    bool is_pointer = ast_def->value_type.n_pointer_indirections;
     gcc_jit_type *var_type = nullptr;
     gcc_jit_lvalue *lval = nullptr;
 
-    if (!is_file_scope) { /* local */
-        var_type = emc_type_to_jit_type(ast_def->value_type);
+    
+    var_type = emc_type_to_jit_type(ast_def->value_type);
+
+    if (!is_file_scope) /* local */
         lval = gcc_jit_function_new_local(*current_function, 0, var_type, ast_def->var_name.c_str());
-    } else {
-        var_type = emc_type_to_jit_type(ast_def->value_type);
+    else
         lval = gcc_jit_context_new_global(
-            context, 0, GCC_JIT_GLOBAL_EXPORTED,
-            var_type,
-            ast_def->var_name.c_str());
-    }
+        context, 0, GCC_JIT_GLOBAL_EXPORTED,
+        var_type,
+        ast_def->var_name.c_str());
+
     push_lval(ast_def->var_name, lval);
 
     /* Is there value node right of a equal sign? "Foo a = blabla" */
@@ -1790,9 +1844,15 @@ void jit::walk_tree_def(ast_node *node,
     } else { 
         if (ast_def->value_type.is_primitive()) {
             gcc_jit_rvalue *rv_assignment = nullptr;
-            rv_assignment = gcc_jit_context_zero(context, var_type);
+            if (is_pointer)
+                rv_assignment = gcc_jit_context_null(context, var_type);
+            else
+                rv_assignment = gcc_jit_context_zero(context, var_type);
             /* Assign the value */
-            gcc_jit_block_add_assignment(*current_block, 0, lval, rv_assignment);
+            if (is_file_scope)
+                gcc_jit_block_add_assignment(root_block, 0, lval, rv_assignment);
+            else
+                gcc_jit_block_add_assignment(*current_block, 0, lval, rv_assignment);
         } else if (ast_def->value_type.is_struct()) {
             /* TODO: Zero fields */
             auto gcc_struct_it = map_structtypename_to_gccstructobj.find(ast_def->value_type.name);
@@ -2111,6 +2171,10 @@ void jit::walk_tree(ast_node *node,
         walk_tree_struct(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::DOTOPERATOR) {
         walk_tree_dotop(node, current_block, current_function, current_rvalue, current_lvalue);
+    } else if (type == ast_type::ADDRESS) {
+        walk_tree_address(node, current_block, current_function, current_rvalue);
+    } else if (type == ast_type::DEREF) {
+        walk_tree_deref(node, current_block, current_function, current_rvalue, current_lvalue);
     } else
         THROW_NOT_IMPLEMENTED("walk_tree not implemented: " + std::to_string((int)node->type));
 }

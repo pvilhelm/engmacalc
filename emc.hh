@@ -76,7 +76,10 @@ enum class ast_type {
     TYPE,
     STRUCT,
     DOTOPERATOR,
-    LISTLITERAL
+    LISTLITERAL,
+    DEREF,
+    ADDRESS,
+    PTRDEF_LIST
 };
 
 enum class object_type {
@@ -124,100 +127,90 @@ struct emc_type {
     /* First element is inner element. I.e.
      * c type "const int *" => POINTER, CONST, INT
      */
-    emc_type(std::initializer_list<emc_types> l)
+    emc_type(emc_types type)
     {
-        for (auto e : l)
-            types.push_back(e);
+        this->type = type;
     }
   
-    bool is_valid()
+    bool is_valid() const 
     {
-        if (types.size() && types[0] != emc_types::INVALID) return true;
-        return false;
+        return type != emc_types::INVALID;
     }
 
     /* TODO: Fugly. Should be direct lookup here and in jit::emc_type_to_jit_type() */
-    bool is_double()
+    bool is_double() const 
     {
-        if (types.size() && types[0] == emc_types::DOUBLE) return true;
-        return false;
+        return type == emc_types::DOUBLE;
     }
-    bool is_int()
+    bool is_int() const 
     {
-        if (types.size() && types[0] == emc_types::INT) return true;
-        return false;
+        return type == emc_types::INT;
     }
-    bool is_short()
+    bool is_short() const 
     {
-        if (types.size() && types[0] == emc_types::SHORT) return true;
-        return false;
+        return type == emc_types::SHORT;
     }
-    bool is_sbyte()
+    bool is_sbyte() const 
     {
-        if (types.size() && types[0] == emc_types::SBYTE) return true;
-        return false;
+        return type == emc_types::SBYTE;
     }
-    bool is_byte()
+    bool is_byte() const 
     {
-        if (types.size() && types[0] == emc_types::BYTE) return true;
-        return false;
+        return type == emc_types::BYTE;
     }
-    bool is_uint()
+    bool is_uint() const 
     {
-        if (types.size() && types[0] == emc_types::UINT) return true;
-        return false;
+        return type == emc_types::UINT;
     }
-    bool is_ushort()
+    bool is_ushort() const 
     {
-        if (types.size() && types[0] == emc_types::USHORT) return true;
-        return false;
+        return type == emc_types::USHORT;
     }
-    bool is_long()
+    bool is_long() const 
     {
-        if (types.size() && types[0] == emc_types::LONG) return true;
-        return false;
+        return type == emc_types::LONG;
     }
-    bool is_ulong()
+    bool is_ulong() const 
     {
-        if (types.size() && types[0] == emc_types::ULONG) return true;
-        return false;
+        return type == emc_types::ULONG;
     }
-    bool is_float()
+    bool is_float() const 
     {
-        if (types.size() && types[0] == emc_types::FLOAT) return true;
-        return false;
+        return type == emc_types::FLOAT;
     }
-    bool is_void()
+    bool is_void() const 
     {
-        if (types.size() && types[0] == emc_types::NONE) return true;
-        return false;
+        return type == emc_types::NONE;
     }
-    bool is_bool()
+    bool is_bool() const 
     {
-        if (types.size() && types[0] == emc_types::BOOL) return true;
-        return false;
+        return type == emc_types::BOOL;
     }
-    bool is_struct()
+    bool is_struct() const 
     {
-        if (types.size() && types[0] == emc_types::STRUCT) return true;
-        return false;
+        return type == emc_types::STRUCT;
     }
-    bool is_primitive()
+    bool is_primitive() const 
     {
         return is_double() || is_int() || is_short() || is_sbyte() || is_byte() ||
                 is_uint() || is_ushort() || is_long() || is_ulong() || is_float() ||
                 is_bool() || is_ushort();
     }
-    bool is_listlit()
+    bool is_listlit() const 
     {
-        return types.size() && types[0] == emc_types::LISTLIT;
+        return type == emc_types::LISTLIT;
     }
+    bool is_pointer() const
+    {
+        return n_pointer_indirections;
+    }
+
     /* For structs etc with children types. */
     std::vector<emc_type> children_types;
     /* Used for fields in structs etc. */
     std::string name;
 
-    emc_type find_type_of_child(std::string name)
+    emc_type find_type_of_child(std::string name) const 
     {
         for (auto child_type : children_types)
             if (child_type.name == name)
@@ -227,7 +220,9 @@ struct emc_type {
     
     /* TODO: Should be flags for const etc instead? Do a "root type" and then have
              vector only for structs etc. */
-    std::vector<emc_types> types;
+    int n_pointer_indirections = 0;
+    bool is_const = false;
+    emc_types type;
 };
 
 emc_type standard_type_promotion(const emc_type &a, const emc_type &b);
@@ -266,6 +261,7 @@ public:
     std::string name;
     std::string nspace;
     object_type type;
+    int n_pointer_indirection = 0;
 };
 
 class type_object {
@@ -407,25 +403,26 @@ public:\
     }\
     ;\
 \
-    classname(std::string name, std::string nspace, c_type val)\
+    classname(std::string name, std::string nspace, c_type val, int n_pointer_indirection)\
     :\
             val(val)\
     {\
+        this->n_pointer_indirection = n_pointer_indirection;\
         type = object_type;\
         this->name = name;\
         this->nspace = nspace;\
     }\
     ;\
-    classname(std::string name, c_type val) :\
-            classname(name, "", val)\
+    classname(std::string name, c_type val, int n_pointer_indirection) :\
+            classname(name, "", val, n_pointer_indirection)\
     {\
     }\
     classname(c_type val) :\
-            classname("", "", val)\
+            classname("", "", val, 0)\
     {\
     }\
     classname() :\
-            classname("", "", (c_type){})\
+            classname("", "", (c_type){}, 0)\
     {\
     }\
 \
@@ -433,7 +430,9 @@ public:\
 \
     emc_type resolve()\
     {\
-        return emc_ret_type;\
+        emc_type t = emc_ret_type;\
+        t.n_pointer_indirections = n_pointer_indirection;\
+        return t;\
     }\
 };\
 
@@ -456,16 +455,19 @@ public:
     {
     }
     
-    object_struct(std::string name, std::string nspace, emc_type struct_type)
+    object_struct(std::string name, std::string nspace, emc_type struct_type, int n_pointer_indirections)
         : struct_type(struct_type)
     {
+        this->n_pointer_indirection = n_pointer_indirection;
         type = object_type::STRUCT;
+        /* TODO: Fult att föra över n_pointer_indirections här ... */
+        this->struct_type.n_pointer_indirections = n_pointer_indirection;
         this->name = name;
         this->nspace = nspace;
     }
     
     object_struct() :
-            object_struct("", "", emc_type{emc_types::STRUCT})
+            object_struct("", "", emc_type{emc_types::STRUCT}, 0)
     {
     }
 
@@ -795,6 +797,38 @@ public:
     }
 };
 
+
+class ast_node_ptrdef_list: public ast_node {
+public:
+    ast_node_ptrdef_list()
+    {
+        type = ast_type::PTRDEF_LIST;
+    }
+    ~ast_node_ptrdef_list()
+    {
+
+    }
+    
+    std::vector<bool> v_const;
+
+    ast_node* clone()
+    {
+        auto argl = new ast_node_ptrdef_list { };
+        argl->v_const = v_const;
+        return argl;
+    }
+
+    void append_const(bool is_const)
+    {
+        v_const.push_back(is_const);
+    }
+
+    emc_type resolve()
+    {
+        return emc_types::NONE;
+    }
+};
+
 class ast_node_nand: public ast_node {
 public:
     ast_node_nand() :
@@ -1031,6 +1065,73 @@ public:
     }
 };
 
+class ast_node_deref: public ast_node {
+public:
+    ast_node_deref() :
+            ast_node_deref(nullptr)
+    {
+    }
+    ast_node_deref(ast_node *first) :
+            first(first)
+    {
+        type = ast_type::DEREF;
+    }
+
+    ~ast_node_deref()
+    {
+        if (first) delete first;
+    }
+    
+    ast_node *first;
+
+    emc_type resolve()
+    {
+        value_type = first->resolve();
+        ASSERT(value_type.n_pointer_indirections, "Dereferencing non-pointer");
+        value_type.n_pointer_indirections--;
+        return value_type;
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_deref { first->clone()};
+        c->value_type = value_type;
+        return c;
+    }
+};
+
+class ast_node_address: public ast_node {
+public:
+    ast_node_address() :
+            ast_node_address(nullptr)
+    {
+    }
+    ast_node_address(ast_node *first) :
+            first(first)
+    {
+        type = ast_type::ADDRESS;
+    }
+
+    ~ast_node_address()
+    {
+        if (first) delete first;
+    }
+    
+    ast_node *first;
+
+    emc_type resolve()
+    {
+        return value_type = first->resolve();
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_address { first->clone()};
+        c->value_type = value_type;
+        return c;
+    }
+};
+
 class ast_node_pow: public ast_node {
 public:
     ast_node_pow() :
@@ -1253,7 +1354,7 @@ public:
         emc_type t = emc_type{emc_types::NONE};
         for (auto e : v_nodes) {
             auto et = e->resolve();
-            if (t.types[0] == emc_types::NONE && et.types[0] != emc_types::NONE)
+            if (t.type == emc_types::NONE && et.type != emc_types::NONE)
                 t = et;
         }
         return value_type = t;
@@ -1538,6 +1639,7 @@ public:
 
     emc_type resolve();
 };
+
 
 class ast_node_arglist: public ast_node {
 public:
@@ -1947,17 +2049,21 @@ public:
 
     ~ast_node_def()
     {
-        if (value_node) delete value_node;
+        delete value_node;
+        delete ptrdef_node;
     }
     
     std::string type_name; /* TODO: Borde va ngt object istället. */
     std::string var_name;
     ast_node *value_node = nullptr;
+    ast_node *ptrdef_node = nullptr;
+    int n_pointer_indirections = 0;
 
     ast_node* clone()
     {
         auto c = new ast_node_def { type_name, var_name,
                 value_node ? value_node->clone() : nullptr };
+        c->ptrdef_node = ptrdef_node ? ptrdef_node->clone() : nullptr; 
         c->value_type = value_type;
         return c;        
     }
@@ -1968,46 +2074,70 @@ public:
         extern scope_stack resolve_scope;
 
         emc_type type = resolve_scope.find_type(type_name);
- 
+        /* Set how many pointer indirections this var def has */
+        int n_pointer_indirections = 0;
+        if (ptrdef_node) {
+            ptrdef_node->resolve();
+            auto ptrdef_node_t = dynamic_cast<ast_node_ptrdef_list*>(ptrdef_node);
+            DEBUG_ASSERT_NOTNULL(ptrdef_node_t);
+            n_pointer_indirections = (int)ptrdef_node_t->v_const.size();
+            type.n_pointer_indirections = n_pointer_indirections;
+        }
+        /* TODO: Bitfield for const ptr? volatile? */
+
         obj *od = nullptr;
         if (type.is_double())
-            od = new object_double{var_name, 0};
+            od = new object_double{var_name, 0, n_pointer_indirections};
         else if (type.is_float())
-            od = new object_float{var_name, 0};
+            od = new object_float{var_name, 0, n_pointer_indirections};
         else if (type.is_long())
-            od = new object_long{var_name, 0};
+            od = new object_long{var_name, 0, n_pointer_indirections};
         else if (type.is_int())
-            od = new object_int{var_name, 0};
+            od = new object_int{var_name, 0, n_pointer_indirections};
         else if (type.is_short())
-            od = new object_short{var_name, 0};
+            od = new object_short{var_name, 0, n_pointer_indirections};
         else if (type.is_sbyte())
-            od = new object_sbyte{var_name, 0};
+            od = new object_sbyte{var_name, 0, n_pointer_indirections};
         else if (type.is_bool())
-            od = new object_bool{var_name, 0};
+            od = new object_bool{var_name, 0, n_pointer_indirections};
         else if (type.is_ulong())
-            od = new object_ulong{var_name, 0};
+            od = new object_ulong{var_name, 0, n_pointer_indirections};
         else if (type.is_uint())
-            od = new object_uint{var_name, 0};
+            od = new object_uint{var_name, 0, n_pointer_indirections};
         else if (type.is_ushort())
-            od = new object_ushort{var_name, 0};
+            od = new object_ushort{var_name, 0, n_pointer_indirections};
         else if (type.is_byte())
-            od = new object_byte{var_name, 0};
+            od = new object_byte{var_name, 0, n_pointer_indirections};
         else if (type.is_struct())
-            od = new object_struct{var_name, "", type};
+            od = new object_struct{var_name, "", type, n_pointer_indirections};
         else
             THROW_NOT_IMPLEMENTED("Type not implemented ast_node_def");
         resolve_scope.get_top_scope().push_object(od);
- 
 
         if (value_node)
             value_node->resolve();
- 
         return value_type = type;
     }
 
     emc_type resolve_no_push()
     {
-        return value_type = string_to_type(type_name);
+        /* TODO: Typ implementationen är ful ... */
+        extern scope_stack resolve_scope;
+
+        emc_type type = resolve_scope.find_type(type_name);
+        /* Set how many pointer indirections this var def has */
+        int n_pointer_indirections = 0;
+        if (ptrdef_node) {
+            ptrdef_node->resolve();
+            auto ptrdef_node_t = dynamic_cast<ast_node_ptrdef_list*>(ptrdef_node);
+            DEBUG_ASSERT_NOTNULL(ptrdef_node_t);
+            n_pointer_indirections = (int)ptrdef_node_t->v_const.size();
+            type.n_pointer_indirections = n_pointer_indirections;
+        }
+
+        if (value_node)
+            value_node->resolve();
+        return value_type = type;
     }
 };
 
@@ -2136,7 +2266,6 @@ public:
         c->value_type = value_type;
         return c;        
     }
-
 };
 
 class ast_node_listlit: public ast_node {

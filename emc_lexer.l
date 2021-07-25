@@ -40,6 +40,8 @@ ENDLN "\r\n"|"\n"
 "*"({WS}*{ENDLN})? |
 "/"({WS}*{ENDLN})? |
 "="({WS}*{ENDLN})? |
+"&"({WS}*{ENDLN})? |
+"@"({WS}*{ENDLN})? |
 "|" |
 ","({WS}*{ENDLN})? |
 "."({WS}*{ENDLN})? |
