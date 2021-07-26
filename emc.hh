@@ -609,6 +609,8 @@ public:
         errno = 0;
         long long l = strtol(s.c_str(), &pc, 0);
 
+        /* TODO: -2147483648 will be read as '-' '2147483648' by bison so this need rework
+         * so that -2147483648 works as a int literal. */
         if (l > std::numeric_limits<int>::max() ||
             l < std::numeric_limits<int>::min())
             THROW_BUG("Value out of Int range: " + s);

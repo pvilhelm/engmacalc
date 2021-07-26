@@ -536,6 +536,34 @@ void jit::setup_default_root_environment()
                           0);
           map_fnname_to_gccfnobj["putchar"] = p_fnobj;
     }
+    { /* Add: float powf( float base, float exponent ) */
+        gcc_jit_param *params[] = {
+            gcc_jit_context_new_param (context, NULL, FLOAT_TYPE, "base"),
+            gcc_jit_context_new_param (context, NULL, FLOAT_TYPE, "exponent")
+        };
+        auto p_fnobj =
+            gcc_jit_context_new_function (context, NULL,
+                          GCC_JIT_FUNCTION_IMPORTED,
+                          FLOAT_TYPE,
+                          "powf",
+                          2, params,
+                          0);
+          map_fnname_to_gccfnobj["powf"] = p_fnobj;
+    }
+    { /* Add: float powf( float base, float exponent ) */
+        gcc_jit_param *params[] = {
+            gcc_jit_context_new_param (context, NULL, DOUBLE_TYPE, "base"),
+            gcc_jit_context_new_param (context, NULL, DOUBLE_TYPE, "exponent")
+        };
+        auto p_fnobj =
+            gcc_jit_context_new_function (context, NULL,
+                          GCC_JIT_FUNCTION_IMPORTED,
+                          DOUBLE_TYPE,
+                          "pow",
+                          2, params,
+                          0);
+          map_fnname_to_gccfnobj["pow"] = p_fnobj;
+    }
     { /* Add: void printnl_double(double d) */
         gcc_jit_param *param_d =
             gcc_jit_context_new_param (context, NULL, DOUBLE_TYPE, "d");
@@ -743,6 +771,60 @@ void jit::walk_tree_mul(ast_node *node,
     gcc_jit_rvalue *rv_result = gcc_jit_context_new_binary_op(
                                     context, nullptr, GCC_JIT_BINARY_OP_MULT,
                                     result_type, a_casted_rv, b_casted_rv);
+    DEBUG_ASSERT_NOTNULL(rv_result);
+    *current_rvalue = rv_result;
+}
+
+void jit::walk_tree_pow(ast_node *node, 
+                        gcc_jit_block **current_block, 
+                        gcc_jit_function **current_function, 
+                        gcc_jit_rvalue **current_rvalue)
+{
+    DEBUG_ASSERT_NOTNULL(current_rvalue);
+    DEBUG_ASSERT_NOTNULL(node);
+    auto t_node = dynamic_cast<ast_node_pow*>(node);
+    DEBUG_ASSERT_NOTNULL(t_node);
+    /* Resolve types. */
+
+    /* Get r-value a */
+    emc_type rt = t_node->value_type;
+    gcc_jit_type *result_type_emc = emc_type_to_jit_type(rt);
+
+    gcc_jit_rvalue *a_rv = nullptr;
+    walk_tree(t_node->first, current_block, current_function, &a_rv);
+    DEBUG_ASSERT_NOTNULL(a_rv);
+    gcc_jit_rvalue *b_rv = nullptr;
+    walk_tree(t_node->sec, current_block, current_function, &b_rv);
+    DEBUG_ASSERT_NOTNULL(b_rv);
+
+    gcc_jit_rvalue *a_casted_rv = nullptr;
+    gcc_jit_rvalue *b_casted_rv = nullptr;
+    gcc_jit_type *result_type = promote_rvals(a_rv, b_rv, &a_casted_rv, &b_casted_rv);
+    DEBUG_ASSERT_NOTNULL(result_type);
+    DEBUG_ASSERT(result_type_emc == result_type, "Not anticipated type");
+
+    /* TODO: Literals should be solved */
+    gcc_jit_rvalue *rv_result = nullptr;
+    /* call pow() */
+    if (result_type == DOUBLE_TYPE) {
+        auto it = map_fnname_to_gccfnobj.find("pow");
+        if (it == map_fnname_to_gccfnobj.end())
+            THROW_BUG("Function pow not defined.");
+        gcc_jit_function *func = it->second;
+
+        gcc_jit_rvalue *args[2] = {a_casted_rv, b_casted_rv};
+        rv_result = gcc_jit_context_new_call(context, 0, func, 2, args);
+    } else if (result_type == FLOAT_TYPE) {
+        auto it = map_fnname_to_gccfnobj.find("powf");
+        if (it == map_fnname_to_gccfnobj.end())
+            THROW_BUG("Function powf not defined.");
+        gcc_jit_function *func = it->second;
+
+        gcc_jit_rvalue *args[2] = {a_casted_rv, b_casted_rv};
+        rv_result = gcc_jit_context_new_call(context, 0, func, 2, args);
+    } else
+        THROW_NOT_IMPLEMENTED("Only floating point x^y is implemented");
+
     DEBUG_ASSERT_NOTNULL(rv_result);
     *current_rvalue = rv_result;
 }
@@ -1300,6 +1382,32 @@ void jit::walk_tree_uminus(ast_node *node,
 
     gcc_jit_rvalue *rv_result = gcc_jit_context_new_unary_op(context, nullptr,
             GCC_JIT_UNARY_OP_MINUS, result_type, a_rv);
+    *current_rvalue = rv_result;
+}
+
+void jit::walk_tree_abs(ast_node *node, 
+                        gcc_jit_block **current_block, 
+                        gcc_jit_function **current_function, 
+                        gcc_jit_rvalue **current_rvalue)
+{
+    auto t_node = dynamic_cast<ast_node_abs*>(node);
+    /* Resolve types. */
+
+    /* Get r-value a */
+    emc_type rt = t_node->value_type;
+
+    if (!rt.is_primitive())
+        THROW_NOT_IMPLEMENTED("Abs operator only implemented for primitive types");
+
+    gcc_jit_type *result_type = emc_type_to_jit_type(rt);
+
+    gcc_jit_rvalue *a_rv = nullptr;
+    walk_tree(t_node->first, current_block, current_function, &a_rv);
+    DEBUG_ASSERT_NOTNULL(a_rv);
+
+    /* TODO: Only allow ABS to bigger int types? To cover for |MIN|? */
+    gcc_jit_rvalue *rv_result = gcc_jit_context_new_unary_op(context, nullptr,
+            GCC_JIT_UNARY_OP_ABS, result_type, a_rv);
     *current_rvalue = rv_result;
 }
 
@@ -2108,6 +2216,8 @@ void jit::walk_tree(ast_node *node,
         walk_tree_sub(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::MUL) {
         walk_tree_mul(node, current_block, current_function, current_rvalue);
+    } else if (type == ast_type::POW) {
+        walk_tree_pow(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::RDIV) {
         walk_tree_rdiv(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::ANDCHAIN) {
@@ -2126,6 +2236,8 @@ void jit::walk_tree(ast_node *node,
         walk_tree_neq(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::UMINUS) {
         walk_tree_uminus(node, current_block, current_function, current_rvalue);
+    } else if (type == ast_type::ABS) {
+        walk_tree_abs(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::DOUBLE_LITERAL) {
         walk_tree_dlit(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::INT_LITERAL) {
