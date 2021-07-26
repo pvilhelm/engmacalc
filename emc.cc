@@ -161,7 +161,7 @@ emc_type object_func::resolve()
 emc_type standard_type_promotion(const emc_type &a, const emc_type &b)
 {
     auto ans = standard_type_promotion_or_invalid(a, b);
-    if (a.is_valid())
+    if (!ans.is_valid())
         THROW_BUG("emc_types has no valid standard promotion");
     return ans;
 }
