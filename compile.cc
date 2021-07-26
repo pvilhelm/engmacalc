@@ -1590,7 +1590,8 @@ void jit::walk_tree_assign(ast_node *node,
     gcc_jit_block_add_assignment(*current_block, 0, assign_lv, casted_rval);
 
     /* The value of an assignment is the rvalue */
-    *current_rvalue = casted_rval;    
+    /* TODO: This makes exprlist add the rh two times which messes up stuff if there is a call ... */
+    //*current_rvalue = casted_rval;    
 }
 
 /* TODO: walk_tree_xx should really return lvalues if they can. */

@@ -5,7 +5,7 @@ OBJ = emc.tab.o lex.yy.o compile.o emc.o
 
 engmac: engma.cc $(OBJ) lexer.h  libjitruntime.so
 	$(GPP) $(CPPFLAGS) -L/mnt/c/repos/engmacalc/ engma.cc -o engmac $(OBJ) -ljitruntime -lgccjit
-	sudo cp /mnt/c/repos/engmacalc/libjitruntime.so /usr/lib/libjitruntime.so  
+	sudo cp libjitruntime.so /usr/lib/libjitruntime.so  
 	
 lex.yy.c: emc_lexer.l emc.hh
 	flex --header-file=lexer.h emc_lexer.l
