@@ -1,7 +1,9 @@
 
 GPP = g++
+GCC = gcc
 CPPFLAGS = -g
-OBJ = emc.tab.o lex.yy.o compile.o emc.o
+CFLAGS = -g
+OBJ = emc.tab.o lex.yy.o compile.o emc.o Io.o
 
 engmac: engma.cc $(OBJ) lexer.h  libjitruntime.so
 	$(GPP) $(CPPFLAGS) -L/mnt/c/repos/engmacalc/ engma.cc -o engmac $(OBJ) -ljitruntime -lgccjit
@@ -24,10 +26,13 @@ emc.o: emc.cc emc.hh
 	
 compile.o: compile.cc compile.hh emc.hh
 	$(GPP) $(CPPFLAGS) compile.cc -c -o compile.o
+
+Io.o: Std/Io/Io.c
+	$(GCC) $(CFLAGS) -fPIC -c Std/Io/Io.c
 	
-libjitruntime.so: jit_runtime.cc
+libjitruntime.so: jit_runtime.cc Io.o
 	$(GPP) $(CPPFLAGS) -fPIC -c jit_runtime.cc
-	$(GPP) $(CPPFLAGS) -shared -o libjitruntime.so jit_runtime.o
+	$(GPP) $(CPPFLAGS) -shared -o libjitruntime.so jit_runtime.o Io.o
 
 .PHONY : clean
 clean :

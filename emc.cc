@@ -1,6 +1,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdarg>
+#include <sstream>
+#include <cctype>
 
 #include "emc_assert.hh"
 #include "emc.hh"
@@ -91,7 +93,6 @@ emc_type ast_node_funcdef::resolve()
         std::string var_name = par->var_name;
 
         push_dummyobject_to_resolve_scope(var_name, par->value_type);
-        
     }
     code_block->resolve();
     resolve_scope.pop_scope();
@@ -101,8 +102,13 @@ emc_type ast_node_funcdef::resolve()
     return_list->resolve();
     resolve_scope.pop_scope();
 
+    /* TODO: code_block is probably uneccesary. */
     auto fobj = new object_func { code_block->clone(), name, nspace,
             parlist->clone() , return_list->clone()};
+    /* Resolve the mangled name and write it to this and the function object. */
+    mangled_name = mangle_emc_fn_name(*fobj);
+    fobj->mangled_name = mangled_name;
+    /* Push the function object to top scope */
     resolve_scope.get_top_scope().push_object(fobj);
 
     return value_type = emc_type{emc_types::FUNCTION}; /* TODO: Add types too */
@@ -127,6 +133,23 @@ emc_type ast_node_funcdec::resolve()
 
     auto fobj = new object_func { 0, name, nspace,
             parlist->clone() , return_list->clone()};
+
+    
+    /* TODO: mangle_emc_fn_name() borde ta parlist, name och returnlist och fobj borde
+     * få sitt manglade namn i sin ctor. */
+
+    /* If c linkage is specified there is no name mangleing. */
+    if (c_linkage) { 
+        fobj->c_linkage = true;
+        fobj->mangled_name = name;
+        mangled_name = name;
+    /* Resolve the mangled name and write it to this and the function object. */
+    } else {
+        mangled_name = mangle_emc_fn_name(*fobj);
+        fobj->mangled_name = mangled_name;
+    }
+    /* Push the function object to top scope */
+    /* TODO: Declarations collide with definitions. Should be some flag. */
     resolve_scope.get_top_scope().push_object(fobj);
 
     return value_type = emc_type{emc_types::FUNCTION}; /* TODO: Add types too */
@@ -414,14 +437,26 @@ void scope_stack::debug_print()
 obj* scope_stack::find_object(std::string name, std::string nspace)
 {
     /* Search backwards so that the top scope matches first. */
-    for (auto it = vec_scope.rbegin(); it != vec_scope.rend(); it++)
-            {
+    for (auto it = vec_scope.rbegin(); it != vec_scope.rend(); it++) {
         obj *p = it->find_object(name, nspace);
         if (p)
             return p;
     }
 
     return nullptr;
+}
+
+std::vector<obj*> scope_stack::find_objects_by_not_mangled_name(std::string name, std::string nspace)
+{
+    std::vector<obj*> ans;
+    /* Search backwards so that the top scope matches first. */
+    for (auto it = vec_scope.rbegin(); it != vec_scope.rend(); it++) {
+        auto tmp_v = it->find_objects_by_not_mangled_name(name, nspace);
+        for (auto e : tmp_v)
+            ans.push_back(e);
+    }
+
+    return ans;
 }
 
 emc_type scope_stack::find_type(std::string name)
@@ -464,6 +499,7 @@ void init_builtin_types()
     extern scope_stack resolve_scope;
  
     resolve_scope.push_type("Byte", {emc_types::BYTE});
+    resolve_scope.push_type("Sbyte", {emc_types::SBYTE});
     resolve_scope.push_type("Short", {emc_types::SHORT});
     resolve_scope.push_type("Ushort", {emc_types::USHORT});
     resolve_scope.push_type("Int", {emc_types::INT});
@@ -474,3 +510,109 @@ void init_builtin_types()
     resolve_scope.push_type("Float", {emc_types::FLOAT});
 }
 
+std::string copy_and_replace_all_substrs(const std::string &source, const std::string &from, const std::string &to)
+{
+    std::string ans;
+    ans.reserve(source.length());
+
+    std::string::size_type lastPos = 0;
+    std::string::size_type findPos;
+
+    while(std::string::npos != (findPos = source.find(from, lastPos)))
+    {
+        ans.append(source, lastPos, findPos - lastPos);
+        ans += to;
+        lastPos = findPos + from.length();
+    }
+
+    ans += source.substr(lastPos);
+    
+    return ans;
+}
+
+const std::map<emc_types, std::string> map_emc_types_to_mangled_shortversion = {
+    {emc_types::LONG, "L"},
+    {emc_types::ULONG, "Ul"},
+    {emc_types::INT, "I"},
+    {emc_types::UINT, "U"},
+    {emc_types::SHORT, "S"},
+    {emc_types::USHORT, "Us"},
+    {emc_types::SBYTE, "Sb"},
+    {emc_types::BYTE, "Ub"},
+    {emc_types::BOOL, "B"},
+    {emc_types::FLOAT, "F"},
+    {emc_types::DOUBLE, "D"},
+};
+
+/* Mangles a Engma function name to its symbol name that will be used for linking.
+ *  Note That underscores in name and types are replaces with two underscores.
+ *  Namespaces are eg. NamespaceType
+        TODO: Hide all type data for structs somewhere as symbols? Eg. engma_type_struct_foo_I_I_I
+ */
+std::string mangle_emc_fn_name(const object_func &fn_obj)
+{
+    std::ostringstream ss;
+    ss << "engma_c58b_fn";
+
+    /* Begin with the return type. */
+    if (fn_obj.var_list->value_type.is_primitive()) {
+        auto iter = map_emc_types_to_mangled_shortversion.find(fn_obj.var_list->value_type.type);
+        if (iter == map_emc_types_to_mangled_shortversion.end())
+            THROW_BUG("Could not find mangled short version of type: " + std::to_string((int)fn_obj.var_list->value_type.type));
+        ss << "_" << iter->second;
+    } else if (fn_obj.var_list->value_type.is_void()) {
+        ss << "_" << "N";
+    } else
+        THROW_NOT_IMPLEMENTED("Mangle of type not impelmented: " + std::to_string((int)fn_obj.var_list->value_type.type));
+    
+    /* Function name */
+    ss << "_" << copy_and_replace_all_substrs(fn_obj.name, "_", "__");
+    /* Parameters */
+    ast_node_vardef_list *parlist_node = dynamic_cast<ast_node_vardef_list*>(fn_obj.para_list);
+    DEBUG_ASSERT_NOTNULL(parlist_node);
+    for (ast_node *para : parlist_node->v_defs) {
+        if (para->value_type.is_primitive()) {
+            auto iter = map_emc_types_to_mangled_shortversion.find(para->value_type.type);
+            if (iter == map_emc_types_to_mangled_shortversion.end())
+                THROW_BUG("Could not find mangled short version of type: " + std::to_string((int)para->value_type.type));
+            ss << "_" << iter->second;
+        } else
+            THROW_NOT_IMPLEMENTED("Mangle of type not impelmented: " + std::to_string((int)para->value_type.type));
+    }
+
+    /* Sentinel token to allow for future expansion */
+    ss << "_";
+
+    return ss.str();
+}
+
+std::string demangle_emc_fn_name(std::string c_fn_name)
+{
+/* TODO: Do if needed. */
+#if 0
+    std::ostringstream ss;
+
+    /* Magic sequence */
+    size_t pos = c_fn_name.find("engma_c58b_fn_");
+
+    if (pos != 0)
+        throw std::runtime_error("Function name '" + c_fn_name + "' is not a mangled Engma name");
+
+    pos += std::string{"engma_c58b_fn_"}.size();
+    if (pos == c_fn_name.size())
+        throw std::runtime_error("Function name '" + c_fn_name + "' is not a mangled Engma name");
+    /* Search for name, which will be starting with lowercase. */
+    bool in_token = false;
+    for (; pos < c_fn_name.size(); pos++) {
+        char c = c_fn_name[pos];
+        if (in_token) {
+            if (c == '_'
+        } else {
+            
+        }
+    }
+
+    return ss.str();  
+#endif
+    THROW_NOT_IMPLEMENTED("");  
+}

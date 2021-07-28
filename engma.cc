@@ -76,7 +76,7 @@ int main(int argc, char **argv)
             /*TODO: add persistens env. var. values somehow between CLI
              * and the JIT.
              */
-            if (ast_root->type == ast_type::FUNCTION_DECLARATION ||
+            if (ast_root->type == ast_type::FUNCTION_DEF ||
                 ast_root->type == ast_type::DEF) {
                 v_nodes.push_back(ast_root);
             } else

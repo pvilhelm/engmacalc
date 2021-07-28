@@ -58,8 +58,8 @@ enum class ast_type {
     IF,
     PARAMETER_LIST, /* Parameters are in the function signature. */
     ARGUMENT_LIST,
-    FUNCTION_DECLARATION,
-    FUNCTION_DEFINITION,
+    FUNCTION_DEF,
+    FUNCTION_DECL,
     FUNCTION_CALL,
     ANDCHAIN, /* Dummy node for chained comparations. */
     WHILE,
@@ -223,6 +223,24 @@ struct emc_type {
     int n_pointer_indirections = 0;
     bool is_const = false;
     emc_types type;
+
+    bool operator==(const emc_type &r) const
+    {
+        if (
+                type != r.type ||
+                n_pointer_indirections != r.n_pointer_indirections ||
+                is_const != r.is_const ||
+                name != r.name ||
+                children_types != r.children_types
+            )
+            return false;
+        return true;
+    }
+
+    bool operator!=(const emc_type &r) const
+    {
+        return !(*this == r);
+    }
 };
 
 emc_type standard_type_promotion(const emc_type &a, const emc_type &b);
@@ -259,6 +277,7 @@ public:
                 "Name: " << name << " Type: " << (int)type << std::endl;
     }
     std::string name;
+    std::string mangled_name;
     std::string nspace;
     object_type type;
     int n_pointer_indirection = 0;
@@ -320,6 +339,8 @@ public:
     }
 
     obj* find_object(std::string name, std::string nspace);
+    std::vector<obj*> find_objects_by_not_mangled_name(std::string name, std::string nspace);
+
     emc_type find_type(std::string name);
 
     void push_type(std::string name, emc_type type)
@@ -364,9 +385,15 @@ public:
 
     void push_object(obj *obj)
     {
-        if (find_object(obj->name, obj->nspace))
+        std::string name;
+        if (obj->mangled_name.size())
+            name = obj->mangled_name;
+        else
+            name = obj->name;
+
+        if (find_object(name, obj->nspace))
             THROW_BUG("push_object: Pushing existing object:"
-                    + obj->nspace + obj->name);
+                    + obj->nspace + name);
         vec_objs.push_back(obj);
     }
 
@@ -378,10 +405,27 @@ public:
     obj* find_object(std::string name, std::string nspace)
     {
         /* TODO: Map ist för vec? */
-        for (auto p : vec_objs)
-            if (p->name == name && p->nspace == nspace)
+        for (auto p : vec_objs) {
+            if (p->mangled_name.size()) {
+                if (p->mangled_name == name && p->nspace == nspace)
+                    return p;
+            } else if (p->name == name && p->nspace == nspace)
                 return p;
+        }
+
         return nullptr;
+    }
+
+    std::vector<obj*> find_objects_by_not_mangled_name(std::string name, std::string nspace)
+    {
+        std::vector<obj*> ans;
+        /* TODO: Map ist för vec? */
+        for (auto p : vec_objs) {
+            if (p->name == name && p->nspace == nspace)
+                ans.push_back(p);
+        }
+
+        return ans;
     }
 
     void clear()
@@ -500,6 +544,7 @@ public:
     ast_node *root; /* TODO: remove */
     ast_node *para_list;
     ast_node *var_list;
+    bool c_linkage = false;
 
     emc_type resolve();
 };
@@ -1687,7 +1732,7 @@ public:
             parlist(parlist), code_block(code_block),
                     name(name), nspace(nspace), return_list(return_list)
     {
-        type = ast_type::FUNCTION_DECLARATION;
+        type = ast_type::FUNCTION_DEF;
         
         if (!parlist)
             this->parlist = new ast_node_vardef_list{};   
@@ -1707,6 +1752,7 @@ public:
     ast_node *parlist; /* Is a return_list */
     std::string name;
     std::string nspace;
+    std::string mangled_name; 
 
     emc_type resolve();
 
@@ -1735,6 +1781,7 @@ public:
         delete arg_list;
     }
 
+    std::string mangled_name;
     std::string name;
     std::string nspace;
     ast_node *arg_list;
@@ -1752,22 +1799,64 @@ public:
     {
         arg_list->resolve();
         extern scope_stack resolve_scope;
-        auto obj = resolve_scope.find_object(name, nspace);
-        if (!obj) /* TODO: Kolla så fn */
-            THROW_BUG("Could not find function " + nspace + " " + name);
-        return value_type = obj->resolve();
+        std::vector<obj*> v_objs = resolve_scope.find_objects_by_not_mangled_name(name, nspace);
+        if (!v_objs.size()) /* TODO: Kolla så fn */
+            THROW_BUG("Could not find any function " + nspace + " " + name);
+
+        /* TODO: Make fancier argument matching then exact. */
+        obj* choosen_obj = nullptr;
+        /* Search the scopes for a matching function signature. v_objs is sorted so that items in the top most
+         * stack is first. */
+        for (auto obj : v_objs) {
+            if (obj->type == object_type::FUNC) {
+                object_func *objf = dynamic_cast<object_func*>(obj);
+                DEBUG_ASSERT_NOTNULL(objf);
+                ast_node_vardef_list *parameter_list = dynamic_cast<ast_node_vardef_list *>(objf->para_list);
+                DEBUG_ASSERT_NOTNULL(parameter_list);
+                ast_node_arglist *argument_list = dynamic_cast<ast_node_arglist *>(arg_list);
+                DEBUG_ASSERT_NOTNULL(argument_list);
+
+                if (parameter_list->v_defs.size() != argument_list->v_ast_args.size())
+                    continue;
+                bool hit = true;
+                /* Check if the parameters in the function object and the arguments of the call
+                 * all have the same type. */
+                for (int i = 0; i < parameter_list->v_defs.size(); i++) {
+                    if (parameter_list->v_defs[i]->value_type != argument_list->v_ast_args[i]->value_type) {
+                        hit = false;
+                        break;
+                    }
+                }
+                if (hit) {
+                    choosen_obj = obj;
+                    break;
+                }
+            } else 
+                throw std::runtime_error("There are objects of '" + name + "' that is not a function");
+        }
+        if (!choosen_obj)
+            throw std::runtime_error("There are no objects of '" + name + "' that match the call signature");
+        /* This function call will call this mangled name */
+        mangled_name = choosen_obj->mangled_name;
+
+        return value_type = choosen_obj->resolve();
     }
 };
 
 class ast_node_funcdec: public ast_node {
 public:
     ast_node_funcdec(ast_node *parlist, 
-            std::string name, std::string nspace, ast_node *return_list)
+            std::string name, std::string nspace, 
+            ast_node *return_list,
+            bool c_linkage)
     :
-            parlist(parlist),
-                    name(name), nspace(nspace), return_list(return_list)
+        parlist(parlist),
+        name(name), 
+        nspace(nspace), 
+        return_list(return_list),
+        c_linkage(c_linkage)
     {
-        type = ast_type::FUNCTION_DEFINITION;
+        type = ast_type::FUNCTION_DECL;
         
         if (!parlist)
             this->parlist = new ast_node_vardef_list{};   
@@ -1785,13 +1874,15 @@ public:
     ast_node *parlist; /* Is a return_list */
     std::string name;
     std::string nspace;
+    std::string mangled_name;
+    bool c_linkage;
 
     emc_type resolve();
 
     ast_node* clone()
     {
         auto c =  new ast_node_funcdec { parlist->clone(),
-                name, nspace, return_list->clone() };
+                name, nspace, return_list->clone(), c_linkage};
         c->value_type = value_type;
         return c;
     }
@@ -2311,3 +2402,6 @@ public:
 };
 
 void push_dummyobject_to_resolve_scope(std::string var_name, emc_type type);
+
+std::string mangle_emc_fn_name(const object_func &fn_obj);
+std::string demangle_emc_fn_name(std::string c_fn_name);

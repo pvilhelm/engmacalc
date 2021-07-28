@@ -78,6 +78,8 @@ ENDLN "\r\n"|"\n"
 "NOR" return NOR;
 "NOT" return NOT;
 
+"c::" return CLINKAGE;
+
  /* Symbol names */
 [a-z][a-z0-9\-_]*    { yylval->s = new std::string{yytext}; return NAME; }
 
@@ -123,8 +125,6 @@ ENDLN "\r\n"|"\n"
 .                       { fprintf(stderr, "Mystery character %c %i\n", *yytext, (int)*yytext); }
 
 %%
-
-
 
 static void update_loc(struct YYLTYPE * yylloc_param, char *yytext_arg) {
 	static int curr_line = 1;

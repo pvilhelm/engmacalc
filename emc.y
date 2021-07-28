@@ -27,7 +27,7 @@ typedef void* yyscan_t;
 %token <s> TYPENAME 
 %token <s> ESC_STRING
 
-%token EOL IF DO END ELSE WHILE ENDOFFILE FUNC ELSEIF ALSO RETURN STRUCT TYPE
+%token EOL IF DO END ELSE WHILE ENDOFFILE FUNC ELSEIF ALSO RETURN STRUCT TYPE CLINKAGE
 
 %right '='
 %left OR NOR XOR XNOR
@@ -40,7 +40,7 @@ typedef void* yyscan_t;
 
 %nonassoc DO
 %nonassoc END        
-%nonassoc '|' UMINUS '@' '&'
+%nonassoc '|' UMINUS '@' '&' 
 
 %start program
 
@@ -170,31 +170,61 @@ se: e                           {$$ = $1;}
     /* Function declaration */
     | FUNC vardef_list '=' NAME '(' vardef_list ')'
                             {
-                                auto p = new ast_node_funcdec{$6, *$4, "", $2};
+                                auto p = new ast_node_funcdec{$6, *$4, "", $2, false};
                                 delete $4;
                                 $$ = p;
                             }
     /* Function declaration without parameters that returns something */
     | FUNC vardef_list '=' NAME '(' ')'
                             {
-                                auto p = new ast_node_funcdec{nullptr, *$4, "", $2};
+                                auto p = new ast_node_funcdec{nullptr, *$4, "", $2, false};
                                 delete $4;
                                 $$ = p;
                             }
     /* Function declaration without parameters that returns nothing */
     | FUNC NAME '(' ')' 
                             {
-                                auto p = new ast_node_funcdec{nullptr, *$2, "", nullptr};
+                                auto p = new ast_node_funcdec{nullptr, *$2, "", nullptr, false};
                                 delete $2;
                                 $$ = p;
                             }
     /* Function declaration with parameters that returns nothing */
     | FUNC NAME '(' vardef_list ')'
                             {
-                                auto p = new ast_node_funcdec{$4, *$2, "", nullptr};
+                                auto p = new ast_node_funcdec{$4, *$2, "", nullptr, false};
                                 delete $2;
                                 $$ = p;
                             }
+
+    /* Function declarations with c linkage */
+    | FUNC vardef_list '=' CLINKAGE NAME '(' vardef_list ')'
+                            {
+                                auto p = new ast_node_funcdec{$7, *$5, "", $2, true};
+                                delete $5;
+                                $$ = p;
+                            }
+    /* Function declaration without parameters that returns something */
+    | FUNC vardef_list '=' CLINKAGE NAME '(' ')'
+                            {
+                                auto p = new ast_node_funcdec{nullptr, *$5, "", $2, true};
+                                delete $5;
+                                $$ = p;
+                            }
+    /* Function declaration without parameters that returns nothing */
+    | FUNC CLINKAGE NAME '(' ')' 
+                            {
+                                auto p = new ast_node_funcdec{nullptr, *$3, "", nullptr, true};
+                                delete $3;
+                                $$ = p;
+                            }
+    /* Function declaration with parameters that returns nothing */
+    | FUNC CLINKAGE NAME '(' vardef_list ')'
+                            {
+                                auto p = new ast_node_funcdec{$5, *$3, "", nullptr, true};
+                                delete $3;
+                                $$ = p;
+                            }
+
     | WHILE e DO exp_list END 
     						{ $$ = new ast_node_while{$2, $4};}
     | WHILE e DO exp_list ELSE exp_list END 
@@ -263,7 +293,7 @@ arg_list: e                 {
     
  /* Top expression */
 e: exp  
-   | e '=' e                 {$$ = new ast_node_assign{$1, $3};}
+   | e '=' e                {$$ = new ast_node_assign{$1, $3};}
    ;
 
  /* Not compare or assign expressions */
@@ -296,7 +326,7 @@ exp: exp '+' exp            {$$ = new ast_node_add{$1, $3};}
     | NUMBER                {$$ = $1;}
     | NAME '(' arg_list ')' {$$ = new ast_node_funccall{"", *$1, $3}; delete $1;}
     | NAME '(' ')'          {$$ = new ast_node_funccall{"", *$1, 0}; delete $1;}
-    | ESC_STRING			 {$$ = new ast_node_string_literal{*$1}; delete $1;}
+    | ESC_STRING			{$$ = new ast_node_string_literal{*$1}; delete $1;}
     | cmp_exp
     ;
 
@@ -319,66 +349,66 @@ field_list: vardef          {
   
  /* Compare expressions. They can be chained 3 > 2 > 1 is 3 > 2 AND 2 > 1 etc
   * with only one evaluation per operand. */
-cmp_exp:  exp '>' exp        {
+cmp_exp:  exp '>' exp       {
                                 auto gre = new ast_node_gre{$1, $3};
                                 $$ = new ast_node_andchain{gre};
-                             }
+                            }
         | exp '<' exp       {
                                 auto cmp = new ast_node_les{$1, $3};
                                 $$ = new ast_node_andchain{cmp};
-                             }
+                            }
         | exp EQU exp       {
                                 auto cmp = new ast_node_equ{$1, $3};
                                 $$ = new ast_node_andchain{cmp};
-                             }
+                            }
         | exp LEQ exp       {
                                 auto cmp = new ast_node_leq{$1, $3};
                                 $$ = new ast_node_andchain{cmp};
-                             }
+                            }
         | exp GEQ exp       {
                                 auto cmp = new ast_node_geq{$1, $3};
                                 $$ = new ast_node_andchain{cmp};
-                             }
+                            }
         | exp NEQ exp       {
                                 auto cmp = new ast_node_neq{$1, $3};
                                 $$ = new ast_node_andchain{cmp};
-                             }
+                            }
         | cmp_exp '>' exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
                                 auto gre = new ast_node_gre{nullptr, $3};
                                 chain->append_next(gre);
                                 $$ = chain;
-                             }
+                            }
         | cmp_exp '<' exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
                                 auto les = new ast_node_les{nullptr, $3};
                                 chain->append_next(les);
                                 $$ = chain;
-                             }
+                            }
         | cmp_exp EQU exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
                                 auto equ = new ast_node_equ{nullptr, $3};
                                 chain->append_next(equ);
                                 $$ = chain;
-                             }
+                            }
         | cmp_exp LEQ exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
                                 auto leq = new ast_node_leq{nullptr, $3};
                                 chain->append_next(leq);
                                 $$ = chain;
-                             }
+                            }
         | cmp_exp GEQ exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
                                 auto geq = new ast_node_geq{nullptr, $3};
                                 chain->append_next(geq);
                                 $$ = chain;
-                             }
+                            }
         | cmp_exp NEQ exp   {
                                 auto chain = dynamic_cast<ast_node_andchain*>($1);
                                 auto neq = new ast_node_neq{nullptr, $3};
                                 chain->append_next(neq);
                                 $$ = chain;
-                             }                             
+                            }                             
         ;
 
 %%

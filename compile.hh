@@ -7,6 +7,7 @@
 
 #include "emc.hh"
 
+
 struct default_types {
     gcc_jit_type *void_type = 0;
     gcc_jit_type *void_ptr_type = 0;
@@ -30,7 +31,7 @@ struct default_types {
         int_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_INT);
         uint_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_UNSIGNED_INT);
         long_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_LONG);
-        uint_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_UNSIGNED_LONG);
+        ulong_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_UNSIGNED_LONG);
         double_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_DOUBLE);
         void_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_VOID);
         bool_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_BOOL);
@@ -199,8 +200,8 @@ private:
     void walk_tree_struct(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
     void walk_tree_type(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
     void walk_tree_fcall(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
-    void walk_tree_fdef(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
-    void walk_tree_fdec(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_fdecl(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_fdefi(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
     void walk_tree_ret(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
     void walk_tree_assign(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
     void walk_tree_var(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue, gcc_jit_lvalue **current_lvalue);

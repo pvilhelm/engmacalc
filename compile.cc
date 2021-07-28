@@ -626,8 +626,8 @@ void jit::add_ast_node(ast_node *node)
      * to wrap them but use the root init function in the case of global vars and just
      * define themself at filescope for functions. 
      */
-    if (node->type == ast_type::DEF || node->type == ast_type::FUNCTION_DECLARATION ||
-        node->type == ast_type::FUNCTION_DEFINITION) {
+    if (node->type == ast_type::DEF || node->type == ast_type::FUNCTION_DEF ||
+        node->type == ast_type::FUNCTION_DECL) {
         gcc_jit_rvalue *rval = nullptr;
         walk_tree(node, 0, 0, &rval, 0);
     } else {
@@ -640,6 +640,7 @@ void jit::add_ast_node(ast_node *node)
                                             VOID_TYPE,
                                             node_fn_name.c_str(),
                                             0, 0, 0);
+        DEBUG_ASSERT_NOTNULL(node_func);
 
         int block_depth = v_block_terminated.size();
         v_block_terminated.push_back(false);                                    
@@ -1444,24 +1445,24 @@ void jit::walk_tree_fcall(ast_node *node,
     auto fcall_node = dynamic_cast<ast_node_funccall*>(node);
     DEBUG_ASSERT(fcall_node != nullptr, "FUNCTION_CALL current_rvalue is null");
 
-    auto it = map_fnname_to_gccfnobj.find(fcall_node->name);
+    auto it = map_fnname_to_gccfnobj.find(fcall_node->mangled_name);
     if (it == map_fnname_to_gccfnobj.end())
-        THROW_BUG("Function " + fcall_node->name + " not defined.");
+        THROW_BUG("Function " + fcall_node->mangled_name + " not defined.");
     gcc_jit_function *func = it->second;
 
     /* Find the ast node of the corrensponding function declaration. */
     extern scope_stack resolve_scope;
-    obj* fnobj_ = resolve_scope.find_object(fcall_node->name, "");
+    obj* fnobj_ = resolve_scope.find_object(fcall_node->mangled_name, "");
     object_func *fnobj = dynamic_cast<object_func*>(fnobj_);
     if (!fnobj)
-        THROW_BUG("Function " + fcall_node->name + " not defined/found.");
+        THROW_BUG("Function " + fcall_node->mangled_name + " not defined/found.");
     auto *par_list = dynamic_cast<ast_node_vardef_list*>(fnobj->para_list);
     DEBUG_ASSERT(par_list != nullptr, "par_list is null");
     auto arg_t = dynamic_cast<ast_node_arglist*>(fcall_node->arg_list);
     DEBUG_ASSERT(arg_t != nullptr, "arg_t is null");
 
     if (par_list->v_defs.size() != arg_t->v_ast_args.size())
-        THROW_BUG("Function " + fcall_node->name + " incorrect number of arguments.");
+        THROW_BUG("Function " + fcall_node->mangled_name + " incorrect number of arguments.");
 
     std::vector<gcc_jit_rvalue*> v_arg_rv;
     for (int i = 0; i < arg_t->v_ast_args.size(); i++) {
@@ -1485,7 +1486,8 @@ void jit::walk_tree_fcall(ast_node *node,
     *current_rvalue = fncall_rval;
 }
 
-void jit::walk_tree_fdec(ast_node *node, 
+/* definition is the implementation of a signature. */
+void jit::walk_tree_fdefi(ast_node *node, 
                         gcc_jit_block **current_block, 
                         gcc_jit_function **current_function, 
                         gcc_jit_rvalue **current_rvalue)
@@ -1506,6 +1508,7 @@ void jit::walk_tree_fdec(ast_node *node,
         gcc_jit_type *type = emc_type_to_jit_type(vardef->value_type);
         gcc_jit_param *para = gcc_jit_context_new_param(context, 
                     0, type, vardef->var_name.c_str());
+        DEBUG_ASSERT_NOTNULL(para);
         v_params.push_back(para);
         /* Add the parameters to the scope as lvalues. */
         push_lval(vardef->var_name, gcc_jit_param_as_lvalue(para));
@@ -1514,12 +1517,14 @@ void jit::walk_tree_fdec(ast_node *node,
     gcc_jit_function *fn = nullptr;
     if (v_params.size())
         fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_INTERNAL,
-                                    return_type, ast_funcdec->name.c_str(),
+                                    return_type, ast_funcdec->mangled_name.c_str(),
                                     v_params.size(), v_params.data(), 0);
     else 
         fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_INTERNAL,
-                                    return_type, ast_funcdec->name.c_str(),
+                                    return_type, ast_funcdec->mangled_name.c_str(),
                                     0, 0, 0);
+    DEBUG_ASSERT_NOTNULL(fn);
+
     int block_depth = v_block_terminated.size();
     v_block_terminated.push_back(false);
     gcc_jit_block *fn_block = gcc_jit_function_new_block(fn, new_unique_name("fn_start").c_str());
@@ -1541,7 +1546,7 @@ void jit::walk_tree_fdec(ast_node *node,
     /* Pop the function's scope. */
     resolve_scope.pop_scope();
 
-    map_fnname_to_gccfnobj[ast_funcdec->name.c_str()] = fn;
+    map_fnname_to_gccfnobj[ast_funcdec->mangled_name.c_str()] = fn;
 
     v_return_type.pop_back(); /* Pop return type stack */
 
@@ -1553,25 +1558,25 @@ void jit::walk_tree_fdec(ast_node *node,
         gcc_jit_block_end_with_void_return(last_block, 0);
         v_block_terminated.pop_back();
     } else
-        THROW_BUG("Function " + ast_funcdec->name + "'s last block not terminated with return.");
+        THROW_BUG("Function " + ast_funcdec->mangled_name + "'s last block not terminated with return.");
 
     /* Check so that we are back to the amount of terminations as when we started. */
     DEBUG_ASSERT(block_depth == v_block_terminated.size(), "Messup in terminations");
 
 }
 
-void jit::walk_tree_fdef(ast_node *node, 
+void jit::walk_tree_fdecl(ast_node *node, 
                         gcc_jit_block **current_block, 
                         gcc_jit_function **current_function, 
                         gcc_jit_rvalue **current_rvalue)
 {
     DEBUG_ASSERT(node != nullptr, "node was null");
-    auto ast_funcdef = dynamic_cast<ast_node_funcdec*>(node);
-    DEBUG_ASSERT(ast_funcdef != nullptr, "ast_funcdef was null");
-    auto ast_parlist = dynamic_cast<ast_node_vardef_list*>(ast_funcdef->parlist);
+    auto ast_funcdec = dynamic_cast<ast_node_funcdec*>(node);
+    DEBUG_ASSERT(ast_funcdec != nullptr, "ast_funcdef was null");
+    auto ast_parlist = dynamic_cast<ast_node_vardef_list*>(ast_funcdec->parlist);
     DEBUG_ASSERT_NOTNULL(ast_parlist);
 
-    gcc_jit_type *return_type = emc_type_to_jit_type(ast_funcdef->return_list->value_type);
+    gcc_jit_type *return_type = emc_type_to_jit_type(ast_funcdec->return_list->value_type);
 
     std::vector<gcc_jit_param*> v_params;
     for (auto e : ast_parlist->v_defs) {
@@ -1579,20 +1584,22 @@ void jit::walk_tree_fdef(ast_node *node,
         gcc_jit_type *type = emc_type_to_jit_type(vardef->value_type);
         gcc_jit_param *para = gcc_jit_context_new_param(context, 
                     0, type, vardef->var_name.c_str());
+        DEBUG_ASSERT_NOTNULL(para);
         v_params.push_back(para);
     }
 
     gcc_jit_function *fn = nullptr;
     if (v_params.size())
         fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_IMPORTED,
-                                    return_type, ast_funcdef->name.c_str(),
+                                    return_type, ast_funcdec->mangled_name.c_str(),
                                     v_params.size(), v_params.data(), 0);
     else 
         fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_IMPORTED,
-                                    return_type, ast_funcdef->name.c_str(),
+                                    return_type, ast_funcdec->mangled_name.c_str(),
                                     0, 0, 0);
- 
-    map_fnname_to_gccfnobj[ast_funcdef->name] = fn;
+    DEBUG_ASSERT_NOTNULL(fn);
+
+    map_fnname_to_gccfnobj[ast_funcdec->mangled_name] = fn;
 }
 
 void jit::walk_tree_ret(ast_node *node, 
@@ -2244,8 +2251,8 @@ void jit::walk_tree(ast_node *node,
         walk_tree_ilit(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::FUNCTION_CALL) {
         walk_tree_fcall(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::FUNCTION_DECLARATION) {
-        walk_tree_fdec(node, current_block, current_function, current_rvalue);
+    } else if (type == ast_type::FUNCTION_DEF) {
+        walk_tree_fdefi(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::RETURN) {
         walk_tree_ret(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::ASSIGN) {
@@ -2262,8 +2269,8 @@ void jit::walk_tree(ast_node *node,
         walk_tree_if(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::WHILE) {
         walk_tree_while(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::FUNCTION_DEFINITION) {
-        walk_tree_fdef(node, current_block, current_function, current_rvalue);
+    } else if (type == ast_type::FUNCTION_DECL) {
+        walk_tree_fdecl(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::AND) {
         walk_tree_and(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::OR) {
