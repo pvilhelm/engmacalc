@@ -22,6 +22,7 @@
 #include <limits>
 #include <map>
 #include <cinttypes>
+#include <sstream>
 
 #include "emc_assert.hh"
 
@@ -79,7 +80,10 @@ enum class ast_type {
     LISTLITERAL,
     DEREF,
     ADDRESS,
-    PTRDEF_LIST
+    PTRDEF_LIST,
+    TYPEDOTCHAIN,
+    TYPEDOTNAMECHAIN,
+    NAMESPACE
 };
 
 enum class object_type {
@@ -246,9 +250,10 @@ struct emc_type {
 emc_type standard_type_promotion(const emc_type &a, const emc_type &b);
 emc_type standard_type_promotion_or_invalid(const emc_type &a, const emc_type &b);
 emc_type string_to_type(std::string);
+std::string mangle_emc_var_name(std::string name, std::string nspace);
 /* Forward declarations. */
-class scope;
-class scope_stack;
+class objscope;
+class objscope_stack;
 class ast_node;
 class obj;
 
@@ -260,6 +265,7 @@ void init_builtin_types();
 
 /* Util functions */
 void deescape_string(std::string &s);
+std::vector<std::string> split_string(std::string s, std::string delimiter);
 
 class obj {
 public:
@@ -276,9 +282,9 @@ public:
         std::cout << "Object, Namespace: " << nspace <<
                 "Name: " << name << " Type: " << (int)type << std::endl;
     }
-    std::string name;
-    std::string mangled_name;
-    std::string nspace;
+    std::string name; /* the name of the object (without namespace) */
+    std::string mangled_name; /* The mangled name of the object dependent on namespace and name */
+    std::string nspace; /* The namespace of the object */
     object_type type;
     int n_pointer_indirection = 0;
 };
@@ -297,79 +303,75 @@ public:
     std::string name;
 };
 
-class scope;
-class scope_stack;
+class objscope;
+class objscope_stack;
 
 /*
 class scopes {
 public:
-    scope_stack runtime_scopestack;
-    scope_stack resolve_scopestack;
+    objscope_stack runtime_scopestack;
+    objscope_stack resolve_scopestack;
 };
 */
 
-class scope_stack {
+class objscope_stack {
 public:
     /* There is always one root scope in the scope stack. */
-    scope_stack() {push_new_scope();}
-    scope_stack(const scope_stack&) = delete;
-    scope_stack operator=(const scope_stack&) = delete;
+    objscope_stack() {push_new_scope();}
+    objscope_stack(const objscope_stack&) = delete;
+    objscope_stack operator=(const objscope_stack&) = delete;
 
     void push_new_scope();
 
     void pop_scope()
     {
         DEBUG_ASSERT(vec_scope.size() >= 1, 
-            "Trying to pop scope_stack too far");
+            "Trying to pop objscope_stack too far");
         vec_scope.pop_back();
     }
 
-    scope& get_top_scope()
+    objscope& get_top_scope()
     {
         DEBUG_ASSERT(vec_scope.size() >= 1, 
-            "Trying to access scope in empty scope_stack");
+            "Trying to access scope in empty objscope_stack");
         return vec_scope.back();
     }
 
-    scope& get_global_scope()
+    bool is_in_global_scope()
+    {
+        return vec_scope.size() == 1;
+    }
+
+    objscope& get_global_scope()
     {
         DEBUG_ASSERT(vec_scope.size() >= 1, 
-            "Trying to access scope in empty scope_stack");
+            "Trying to access scope in empty objscope_stack");
         return vec_scope.front();
     }
 
-    obj* find_object(std::string name, std::string nspace);
+    obj* find_object(std::string name);
     std::vector<obj*> find_objects_by_not_mangled_name(std::string name, std::string nspace);
 
-    emc_type find_type(std::string name);
-
-    void push_type(std::string name, emc_type type)
-    {
-        auto it = map_typename_to_type.find(name);
-        if (it != map_typename_to_type.end())
-            THROW_BUG("Type " + name + " in map already");
-        map_typename_to_type[name] = type;
-    }
-    std::vector<scope> vec_scope;
-
-    std::map<std::string, emc_type> map_typename_to_type;
+    std::vector<objscope> vec_scope;
 
     void debug_print();
 
     void clear();
 };
 
-class scope {
+
+
+class objscope {
 public:
-    ~scope()
+    ~objscope()
     { /* TODO: Fix så att inte minnet läcker ... */
         for (auto p : vec_objs)
             delete p;
         for (auto p : vec_types)
             delete p;
     }
-    scope(){}
-    scope(scope &&s) 
+    objscope(){}
+    objscope(objscope &&s) 
     {
         std::swap(vec_objs, s.vec_objs);
         std::swap(vec_types, s.vec_types);
@@ -377,8 +379,8 @@ public:
     /* Since this objects keeps track of pointers there can
      * be no copy or assignment ctor.
      */ 
-    scope(const scope&) = delete;
-    scope operator=(const scope&) = delete;
+    objscope(const objscope&) = delete;
+    objscope operator=(const objscope&) = delete;
 
     std::vector<obj*> vec_objs;
     std::vector<type_object*> vec_types;
@@ -391,7 +393,7 @@ public:
         else
             name = obj->name;
 
-        if (find_object(name, obj->nspace))
+        if (find_object(name))
             THROW_BUG("push_object: Pushing existing object:"
                     + obj->nspace + name);
         vec_objs.push_back(obj);
@@ -402,14 +404,14 @@ public:
         vec_objs.pop_back();
     }
 
-    obj* find_object(std::string name, std::string nspace)
+    obj* find_object(std::string name)
     {
         /* TODO: Map ist för vec? */
         for (auto p : vec_objs) {
             if (p->mangled_name.size()) {
-                if (p->mangled_name == name && p->nspace == nspace)
+                if (p->mangled_name == name)
                     return p;
-            } else if (p->name == name && p->nspace == nspace)
+            } else if (p->name == name)
                 return p;
         }
 
@@ -417,14 +419,13 @@ public:
     }
 
     std::vector<obj*> find_objects_by_not_mangled_name(std::string name, std::string nspace)
-    {
+    { 
         std::vector<obj*> ans;
         /* TODO: Map ist för vec? */
         for (auto p : vec_objs) {
             if (p->name == name && p->nspace == nspace)
                 ans.push_back(p);
         }
-
         return ans;
     }
 
@@ -438,6 +439,100 @@ public:
         vec_types.clear();
     }
 };
+
+class typescope_stack {
+public:
+    /* There is always one root scope in the scope stack. */
+    typescope_stack() {}
+    typescope_stack(const typescope_stack&) = delete;
+    typescope_stack operator=(const typescope_stack&) = delete;
+
+    void push_new_scope(std::string scope_name)
+    {
+        vec_scope.push_back(scope_name);
+        /* Create a cached string on the form Ns.Ns.Ns for the current scope */
+        current_scope = join_scopes();
+    }
+
+    void pop_scope()
+    {
+        DEBUG_ASSERT(vec_scope.size() >= 1, 
+            "Trying to pop scope_stack too far");
+        vec_scope.pop_back();
+        /* Create a cached string on the form Ns.Ns.Ns for the current scope */
+        current_scope = join_scopes();
+    }
+
+    emc_type find_type(std::string name)
+    {
+        std::string prefix;
+        if (current_scope.size())
+            prefix = current_scope + ".";
+
+        std::string full_type_name = prefix + name;
+
+        /* Search in typescopes relative to the current scope first */
+        auto it = map_typename_to_type.find(full_type_name);
+        if (it != map_typename_to_type.end())
+            it->second;
+
+        /* Search from root scope */
+        it = map_typename_to_type.find(name);
+        if (it == map_typename_to_type.end())
+            THROW_BUG("Type " + name + " not found in map of types");
+
+        return it->second;
+    }
+
+    void push_type(std::string name, emc_type type)
+    {
+        std::string prefix;
+        if (current_scope.size())
+            prefix = current_scope + ".";
+
+        std::string full_name = prefix + name;
+
+        auto it = map_typename_to_type.find(full_name);
+        if (it != map_typename_to_type.end())
+            THROW_BUG("Type " + full_name + " in map of types already");
+        map_typename_to_type[full_name] = type;
+    }
+
+    /* Essentially a vector of strings for each nested namespace scope. */
+    std::vector<std::string> vec_scope;
+    std::string current_scope;
+
+    /* Joins a vector of string to "A.B.C.D.", but an empty vector to "" */
+    std::string join_scopes() const 
+    {
+        std::ostringstream os{};
+        
+        for (int i = 0; i < vec_scope.size(); i++) {
+            std::string ns = vec_scope[i];
+            os << ns;
+            if (i != vec_scope.size() - 1)
+                os << ".";
+        }
+        return os.str();
+    }
+
+    void clear_scopes()
+    {
+        vec_scope.clear();
+        current_scope = join_scopes();
+    }
+
+    void set_scopes(std::string full_nspace) 
+    {
+        clear_scopes();
+
+        vec_scope = split_string(full_nspace, ".");
+        current_scope = join_scopes();
+    }
+
+    std::map<std::string, emc_type> map_typename_to_type;
+};
+
 
 #define OBJCLASS_DEF(classname, object_type, emc_ret_type, c_type)\
 class classname: public obj {\
@@ -573,6 +668,112 @@ public:
     virtual emc_type resolve() = 0;
     ast_type type = ast_type::INVALID;
     emc_type value_type = emc_type{emc_types::INVALID};
+};
+
+class ast_node_typedotchain: public ast_node {
+public:
+    ast_node_typedotchain()
+    {
+        type = ast_type::TYPEDOTCHAIN;
+
+    }
+
+    void append_type(std::string type_name)
+    {
+        v_type_names.push_back(type_name);
+    }
+
+    ~ast_node_typedotchain() {}
+
+    std::vector<std::string> v_type_names;
+
+    emc_type resolve()
+    {
+        extern typescope_stack type_resolve_scopestack;
+
+        std::string full_type_name = resolve_full_type_name();
+
+        value_type = type_resolve_scopestack.find_type(full_type_name);
+
+        return value_type;
+    }
+
+    void resolve_name_and_namespace(std::string *name, std::string *nspace)
+    {
+        /* Push the namespace elements to ns */
+        for (int i = 0; i < v_type_names.size() - 1; i++) {
+            std::string name = v_type_names[i];
+            *nspace += name;
+            if (i != v_type_names.size() - 2)
+                *nspace += ".";
+        }
+        /* The last one is the name */
+        DEBUG_ASSERT(v_type_names.size(),"");
+        *name = v_type_names.back();
+    }
+
+    std::string resolve_full_type_name()
+    {
+        std::string full_type_name;
+
+        /* Append vector to string like A.B.C.D */
+        for (int i = 0; i < v_type_names.size(); i++) {
+            std::string name = v_type_names[i];
+            full_type_name += name;
+            if (i != v_type_names.size() - 1)
+                full_type_name += ".";
+        }
+
+        return full_type_name;
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_typedotchain {};
+        c->v_type_names = v_type_names;
+        c->value_type = value_type;
+        return c;        
+    }
+};
+
+class ast_node_typedotnamechain: public ast_node {
+public:
+    ast_node_typedotnamechain(std::string name, ast_node* typedotchain) :
+        name(name),
+        typedotchain(typedotchain)
+    {
+        type = ast_type::TYPEDOTNAMECHAIN;
+    }
+
+    ~ast_node_typedotnamechain() { delete typedotchain;}
+
+    ast_node* typedotchain = nullptr;
+    std::string name;
+    std::string full_name;
+    std::string nspace;
+
+    emc_type resolve()
+    {
+        /* If there is A.B.C. prepended to the name of this object we need to include it
+         * in the objects name */
+        if (typedotchain) {
+            ast_node_typedotchain *tc = dynamic_cast<ast_node_typedotchain*>(typedotchain);
+            DEBUG_ASSERT_NOTNULL(tc);
+            /* Resolve all the A.B.C before the .d in a A.B.C.d */
+            std::string ns = tc->resolve_full_type_name();
+            nspace = ns;
+            full_name = ns + "." + name;
+        } else 
+            full_name = name;
+        return value_type = emc_type{emc_types::NONE};
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_typedotnamechain {name, typedotchain ? typedotchain->clone() : 0};
+        c->value_type = value_type;
+        return c;        
+    }
 };
 
 class ast_node_return : public ast_node {
@@ -1276,33 +1477,43 @@ class ast_node_var: public ast_node {
 public:
     std::string name;
     std::string nspace;
+    std::string full_name;
+    ast_node *typedotnamechain = nullptr;
 
     ~ast_node_var()
     {
+        delete typedotnamechain;
     }
-    ast_node_var(std::string name, std::string nspace = "")
+    ast_node_var(ast_node *typedotnamechain)
     :
-            name(name), nspace(nspace)
+            typedotnamechain(typedotnamechain)
     {
         type = ast_type::VAR;
-    }
-    ast_node_var() :
-            ast_node_var("", "")
-    {
     }
 
     emc_type resolve()
     {
-        extern scope_stack resolve_scope;
-        auto p = resolve_scope.find_object(name, nspace);
-        if (!p) /* TODO: Kanske borde throwa "inte hittat än" för att kunna fortsätta? */
-            THROW_BUG("Object does not exist: >>" + nspace + name + "<<");
+        extern objscope_stack obj_resolve_scopestack;
+
+        ast_node_typedotnamechain *node = dynamic_cast<ast_node_typedotnamechain*>(typedotnamechain);
+        DEBUG_ASSERT_NOTNULL(node);
+        node->resolve();
+        name = node->name;
+        nspace = node->nspace;
+        full_name = node->full_name;
+        
+        auto v = obj_resolve_scopestack.find_objects_by_not_mangled_name(name, nspace);
+        if (v.size() == 0) /* TODO: Kanske borde throwa "inte hittat än" för att kunna fortsätta? */
+            THROW_BUG("Object does not exist: >>" + full_name + "<<");
+        /* Pick the object in top scope (which is in the front of the vector from find...() */
+        auto p = v.front();
+
         return value_type = p->resolve();
     }
 
     ast_node* clone()
     {
-        auto c = new ast_node_var { name, nspace };
+        auto c = new ast_node_var { typedotnamechain->clone() };
         c->value_type = value_type;
         return c;
     }
@@ -1410,20 +1621,26 @@ public:
     ast_node* clone()
     {
         /* TODO: Fixa så att ctorn inte tar first och att alla element läggs till med append_node */
-        auto iter = v_nodes.begin();
-        if (iter == v_nodes.end())
-            THROW_BUG("");
+        if (v_nodes.size()) {
+            auto iter = v_nodes.begin();
+            if (iter == v_nodes.end())
+                THROW_BUG("");
 
-        auto pel = new ast_node_explist { (*iter)->clone() };
-        pel->value_type = value_type;
-        pel->v_nodes[0]->value_type = (*iter++)->value_type;
+            auto pel = new ast_node_explist { (*iter)->clone() };
+            pel->value_type = value_type;
+            pel->v_nodes[0]->value_type = (*iter++)->value_type;
 
-        for (; iter != v_nodes.end(); iter++) {
-            auto c = (*iter)->clone();
-            c->value_type = (*iter)->value_type;
-            pel->append_node(c);
+            for (; iter != v_nodes.end(); iter++) {
+                auto c = (*iter)->clone();
+                c->value_type = (*iter)->value_type;
+                pel->append_node(c);
+            }
+            return pel;
+        } else {
+            auto pel = new ast_node_explist {0};
+            pel->value_type = value_type;
+            return pel;
         }
-        return pel;
     }
 
     void append_node(ast_node *first)
@@ -1448,10 +1665,10 @@ public:
 
     emc_type resolve()
     {
-        extern scope_stack resolve_scope;
-        resolve_scope.push_new_scope();
+        extern objscope_stack obj_resolve_scopestack;
+        obj_resolve_scopestack.push_new_scope();
         value_type = first->resolve();
-        resolve_scope.pop_scope();
+        obj_resolve_scopestack.pop_scope();
         return value_type;
     }
 
@@ -1501,19 +1718,19 @@ public:
     {
         cond_e->resolve();
         if (!else_el && !also_el) {
-            extern scope_stack resolve_scope;
-            resolve_scope.push_new_scope();
+            extern objscope_stack obj_resolve_scopestack;
+            obj_resolve_scopestack.push_new_scope();
             value_type = if_el->resolve();
-            resolve_scope.pop_scope();
+            obj_resolve_scopestack.pop_scope();
             return value_type;
         } else if (else_el && !also_el) {
-            extern scope_stack resolve_scope;
-            resolve_scope.push_new_scope();
+            extern objscope_stack obj_resolve_scopestack;
+            obj_resolve_scopestack.push_new_scope();
             auto value_type_if = if_el->resolve();
-            resolve_scope.pop_scope();
-            resolve_scope.push_new_scope();
+            obj_resolve_scopestack.pop_scope();
+            obj_resolve_scopestack.push_new_scope();
             auto value_type_else = else_el->resolve();
-            resolve_scope.pop_scope();
+            obj_resolve_scopestack.pop_scope();
 
             auto t = standard_type_promotion_or_invalid(value_type_if, value_type_else);
             if (t.is_valid())
@@ -1521,16 +1738,16 @@ public:
             else
                 return value_type = emc_type{emc_types::NONE};
         } else {
-            extern scope_stack resolve_scope;
-            resolve_scope.push_new_scope();
+            extern objscope_stack obj_resolve_scopestack;
+            obj_resolve_scopestack.push_new_scope();
             auto value_type_if = if_el->resolve();
-            resolve_scope.pop_scope();
-            resolve_scope.push_new_scope();
+            obj_resolve_scopestack.pop_scope();
+            obj_resolve_scopestack.push_new_scope();
             auto value_type_else = else_el->resolve();
-            resolve_scope.pop_scope();
-            resolve_scope.push_new_scope();
+            obj_resolve_scopestack.pop_scope();
+            obj_resolve_scopestack.push_new_scope();
             auto value_type_also = also_el->resolve();
-            resolve_scope.pop_scope();
+            obj_resolve_scopestack.pop_scope();
 
             auto t = standard_type_promotion_or_invalid(value_type_if, value_type_else);
             t = standard_type_promotion_or_invalid(t, value_type_also);
@@ -1592,19 +1809,19 @@ public:
     {
         cond_e->resolve();
         if (!else_el) {
-            extern scope_stack resolve_scope;
-            resolve_scope.push_new_scope();
+            extern objscope_stack obj_resolve_scopestack;
+            obj_resolve_scopestack.push_new_scope();
             value_type = if_el->resolve();
-            resolve_scope.pop_scope();
+            obj_resolve_scopestack.pop_scope();
             return value_type;
         } else {
-            extern scope_stack resolve_scope;
-            resolve_scope.push_new_scope();
+            extern objscope_stack obj_resolve_scopestack;
+            obj_resolve_scopestack.push_new_scope();
             auto value_type_if = if_el->resolve();
-            resolve_scope.pop_scope();
-            resolve_scope.push_new_scope();
+            obj_resolve_scopestack.pop_scope();
+            obj_resolve_scopestack.push_new_scope();
             auto value_type_else = else_el->resolve();
-            resolve_scope.pop_scope();
+            obj_resolve_scopestack.pop_scope();
 
             auto t = standard_type_promotion_or_invalid(value_type_if, value_type_else);
             if (t.is_valid())
@@ -1685,6 +1902,7 @@ public:
     }
 
     emc_type resolve();
+
 };
 
 
@@ -1727,10 +1945,12 @@ public:
 class ast_node_funcdef: public ast_node {
 public:
     ast_node_funcdef(ast_node *parlist, ast_node *code_block,
-            std::string name, std::string nspace, ast_node *return_list)
+            ast_node* typedotnamechain, ast_node *return_list)
     :
-            parlist(parlist), code_block(code_block),
-                    name(name), nspace(nspace), return_list(return_list)
+            parlist(parlist), 
+            code_block(code_block),
+            typedotnamechain(typedotnamechain),
+            return_list(return_list)
     {
         type = ast_type::FUNCTION_DEF;
         
@@ -1745,11 +1965,13 @@ public:
         delete code_block;
         delete parlist;
         delete return_list;
+        delete typedotnamechain;
     }
     
     ast_node *return_list;
     ast_node *code_block;
     ast_node *parlist; /* Is a return_list */
+    ast_node* typedotnamechain = nullptr;
     std::string name;
     std::string nspace;
     std::string mangled_name; 
@@ -1760,16 +1982,19 @@ public:
     {
         auto c =  new ast_node_funcdef { parlist->clone(),
                 code_block->clone(),
-                name, nspace, return_list->clone() };
+                typedotnamechain->clone(), return_list->clone() };
         c->value_type = value_type;
+        c->name = name;
+        c->nspace = nspace;
+        c->mangled_name = mangled_name;
         return c;
     }
 };
 
 class ast_node_funccall: public ast_node {
 public:
-    ast_node_funccall(std::string nspace, std::string name, ast_node *arg_list) :
-            nspace(nspace), arg_list(arg_list), name(name)
+    ast_node_funccall(ast_node* typedotnamechain, ast_node *arg_list) :
+            typedotnamechain(typedotnamechain), arg_list(arg_list)
     {
         type = ast_type::FUNCTION_CALL;
         if (!arg_list) 
@@ -1779,8 +2004,9 @@ public:
     ~ast_node_funccall()
     {
         delete arg_list;
+        delete typedotnamechain;
     }
-
+    ast_node* typedotnamechain = nullptr;
     std::string mangled_name;
     std::string name;
     std::string nspace;
@@ -1788,18 +2014,28 @@ public:
 
     ast_node* clone()
     {
-        auto c =  new ast_node_funccall { nspace,
-                name,
+        auto c =  new ast_node_funccall { typedotnamechain->clone(),
                 arg_list->clone() };
         c->value_type = value_type;
+        c->mangled_name = mangled_name;
+        c->name = name;
+        c->nspace = nspace;
         return c;
     }
 
     emc_type resolve()
     {
+        ast_node_typedotnamechain *typenamedot = dynamic_cast<ast_node_typedotnamechain*>(typedotnamechain);
+        DEBUG_ASSERT_NOTNULL(typenamedot);
+        
+        typenamedot->resolve();
         arg_list->resolve();
-        extern scope_stack resolve_scope;
-        std::vector<obj*> v_objs = resolve_scope.find_objects_by_not_mangled_name(name, nspace);
+
+        name = typenamedot->name;
+        nspace = typenamedot->nspace;
+        
+        extern objscope_stack obj_resolve_scopestack;
+        std::vector<obj*> v_objs = obj_resolve_scopestack.find_objects_by_not_mangled_name(name, nspace);
         if (!v_objs.size()) /* TODO: Kolla så fn */
             THROW_BUG("Could not find any function " + nspace + " " + name);
 
@@ -1846,13 +2082,12 @@ public:
 class ast_node_funcdec: public ast_node {
 public:
     ast_node_funcdec(ast_node *parlist, 
-            std::string name, std::string nspace, 
+            ast_node* typedotnamechain, 
             ast_node *return_list,
             bool c_linkage)
     :
         parlist(parlist),
-        name(name), 
-        nspace(nspace), 
+        typedotnamechain(typedotnamechain),
         return_list(return_list),
         c_linkage(c_linkage)
     {
@@ -1868,10 +2103,12 @@ public:
     {
         delete parlist;
         delete return_list;
+        delete typedotnamechain;
     }
     
     ast_node *return_list;
     ast_node *parlist; /* Is a return_list */
+    ast_node* typedotnamechain = nullptr;
     std::string name;
     std::string nspace;
     std::string mangled_name;
@@ -1882,8 +2119,11 @@ public:
     ast_node* clone()
     {
         auto c =  new ast_node_funcdec { parlist->clone(),
-                name, nspace, return_list->clone(), c_linkage};
+                typedotnamechain->clone(), return_list->clone(), c_linkage};
         c->value_type = value_type;
+        c->name = name;
+        c->nspace = nspace;
+        c->mangled_name = mangled_name;
         return c;
     }
 };
@@ -2133,9 +2373,14 @@ public:
 
 class ast_node_def: public ast_node {
 public:
-    ast_node_def(std::string type_name, std::string var_name,
-            ast_node *value_node) :
-            type_name(type_name), var_name(var_name), value_node(value_node)
+    ast_node_def(   
+                    ast_node* typedotchain, 
+                    ast_node *typedotnamechain,
+                    ast_node *value_node
+                ) : 
+                    value_node(value_node),
+                    typedotchain(typedotchain),
+                    typedotnamechain(typedotnamechain)
     {
         type = ast_type::DEF;
     }
@@ -2144,29 +2389,56 @@ public:
     {
         delete value_node;
         delete ptrdef_node;
+        delete typedotchain;
+        delete typedotnamechain;
     }
     
-    std::string type_name; /* TODO: Borde va ngt object istället. */
-    std::string var_name;
-    ast_node *value_node = nullptr;
+    std::string type_name;
+    std::string var_name;       /* The name of the variable (without any namespace) */
+    std::string nspace;         /* Absolute namespace */
+    std::string mangled_name;   /* If the def is in filescope the mangled name is here */
+    std::string full_name;      /* Full name on the form: Name.Space.objname */
+    ast_node *value_node = nullptr;   /* Rh value node Foo Bar.name = *baz()* */
     ast_node *ptrdef_node = nullptr;
+    ast_node *typedotchain = nullptr; /* The type: *Foo* Bar.name */
+    ast_node *typedotnamechain = nullptr; /* The name with ns: Foo *Bar.name* */
     int n_pointer_indirections = 0;
 
     ast_node* clone()
     {
-        auto c = new ast_node_def { type_name, var_name,
+        auto c = new ast_node_def { typedotchain->clone(), typedotnamechain->clone(),
                 value_node ? value_node->clone() : nullptr };
         c->ptrdef_node = ptrdef_node ? ptrdef_node->clone() : nullptr; 
         c->value_type = value_type;
+        c->type_name = type_name;
+        c->var_name = var_name;
+        c->nspace = nspace;
+        c->mangled_name = mangled_name;
+        c->full_name = full_name;
+        c->n_pointer_indirections = n_pointer_indirections;
         return c;        
     }
 
     emc_type resolve()
     {
         /* TODO: Typ implementationen är ful ... */
-        extern scope_stack resolve_scope;
+        extern objscope_stack obj_resolve_scopestack;
+        extern typescope_stack type_resolve_scopestack;
 
-        emc_type type = resolve_scope.find_type(type_name);
+        /* Resolve the type node */
+        emc_type type = typedotchain->resolve();
+
+        /* Resolve the name node with a potential namespace */
+        ast_node_typedotnamechain* typedotnamechain_T = 
+            dynamic_cast<ast_node_typedotnamechain*>(typedotnamechain);
+        DEBUG_ASSERT_NOTNULL(typedotnamechain_T);
+        typedotnamechain_T->resolve();
+        var_name = typedotnamechain_T->name;
+        nspace = typedotnamechain_T->nspace;
+
+        if (obj_resolve_scopestack.is_in_global_scope() && nspace.size())
+            THROW_BUG("Can't specify a namespace in variable declarations in a scope: " + nspace + "." + var_name);
+
         /* Set how many pointer indirections this var def has */
         int n_pointer_indirections = 0;
         if (ptrdef_node) {
@@ -2205,7 +2477,29 @@ public:
             od = new object_struct{var_name, "", type, n_pointer_indirections};
         else
             THROW_NOT_IMPLEMENTED("Type not implemented ast_node_def");
-        resolve_scope.get_top_scope().push_object(od);
+
+        /* Flytta in i ctor för objektet? */
+        
+        /* If we are in filescope (global scope) any declaration might be in a
+         * namespace, so we add it to the specified namespace. */
+        if (obj_resolve_scopestack.is_in_global_scope())
+            if (type_resolve_scopestack.current_scope.size())
+                nspace = type_resolve_scopestack.current_scope + "." + nspace;
+
+        od->nspace = nspace;
+        full_name = (nspace.size() ? nspace + ".": "") + var_name;
+        
+        /* Only filescope variables need mangling. TODO: Static variables */
+        if (obj_resolve_scopestack.is_in_global_scope()) {
+            mangled_name = mangle_emc_var_name( var_name, 
+                                                nspace);
+            od->mangled_name = mangled_name;
+        /* Local variables have the same mangled name as their name */
+        } else {
+            od->mangled_name = mangled_name = var_name;
+        }
+
+        obj_resolve_scopestack.get_top_scope().push_object(od);
 
         if (value_node)
             value_node->resolve();
@@ -2214,10 +2508,17 @@ public:
 
     emc_type resolve_no_push()
     {
-        /* TODO: Typ implementationen är ful ... */
-        extern scope_stack resolve_scope;
+        /* Resolve the type node */
+        emc_type type = typedotchain->resolve();
 
-        emc_type type = resolve_scope.find_type(type_name);
+        /* Resolve the name node with a potential namespace */
+        ast_node_typedotnamechain* typedotnamechain_T = 
+            dynamic_cast<ast_node_typedotnamechain*>(typedotnamechain);
+        DEBUG_ASSERT_NOTNULL(typedotnamechain_T);
+        typedotnamechain_T->resolve();
+        var_name = typedotnamechain_T->name;
+        nspace = typedotnamechain_T->nspace;
+
         /* Set how many pointer indirections this var def has */
         int n_pointer_indirections = 0;
         if (ptrdef_node) {
@@ -2251,7 +2552,7 @@ public:
 
     emc_type resolve()
     {
-        extern scope_stack resolve_scope;
+        extern objscope_stack obj_resolve_scopestack;
 
         first->resolve();
 
@@ -2300,7 +2601,7 @@ public:
 
     emc_type resolve()
     {
-        extern scope_stack resolve_scope;
+        extern objscope_stack obj_resolve_scopestack;
 
         for (auto e : v_fields)
             e->resolve_no_push();
@@ -2327,20 +2628,32 @@ public:
 
 class ast_node_type: public ast_node {
 public:
-    ast_node_type(std::string type_name, ast_node *first) :
-        first(first), type_name(type_name)
+    ast_node_type(ast_node* typedotchain, ast_node *first) :
+        first(first), typedotchain(typedotchain)
     {
         type = ast_type::TYPE;
     }
 
-    ~ast_node_type() { delete first; }
+    ~ast_node_type() { delete first; delete typedotchain;}
 
     ast_node *first;
+    ast_node* typedotchain;
     std::string type_name;
+    std::string nspace; /* Relative namespace */
+    std::string full_relative_name;
 
     emc_type resolve()
     {
-        extern scope_stack resolve_scope;
+        extern typescope_stack type_resolve_scopestack;
+
+        auto type_node = dynamic_cast<ast_node_typedotchain*>(typedotchain);
+        DEBUG_ASSERT_NOTNULL(type_node);
+        
+        type_node->resolve_name_and_namespace(&type_name, &nspace);
+        if (nspace.size())
+            full_relative_name = nspace + "." + type_name;
+        else
+            full_relative_name = type_name;
 
         first->resolve(); 
 
@@ -2348,15 +2661,18 @@ public:
         /* We need to supply the value type with what the struct is 
          * is called from here. */
         struct_node->value_type.name = type_name;
-        resolve_scope.push_type(type_name, struct_node->value_type);
+        type_resolve_scopestack.push_type(full_relative_name, struct_node->value_type);
 
         return value_type = emc_type{emc_types::NONE};
     }
 
     ast_node* clone()
     {
-        auto c = new ast_node_type { type_name, first->clone() };
+        auto c = new ast_node_type { typedotchain->clone(), first->clone() };
         c->value_type = value_type;
+        c->type_name = type_name;
+        c->nspace = nspace;
+        c->full_relative_name = full_relative_name;
         return c;        
     }
 };
@@ -2398,6 +2714,43 @@ public:
             THROW_BUG("Child first is not an arglist");
 
         return value_type;
+    }
+};
+
+class ast_node_nspace: public ast_node {
+public:
+    ~ast_node_nspace()
+    {
+        delete typedotchain;
+    }
+    ast_node_nspace(ast_node *typedotchain)
+    :
+            typedotchain(typedotchain)
+    {
+        type = ast_type::NAMESPACE;
+    }
+    
+    ast_node *typedotchain;
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_nspace { typedotchain->clone()};
+        c->value_type = value_type;
+        return c;
+    }
+
+    emc_type resolve()
+    {
+        extern typescope_stack type_resolve_scopestack;
+
+        auto typedotchain_T = dynamic_cast<ast_node_typedotchain*>(typedotchain);
+        DEBUG_ASSERT_NOTNULL(typedotchain_T);
+
+        std::string full_nspace = typedotchain_T->resolve_full_type_name();
+        
+        type_resolve_scopestack.set_scopes(full_nspace);
+
+        return value_type = emc_type{emc_types::NONE};
     }
 };
 

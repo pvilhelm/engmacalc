@@ -27,6 +27,7 @@ emc.o: emc.cc emc.hh
 compile.o: compile.cc compile.hh emc.hh
 	$(GPP) $(CPPFLAGS) compile.cc -c -o compile.o
 
+# Std lib
 Io.o: Std/Io/Io.c
 	$(GCC) $(CFLAGS) -fPIC -c Std/Io/Io.c
 	

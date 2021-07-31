@@ -1451,8 +1451,8 @@ void jit::walk_tree_fcall(ast_node *node,
     gcc_jit_function *func = it->second;
 
     /* Find the ast node of the corrensponding function declaration. */
-    extern scope_stack resolve_scope;
-    obj* fnobj_ = resolve_scope.find_object(fcall_node->mangled_name, "");
+    extern objscope_stack obj_resolve_scopestack;
+    obj* fnobj_ = obj_resolve_scopestack.find_object(fcall_node->mangled_name);
     object_func *fnobj = dynamic_cast<object_func*>(fnobj_);
     if (!fnobj)
         THROW_BUG("Function " + fcall_node->mangled_name + " not defined/found.");
@@ -1530,8 +1530,8 @@ void jit::walk_tree_fdefi(ast_node *node,
     gcc_jit_block *fn_block = gcc_jit_function_new_block(fn, new_unique_name("fn_start").c_str());
 
     /* Add a new scope and push it with the parameter names. */
-    extern scope_stack resolve_scope; /* TODO: Borde inte behöva detta i compile.cc ... refactor */
-    resolve_scope.push_new_scope();
+    extern objscope_stack obj_resolve_scopestack; /* TODO: Borde inte behöva detta i compile.cc ... refactor */
+    obj_resolve_scopestack.push_new_scope();
 
     for (auto e : ast_parlist->v_defs) {
         auto vardef = dynamic_cast<ast_node_def*>(e);
@@ -1544,7 +1544,7 @@ void jit::walk_tree_fdefi(ast_node *node,
     pop_scope();
 
     /* Pop the function's scope. */
-    resolve_scope.pop_scope();
+    obj_resolve_scopestack.pop_scope();
 
     map_fnname_to_gccfnobj[ast_funcdec->mangled_name.c_str()] = fn;
 
@@ -1856,9 +1856,9 @@ void jit::walk_tree_var(ast_node *node,
     auto var_node = dynamic_cast<ast_node_var*>(node);
     DEBUG_ASSERT(var_node != nullptr, "ass_node was null");
 
-    gcc_jit_lvalue *lval = find_lval_in_scopes(var_node->name);
+    gcc_jit_lvalue *lval = find_lval_in_scopes(var_node->full_name);
     if (!lval)
-        THROW_BUG("Could not resolve lval in the current scope: " + var_node->name);
+        THROW_BUG("Could not resolve lval in the current scope: " + var_node->full_name);
 
     if (current_rvalue)
         *current_rvalue = gcc_jit_lvalue_as_rvalue(lval);
@@ -1884,12 +1884,12 @@ void jit::walk_tree_def(ast_node *node,
     var_type = emc_type_to_jit_type(ast_def->value_type);
 
     if (!is_file_scope) /* local */
-        lval = gcc_jit_function_new_local(*current_function, 0, var_type, ast_def->var_name.c_str());
+        lval = gcc_jit_function_new_local(*current_function, 0, var_type, ast_def->mangled_name.c_str());
     else
         lval = gcc_jit_context_new_global(
         context, 0, GCC_JIT_GLOBAL_EXPORTED,
         var_type,
-        ast_def->var_name.c_str());
+        ast_def->mangled_name.c_str());
 
     push_lval(ast_def->var_name, lval);
 
@@ -2295,6 +2295,8 @@ void jit::walk_tree(ast_node *node,
         walk_tree_address(node, current_block, current_function, current_rvalue);
     } else if (type == ast_type::DEREF) {
         walk_tree_deref(node, current_block, current_function, current_rvalue, current_lvalue);
+    } else if (type == ast_type::NAMESPACE) {
+        ; /* Do nothing. Only effects the AST buildup */
     } else
         THROW_NOT_IMPLEMENTED("walk_tree not implemented: " + std::to_string((int)node->type));
 }

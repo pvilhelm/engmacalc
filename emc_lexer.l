@@ -77,6 +77,7 @@ ENDLN "\r\n"|"\n"
 "NAND" return NAND;
 "NOR" return NOR;
 "NOT" return NOT;
+"NAMESPACE" return NAMESPACE;
 
 "c::" return CLINKAGE;
 

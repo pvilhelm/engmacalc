@@ -39,14 +39,14 @@ emc_type string_to_type(std::string type_name) {
         return emc_type{emc_types::STRING};
     
     /* See if it is a user defined type */
-    extern scope_stack resolve_scope;
+    extern typescope_stack type_resolve_scopestack;
 
-    return resolve_scope.find_type(type_name); /* Throws if not found */
+    return type_resolve_scopestack.find_type(type_name); /* Throws if not found */
 }
 
 void push_dummyobject_to_resolve_scope(std::string var_name, emc_type type)
 {
-    extern scope_stack resolve_scope;
+    extern objscope_stack obj_resolve_scopestack;
     obj *od = nullptr;
     if (type.is_double())
         od = new object_double{var_name, 0, type.n_pointer_indirections};
@@ -74,15 +74,28 @@ void push_dummyobject_to_resolve_scope(std::string var_name, emc_type type)
         od = new object_struct{var_name, "", type, type.n_pointer_indirections};
     else
         THROW_NOT_IMPLEMENTED("Type not implemented: " + var_name);
-    resolve_scope.get_top_scope().push_object(od);
+    obj_resolve_scopestack.get_top_scope().push_object(od);
 }
 
 emc_type ast_node_funcdef::resolve()
 {
-    extern scope_stack resolve_scope;
-    parlist->resolve();
+    extern objscope_stack obj_resolve_scopestack;
+    extern typescope_stack type_resolve_scopestack;
+
+    ast_node_typedotnamechain *typedotnamenode = dynamic_cast<ast_node_typedotnamechain*>(typedotnamechain);
+    DEBUG_ASSERT_NOTNULL(typedotnamenode);
+    typedotnamenode->resolve();
+
+    name = typedotnamenode->name;
+    /* Append current namespace to relative namespace if any */
+    if (type_resolve_scopestack.current_scope.size())
+        nspace = type_resolve_scopestack.current_scope + "." + typedotnamenode->nspace;
+    else
+        nspace = typedotnamenode->nspace;
+
+    parlist->resolve(); /* TODO: Reduntant to parlist_t->resolve()? */
     
-    resolve_scope.push_new_scope();
+    obj_resolve_scopestack.push_new_scope();
     auto parlist_t = dynamic_cast<ast_node_vardef_list*>(parlist);
     DEBUG_ASSERT_NOTNULL(parlist_t);
     parlist_t->resolve();
@@ -95,41 +108,55 @@ emc_type ast_node_funcdef::resolve()
         push_dummyobject_to_resolve_scope(var_name, par->value_type);
     }
     code_block->resolve();
-    resolve_scope.pop_scope();
+    obj_resolve_scopestack.pop_scope();
 
     /* Hack to allow for return names with same names as other things ... */
-    resolve_scope.push_new_scope();
+    obj_resolve_scopestack.push_new_scope();
     return_list->resolve();
-    resolve_scope.pop_scope();
+    obj_resolve_scopestack.pop_scope();
 
     /* TODO: code_block is probably uneccesary. */
     auto fobj = new object_func { code_block->clone(), name, nspace,
             parlist->clone() , return_list->clone()};
     /* Resolve the mangled name and write it to this and the function object. */
+    /* TODO: ALlow for clinkage, see funcdec */
     mangled_name = mangle_emc_fn_name(*fobj);
     fobj->mangled_name = mangled_name;
     /* Push the function object to top scope */
-    resolve_scope.get_top_scope().push_object(fobj);
+    obj_resolve_scopestack.get_top_scope().push_object(fobj);
 
     return value_type = emc_type{emc_types::FUNCTION}; /* TODO: Add types too */
 }
 
 emc_type ast_node_funcdec::resolve()
 {
-    extern scope_stack resolve_scope;
+    extern objscope_stack obj_resolve_scopestack;
+    extern typescope_stack type_resolve_scopestack;
+
+    ast_node_typedotnamechain *typedotnamenode = dynamic_cast<ast_node_typedotnamechain*>(typedotnamechain);
+    DEBUG_ASSERT_NOTNULL(typedotnamenode);
+    typedotnamenode->resolve();
+
+    name = typedotnamenode->name;
+    /* Append current namespace to relative namespace if any */
+    if (type_resolve_scopestack.current_scope.size())
+        nspace = type_resolve_scopestack.current_scope + "." + typedotnamenode->nspace;
+    else
+        nspace = typedotnamenode->nspace;
+    
     parlist->resolve();
     
-    resolve_scope.push_new_scope();
+    obj_resolve_scopestack.push_new_scope();
     auto parlist_t = dynamic_cast<ast_node_vardef_list*>(parlist);
     DEBUG_ASSERT_NOTNULL(parlist_t);
     parlist_t->resolve();
 
-    resolve_scope.pop_scope();
+    obj_resolve_scopestack.pop_scope();
 
     /* Hack to allow for return names with same names as other things ... */
-    resolve_scope.push_new_scope();
+    obj_resolve_scopestack.push_new_scope();
     return_list->resolve();
-    resolve_scope.pop_scope();
+    obj_resolve_scopestack.pop_scope();
 
     auto fobj = new object_func { 0, name, nspace,
             parlist->clone() , return_list->clone()};
@@ -150,7 +177,7 @@ emc_type ast_node_funcdec::resolve()
     }
     /* Push the function object to top scope */
     /* TODO: Declarations collide with definitions. Should be some flag. */
-    resolve_scope.get_top_scope().push_object(fobj);
+    obj_resolve_scopestack.get_top_scope().push_object(fobj);
 
     return value_type = emc_type{emc_types::FUNCTION}; /* TODO: Add types too */
 }
@@ -412,19 +439,19 @@ void deescape_string(std::string &s)
     }
 }
 
-void scope_stack::push_new_scope()
+void objscope_stack::push_new_scope()
 {
-    vec_scope.emplace_back(scope{});
+    vec_scope.emplace_back(objscope{});
 }
 
 
-void scope_stack::clear()
+void objscope_stack::clear()
 {
     for (auto &e : vec_scope)
         e.clear();
 }
 
-void scope_stack::debug_print()
+void objscope_stack::debug_print()
 {
     for (auto &scope : vec_scope) {
         std::cout << "Scope:" << std::endl;
@@ -434,11 +461,12 @@ void scope_stack::debug_print()
     }
 }
 
-obj* scope_stack::find_object(std::string name, std::string nspace)
+obj* objscope_stack::find_object(std::string name)
 {
+    
     /* Search backwards so that the top scope matches first. */
     for (auto it = vec_scope.rbegin(); it != vec_scope.rend(); it++) {
-        obj *p = it->find_object(name, nspace);
+        obj *p = it->find_object(name);
         if (p)
             return p;
     }
@@ -446,25 +474,34 @@ obj* scope_stack::find_object(std::string name, std::string nspace)
     return nullptr;
 }
 
-std::vector<obj*> scope_stack::find_objects_by_not_mangled_name(std::string name, std::string nspace)
+std::vector<obj*> objscope_stack::find_objects_by_not_mangled_name(std::string name, std::string nspace)
 {
     std::vector<obj*> ans;
-    /* Search backwards so that the top scope matches first. */
-    for (auto it = vec_scope.rbegin(); it != vec_scope.rend(); it++) {
-        auto tmp_v = it->find_objects_by_not_mangled_name(name, nspace);
+    /* We are not searching for a namespace match */
+    if (nspace.size() == 0) {
+        /* Search backwards so that the top scope matches first. */
+        for (auto it = vec_scope.rbegin(); it != vec_scope.rend(); it++) {
+            auto tmp_v = it->find_objects_by_not_mangled_name(name, "");
+            for (auto e : tmp_v)
+                ans.push_back(e);
+        }
+    /* Namespace specified. In that case the object can only be in global scope */
+    } else {
+        auto tmp_v = get_top_scope().find_objects_by_not_mangled_name(name, nspace);
+        for (auto e : tmp_v)
+            ans.push_back(e);
+    }
+    /* Also search the top scope with current namespace prepended to access eg.
+     * Foo.Bar.b as b if we are in Foo.Bar */
+    extern typescope_stack type_resolve_scopestack;
+    if (type_resolve_scopestack.current_scope.size()) {
+        auto tmp_v = get_top_scope().find_objects_by_not_mangled_name(name, 
+                        type_resolve_scopestack.current_scope + "." + nspace);
         for (auto e : tmp_v)
             ans.push_back(e);
     }
 
     return ans;
-}
-
-emc_type scope_stack::find_type(std::string name)
-{
-    auto it = map_typename_to_type.find(name);
-    ASSERT(it != map_typename_to_type.end(), "Type not found: " + name);
-        
-    return it->second;
 }
 
 void init_linked_cfunctions()
@@ -475,9 +512,9 @@ void init_linked_cfunctions()
 /* Helper function for init_linked_cfunctions */
 void register_double_var(std::string name, double d)
 {
-    extern scope_stack resolve_scope;
+    extern objscope_stack obj_resolve_scopestack;
     auto obj = new object_double {name, "", d, 0};
-    resolve_scope.get_top_scope().push_object(obj);
+    obj_resolve_scopestack.get_top_scope().push_object(obj);
 }
 
 void init_standard_variables()
@@ -496,18 +533,18 @@ void init_builtin_functions()
 
 void init_builtin_types()
 {
-    extern scope_stack resolve_scope;
+    extern typescope_stack type_resolve_scopestack;
  
-    resolve_scope.push_type("Byte", {emc_types::BYTE});
-    resolve_scope.push_type("Sbyte", {emc_types::SBYTE});
-    resolve_scope.push_type("Short", {emc_types::SHORT});
-    resolve_scope.push_type("Ushort", {emc_types::USHORT});
-    resolve_scope.push_type("Int", {emc_types::INT});
-    resolve_scope.push_type("Uint", {emc_types::UINT});
-    resolve_scope.push_type("Long", {emc_types::LONG});
-    resolve_scope.push_type("Ulong", {emc_types::ULONG});
-    resolve_scope.push_type("Double", {emc_types::DOUBLE});
-    resolve_scope.push_type("Float", {emc_types::FLOAT});
+    type_resolve_scopestack.push_type("Byte", {emc_types::BYTE});
+    type_resolve_scopestack.push_type("Sbyte", {emc_types::SBYTE});
+    type_resolve_scopestack.push_type("Short", {emc_types::SHORT});
+    type_resolve_scopestack.push_type("Ushort", {emc_types::USHORT});
+    type_resolve_scopestack.push_type("Int", {emc_types::INT});
+    type_resolve_scopestack.push_type("Uint", {emc_types::UINT});
+    type_resolve_scopestack.push_type("Long", {emc_types::LONG});
+    type_resolve_scopestack.push_type("Ulong", {emc_types::ULONG});
+    type_resolve_scopestack.push_type("Double", {emc_types::DOUBLE});
+    type_resolve_scopestack.push_type("Float", {emc_types::FLOAT});
 }
 
 std::string copy_and_replace_all_substrs(const std::string &source, const std::string &from, const std::string &to)
@@ -532,22 +569,39 @@ std::string copy_and_replace_all_substrs(const std::string &source, const std::s
 
 const std::map<emc_types, std::string> map_emc_types_to_mangled_shortversion = {
     {emc_types::LONG, "L"},
-    {emc_types::ULONG, "Ul"},
+    {emc_types::ULONG, "UL"},
     {emc_types::INT, "I"},
-    {emc_types::UINT, "U"},
+    {emc_types::UINT, "UI"},
     {emc_types::SHORT, "S"},
-    {emc_types::USHORT, "Us"},
-    {emc_types::SBYTE, "Sb"},
-    {emc_types::BYTE, "Ub"},
+    {emc_types::USHORT, "US"},
+    {emc_types::SBYTE, "SB"},
+    {emc_types::BYTE, "UB"},
     {emc_types::BOOL, "B"},
     {emc_types::FLOAT, "F"},
     {emc_types::DOUBLE, "D"},
 };
 
+/* Mangles a object with a namespace.
+ * E.g. Foo.Bar.i becomes engma_c58b_var_NFooBarN_i */
+std::string mangle_emc_var_name(std::string name, std::string nspace)
+{
+    std::string mangled_name = "engma_c58b_var_";
+
+    if (nspace.size()) {
+        /* '_' is used as a delimiter so we need to double them if some is in a string */
+        nspace = copy_and_replace_all_substrs(nspace, "_", "__");
+        /* Namespaces' '.' can be replaced with just the capital letter as delimiter. */
+        nspace = copy_and_replace_all_substrs(nspace, ".", "");
+        nspace = "N" + nspace + "N_";
+    }
+    return mangled_name + nspace + copy_and_replace_all_substrs(name, "_", "__");
+}
+
 /* Mangles a Engma function name to its symbol name that will be used for linking.
  *  Note That underscores in name and types are replaces with two underscores.
  *  Namespaces are eg. NamespaceType
         TODO: Hide all type data for structs somewhere as symbols? Eg. engma_type_struct_foo_I_I_I
+        TODO: Need to prevent Engma names from ending with _ to not collide whit Foo_._foo 
  */
 std::string mangle_emc_fn_name(const object_func &fn_obj)
 {
@@ -556,15 +610,32 @@ std::string mangle_emc_fn_name(const object_func &fn_obj)
 
     /* Begin with the return type. */
     if (fn_obj.var_list->value_type.is_primitive()) {
+        ss << "_";
         auto iter = map_emc_types_to_mangled_shortversion.find(fn_obj.var_list->value_type.type);
         if (iter == map_emc_types_to_mangled_shortversion.end())
             THROW_BUG("Could not find mangled short version of type: " + std::to_string((int)fn_obj.var_list->value_type.type));
-        ss << "_" << iter->second;
+        /* Add a 'P' per pointer indirection. */
+        if (fn_obj.var_list->value_type.n_pointer_indirections)
+            for (int i = 0; i < fn_obj.var_list->value_type.n_pointer_indirections; i++)
+                ss << "P";
+        ss << iter->second;
     } else if (fn_obj.var_list->value_type.is_void()) {
-        ss << "_" << "N";
+        
     } else
         THROW_NOT_IMPLEMENTED("Mangle of type not impelmented: " + std::to_string((int)fn_obj.var_list->value_type.type));
     
+    
+    /* Mangle the functions namespace, if any. */
+    if (fn_obj.nspace.size()) {
+        std::string nspace = fn_obj.nspace;
+        /* '_' is used as a delimiter so we need to double them if some is in a string */
+        nspace = copy_and_replace_all_substrs(nspace, "_", "__");
+        /* Namespaces' '.' can be replaced with just the capital letter as delimiter. */
+        nspace = copy_and_replace_all_substrs(nspace, ".", "");
+        nspace = "N" + nspace + "N";
+        ss << "_" << nspace;
+    }
+
     /* Function name */
     ss << "_" << copy_and_replace_all_substrs(fn_obj.name, "_", "__");
     /* Parameters */
@@ -579,9 +650,6 @@ std::string mangle_emc_fn_name(const object_func &fn_obj)
         } else
             THROW_NOT_IMPLEMENTED("Mangle of type not impelmented: " + std::to_string((int)para->value_type.type));
     }
-
-    /* Sentinel token to allow for future expansion */
-    ss << "_";
 
     return ss.str();
 }
@@ -615,4 +683,20 @@ std::string demangle_emc_fn_name(std::string c_fn_name)
     return ss.str();  
 #endif
     THROW_NOT_IMPLEMENTED("");  
+}
+
+std::vector<std::string> split_string(std::string s, std::string delimiter)
+{
+    std::vector<std::string> ans;
+
+    size_t last = 0; 
+    size_t next = 0; 
+    while ((next = s.find(delimiter, last)) != std::string::npos) {   
+        ans.push_back(s.substr(last, next-last));
+        last = next + 1; 
+    } 
+       
+    ans.push_back( s.substr(last));
+
+    return ans;  
 }

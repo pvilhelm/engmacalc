@@ -1,4 +1,5 @@
 
+NAMESPACE Std.Io
 /* Print the argument to standard output */
 FUNC print(Long l)
 FUNC print(Int i)

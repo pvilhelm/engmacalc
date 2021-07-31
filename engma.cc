@@ -17,8 +17,8 @@ extern ast_node *ast_root; /* Bison writes to this after each parse(). */
 extern bool parsed_eol;
 
 /* Scope during resolving of the ast node tree. */
-scope_stack resolve_scope;
-
+objscope_stack obj_resolve_scopestack;
+typescope_stack type_resolve_scopestack;
 
 int main(int argc, char **argv)
 {
@@ -95,7 +95,7 @@ int main(int argc, char **argv)
     for (auto e : v_nodes)
         delete e;
     v_nodes.clear();
-    resolve_scope.clear();
+    obj_resolve_scopestack.clear();
 
     DEBUG_ASSERT(ast_node_count == 0, "ast nodes seems to be leaking: " << ast_node_count);
     DEBUG_ASSERT(value_expr_count == 0, "value_expr seems to be leaking: " << value_expr_count);

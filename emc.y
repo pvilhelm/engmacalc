@@ -27,7 +27,7 @@ typedef void* yyscan_t;
 %token <s> TYPENAME 
 %token <s> ESC_STRING
 
-%token EOL IF DO END ELSE WHILE ENDOFFILE FUNC ELSEIF ALSO RETURN STRUCT TYPE CLINKAGE
+%token EOL IF DO END ELSE WHILE ENDOFFILE FUNC ELSEIF ALSO RETURN STRUCT TYPE CLINKAGE NAMESPACE
 
 %right '='
 %left OR NOR XOR XNOR
@@ -46,7 +46,7 @@ typedef void* yyscan_t;
 
 %type <node> exp cmp_exp e se cse exp_list code_block arg_list
 %type <node> vardef elseif_list sl_elseif_list vardef_list field_list struct_def
-%type <node> ptrdef_list
+%type <node> ptrdef_list typedotchain typedotnamechain
 
 %define parse.trace
     
@@ -93,11 +93,10 @@ cse: EOL                    {$$ = 0;}
 
  /* Statement expression */
 se: e                           {$$ = $1;}
-    | TYPE TYPENAME '=' struct_def  {
-                                        auto t = new ast_node_type{*$2, $4};
-                                        delete $2;
-                                        $$ = t;
-                                    }
+    | TYPE typedotchain '=' struct_def  {
+                                            auto t = new ast_node_type{$2, $4};
+                                            $$ = t;
+                                        }
     | RETURN                    {$$ = new ast_node_return{0};}
     | RETURN e                  {$$ = new ast_node_return{$2};}
     /* IFs with ELSE:s are a headache to make grammar for. So ... */
@@ -140,88 +139,76 @@ se: e                           {$$ = $1;}
 
     | code_block
     /* Function definition */
-    | FUNC vardef_list '=' NAME '(' vardef_list ')' code_block
+    | FUNC vardef_list '=' typedotnamechain '(' vardef_list ')' code_block
                             {
-                                auto p = new ast_node_funcdef{$6, $8, *$4, "", $2};
-                                delete $4;
+                                auto p = new ast_node_funcdef{$6, $8, $4, $2};
                                 $$ = p;
                             }
     /* Function definition without parameters that returns something */
-    | FUNC vardef_list '=' NAME '(' ')' code_block
+    | FUNC vardef_list '=' typedotnamechain '(' ')' code_block
                             {
-                                auto p = new ast_node_funcdef{nullptr, $7, *$4, "", $2};
-                                delete $4;
+                                auto p = new ast_node_funcdef{nullptr, $7, $4, $2};
                                 $$ = p;
                             }
     /* Function definition without parameters that returns nothing */
-    | FUNC NAME '(' ')' code_block
+    | FUNC typedotnamechain '(' ')' code_block
                             {
-                                auto p = new ast_node_funcdef{nullptr, $5, *$2, "", nullptr};
-                                delete $2;
+                                auto p = new ast_node_funcdef{nullptr, $5, $2, nullptr};
                                 $$ = p;
                             }
     /* Function definition with parameters that returns nothing */
-    | FUNC NAME '(' vardef_list ')' code_block
+    | FUNC typedotnamechain '(' vardef_list ')' code_block
                             {
-                                auto p = new ast_node_funcdef{$4, $6, *$2, "", nullptr};
-                                delete $2;
+                                auto p = new ast_node_funcdef{$4, $6, $2, nullptr};
                                 $$ = p;
                             }
     /* Function declaration */
-    | FUNC vardef_list '=' NAME '(' vardef_list ')'
+    | FUNC vardef_list '=' typedotnamechain '(' vardef_list ')'
                             {
-                                auto p = new ast_node_funcdec{$6, *$4, "", $2, false};
-                                delete $4;
+                                auto p = new ast_node_funcdec{$6, $4, $2, false};
                                 $$ = p;
                             }
     /* Function declaration without parameters that returns something */
-    | FUNC vardef_list '=' NAME '(' ')'
+    | FUNC vardef_list '=' typedotnamechain '(' ')'
                             {
-                                auto p = new ast_node_funcdec{nullptr, *$4, "", $2, false};
-                                delete $4;
+                                auto p = new ast_node_funcdec{nullptr, $4, $2, false};
                                 $$ = p;
                             }
     /* Function declaration without parameters that returns nothing */
-    | FUNC NAME '(' ')' 
+    | FUNC typedotnamechain '(' ')' 
                             {
-                                auto p = new ast_node_funcdec{nullptr, *$2, "", nullptr, false};
-                                delete $2;
+                                auto p = new ast_node_funcdec{nullptr, $2, nullptr, false};
                                 $$ = p;
                             }
     /* Function declaration with parameters that returns nothing */
-    | FUNC NAME '(' vardef_list ')'
+    | FUNC typedotnamechain '(' vardef_list ')'
                             {
-                                auto p = new ast_node_funcdec{$4, *$2, "", nullptr, false};
-                                delete $2;
+                                auto p = new ast_node_funcdec{$4, $2, nullptr, false};
                                 $$ = p;
                             }
 
     /* Function declarations with c linkage */
-    | FUNC vardef_list '=' CLINKAGE NAME '(' vardef_list ')'
+    | FUNC vardef_list '=' CLINKAGE typedotnamechain '(' vardef_list ')'
                             {
-                                auto p = new ast_node_funcdec{$7, *$5, "", $2, true};
-                                delete $5;
+                                auto p = new ast_node_funcdec{$7, $5, $2, true};
                                 $$ = p;
                             }
     /* Function declaration without parameters that returns something */
-    | FUNC vardef_list '=' CLINKAGE NAME '(' ')'
+    | FUNC vardef_list '=' CLINKAGE typedotnamechain '(' ')'
                             {
-                                auto p = new ast_node_funcdec{nullptr, *$5, "", $2, true};
-                                delete $5;
+                                auto p = new ast_node_funcdec{nullptr, $5, $2, true};
                                 $$ = p;
                             }
     /* Function declaration without parameters that returns nothing */
-    | FUNC CLINKAGE NAME '(' ')' 
+    | FUNC CLINKAGE typedotnamechain '(' ')' 
                             {
-                                auto p = new ast_node_funcdec{nullptr, *$3, "", nullptr, true};
-                                delete $3;
+                                auto p = new ast_node_funcdec{nullptr, $3, nullptr, true};
                                 $$ = p;
                             }
     /* Function declaration with parameters that returns nothing */
-    | FUNC CLINKAGE NAME '(' vardef_list ')'
+    | FUNC CLINKAGE typedotnamechain '(' vardef_list ')'
                             {
-                                auto p = new ast_node_funcdec{$5, *$3, "", nullptr, true};
-                                delete $3;
+                                auto p = new ast_node_funcdec{$5, $3, nullptr, true};
                                 $$ = p;
                             }
 
@@ -231,6 +218,10 @@ se: e                           {$$ = $1;}
     						{ $$ = new ast_node_while{$2, $4, $6};}
     | vardef '=' se         { $$ = $1; dynamic_cast<ast_node_def*>($1)->value_node = $3;}
     | vardef                { $$ = $1;}
+    | NAMESPACE typedotchain 
+                            {
+                                $$ = new ast_node_nspace{$2};
+                            }
     ;
     
 /* A list of ifelses */
@@ -269,17 +260,40 @@ ptrdef_list: '&'                            {
                                                 $$ = p;
                                             }
 
-vardef: TYPENAME NAME                       {
-                                                $$ = new ast_node_def{*$1, *$2, nullptr};
-                                                delete $1; delete $2;
+vardef: typedotchain typedotnamechain       {
+                                                $$ = new ast_node_def{$1, $2, nullptr};
                                             }
-        | ptrdef_list TYPENAME NAME         {
-                                                auto node = new ast_node_def{*$2, *$3, nullptr}; 
-                                                delete $2; delete $3; 
+        | ptrdef_list typedotchain typedotnamechain         
+                                            {
+                                                auto node = new ast_node_def{$2, $3, nullptr}; 
                                                 auto node_pdl = dynamic_cast<ast_node_ptrdef_list*>($1);
                                                 node->ptrdef_node = node_pdl;
                                                 $$ = node;
                                             }
+
+typedotchain: TYPENAME                      {
+                                                auto p = new ast_node_typedotchain{};
+                                                p->append_type(*$1); 
+                                                $$ = p;
+                                                delete $1;
+                                            }
+            | typedotchain '.' TYPENAME     {
+                                                auto p = dynamic_cast<ast_node_typedotchain*>($$);
+                                                p->append_type(*$3);
+                                                delete $3;
+                                            }
+
+typedotnamechain: NAME                      {
+                                                auto p = new ast_node_typedotnamechain{*$1, 0};
+                                                $$ = p;
+                                                delete $1;
+                                            }
+            | typedotchain '.' NAME     {
+                                                auto p = new ast_node_typedotnamechain{*$3, $1};
+                                                delete $3;
+                                                $$ = p;
+                                            }
+
 code_block: DO exp_list END     { $$ = new ast_node_doblock{$2};}
 
 arg_list: e                 {
@@ -322,10 +336,12 @@ exp: exp '+' exp            {$$ = new ast_node_add{$1, $3};}
     | '{' arg_list '}'      {$$ = new ast_node_listlit{$2};}
     | '{' '}'               {$$ = new ast_node_listlit{0};}
     | exp '^' exp           {$$ = new ast_node_pow{$1, $3};}
-    | NAME                  {$$ = new ast_node_var{*$1, ""}; delete $1;}
+    | typedotnamechain      {$$ = new ast_node_var{$1};}
     | NUMBER                {$$ = $1;}
-    | NAME '(' arg_list ')' {$$ = new ast_node_funccall{"", *$1, $3}; delete $1;}
-    | NAME '(' ')'          {$$ = new ast_node_funccall{"", *$1, 0}; delete $1;}
+    | typedotnamechain '(' arg_list ')' 
+                            {$$ = new ast_node_funccall{$1, $3};}
+    | typedotnamechain '(' ')'          
+                            {$$ = new ast_node_funccall{$1, 0};}
     | ESC_STRING			{$$ = new ast_node_string_literal{*$1}; delete $1;}
     | cmp_exp
     ;
