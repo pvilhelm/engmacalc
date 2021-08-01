@@ -83,7 +83,9 @@ enum class ast_type {
     PTRDEF_LIST,
     TYPEDOTCHAIN,
     TYPEDOTNAMECHAIN,
-    NAMESPACE
+    NAMESPACE,
+    USINGCHAIN,
+    USING
 };
 
 enum class object_type {
@@ -775,6 +777,76 @@ public:
         return c;        
     }
 };
+
+class ast_node_using: public ast_node {
+public:
+    ast_node_using(ast_node* usingchain) :
+        usingchain(usingchain)
+    {
+        type = ast_type::USING;
+    }
+
+    ~ast_node_using() { delete usingchain;}
+
+    ast_node* usingchain = nullptr;
+
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::NONE};
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_using {usingchain};
+        c->value_type = value_type;
+        return c;        
+    }
+};
+
+class ast_node_usingchain: public ast_node {
+public:
+    ast_node_usingchain(ast_node* typedotchain)
+    {
+        type = ast_type::USINGCHAIN;
+        auto node = dynamic_cast<ast_node_typedotchain*>(typedotchain);
+        DEBUG_ASSERT_NOTNULL(node);
+        vec_typedotchains.push_back(node);
+    }
+
+    ~ast_node_usingchain() 
+    {
+        for (auto e : vec_typedotchains)
+         delete e;
+    }
+
+    std::vector<ast_node_typedotchain*> vec_typedotchains;
+
+    void append_typedotchain(ast_node *typedotchain)
+    {
+        auto node = dynamic_cast<ast_node_typedotchain*>(typedotchain);
+        DEBUG_ASSERT_NOTNULL(node);
+        vec_typedotchains.push_back(node);
+    }   
+
+    emc_type resolve()
+    {
+        return value_type = emc_type{emc_types::NONE};
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_usingchain {vec_typedotchains.front()->clone()};
+        for (int i = 1; i < vec_typedotchains.size(); i++) {
+            auto node = dynamic_cast<ast_node_typedotchain*>(vec_typedotchains[i]->clone());
+            DEBUG_ASSERT_NOTNULL(node);
+            c->vec_typedotchains.push_back(node);
+        }
+        c->value_type = value_type;
+        return c;        
+    }
+};
+
+
 
 class ast_node_return : public ast_node {
 public:

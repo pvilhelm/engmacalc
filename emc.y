@@ -27,7 +27,7 @@ typedef void* yyscan_t;
 %token <s> TYPENAME 
 %token <s> ESC_STRING
 
-%token EOL IF DO END ELSE WHILE ENDOFFILE FUNC ELSEIF ALSO RETURN STRUCT TYPE CLINKAGE NAMESPACE
+%token EOL IF DO END ELSE WHILE ENDOFFILE FUNC ELSEIF ALSO RETURN STRUCT TYPE CLINKAGE NAMESPACE USING
 
 %right '='
 %left OR NOR XOR XNOR
@@ -46,7 +46,7 @@ typedef void* yyscan_t;
 
 %type <node> exp cmp_exp e se cse exp_list code_block arg_list
 %type <node> vardef elseif_list sl_elseif_list vardef_list field_list struct_def
-%type <node> ptrdef_list typedotchain typedotnamechain
+%type <node> ptrdef_list typedotchain typedotnamechain using usingchain
 
 %define parse.trace
     
@@ -93,6 +93,7 @@ cse: EOL                    {$$ = 0;}
 
  /* Statement expression */
 se: e                           {$$ = $1;}
+    | using                     {$$ = $1;}
     | TYPE typedotchain '=' struct_def  {
                                             auto t = new ast_node_type{$2, $4};
                                             $$ = t;
@@ -288,11 +289,20 @@ typedotnamechain: NAME                      {
                                                 $$ = p;
                                                 delete $1;
                                             }
-            | typedotchain '.' NAME     {
+            | typedotchain '.' NAME         {
                                                 auto p = new ast_node_typedotnamechain{*$3, $1};
                                                 delete $3;
                                                 $$ = p;
                                             }
+
+using:  USING usingchain                    { $$ = new ast_node_using{$2};}
+
+usingchain: typedotchain                    { $$ = new ast_node_usingchain{$1};}
+            | usingchain ',' typedotchain   {
+                                                auto p = dynamic_cast<ast_node_usingchain*>($1);
+                                                p->append_typedotchain($3);
+                                                $$ = p;
+                                            }       
 
 code_block: DO exp_list END     { $$ = new ast_node_doblock{$2};}
 

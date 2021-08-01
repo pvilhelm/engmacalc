@@ -68,19 +68,20 @@ extern int yydebug;
     TYPE = 274,
     CLINKAGE = 275,
     NAMESPACE = 276,
-    OR = 277,
-    NOR = 278,
-    XOR = 279,
-    XNOR = 280,
-    AND = 281,
-    NAND = 282,
-    NOT = 283,
-    CMP = 284,
-    LEQ = 285,
-    GEQ = 286,
-    EQU = 287,
-    NEQ = 288,
-    UMINUS = 289
+    USING = 277,
+    OR = 278,
+    NOR = 279,
+    XOR = 280,
+    XNOR = 281,
+    AND = 282,
+    NAND = 283,
+    NOT = 284,
+    CMP = 285,
+    LEQ = 286,
+    GEQ = 287,
+    EQU = 288,
+    NEQ = 289,
+    UMINUS = 290
   };
 #endif
 
@@ -94,7 +95,7 @@ union YYSTYPE
     ast_node *node;
     std::string *s;
 
-#line 98 "emc.tab.h" /* yacc.c:1921  */
+#line 99 "emc.tab.h" /* yacc.c:1921  */
 };
 
 typedef union YYSTYPE YYSTYPE;

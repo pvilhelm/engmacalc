@@ -2217,86 +2217,129 @@ void jit::walk_tree(ast_node *node,
         gcc_jit_lvalue **current_lvalue)
 {
     ast_type type = node->type;
-    if (type == ast_type::ADD) {
+    switch(type) {
+    case ast_type::ADD:
         walk_tree_add(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::SUB) {
+        break;
+    case ast_type::SUB:
         walk_tree_sub(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::MUL) {
+        break;
+    case ast_type::MUL:
         walk_tree_mul(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::POW) {
+        break;
+    case ast_type::POW:
         walk_tree_pow(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::RDIV) {
+        break;
+    case ast_type::RDIV:
         walk_tree_rdiv(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::ANDCHAIN) {
+        break;
+    case ast_type::ANDCHAIN:
         walk_tree_andchain(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::GEQ) {
+        break;
+    case ast_type::GEQ:
         walk_tree_geq(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::LEQ) {
+        break;
+    case ast_type::LEQ:
         walk_tree_leq(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::EQU) {
+        break;
+    case ast_type::EQU:
         walk_tree_equ(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::LES) {
+        break;
+    case ast_type::LES:
         walk_tree_les(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::GRE) {
+        break;
+    case ast_type::GRE:
         walk_tree_gre(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::NEQ) {
+        break;
+    case ast_type::NEQ:
         walk_tree_neq(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::UMINUS) {
+        break;
+    case ast_type::UMINUS:
         walk_tree_uminus(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::ABS) {
+        break;
+    case ast_type::ABS:
         walk_tree_abs(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::DOUBLE_LITERAL) {
+        break;
+    case ast_type::DOUBLE_LITERAL:
         walk_tree_dlit(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::INT_LITERAL) {
+        break;
+    case ast_type::INT_LITERAL:
         walk_tree_ilit(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::FUNCTION_CALL) {
+        break;
+    case ast_type::FUNCTION_CALL:
         walk_tree_fcall(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::FUNCTION_DEF) {
+        break;
+    case ast_type::FUNCTION_DEF:
         walk_tree_fdefi(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::RETURN) {
+        break;
+    case ast_type::RETURN:
         walk_tree_ret(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::ASSIGN) {
+        break;
+    case ast_type::ASSIGN:
         walk_tree_assign(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::VAR) {
+        break;
+    case ast_type::VAR:
         walk_tree_var(node, current_block, current_function, current_rvalue, current_lvalue);
-    } else if(type == ast_type::DEF) {
+        break;
+    case ast_type::DEF:
         walk_tree_def(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::EXPLIST) {
+        break;
+    case ast_type::EXPLIST:
         walk_tree_explist(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::DOBLOCK) {
+        break;
+    case ast_type::DOBLOCK:
         walk_tree_doblock(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::IF) {
+        break;
+    case ast_type::IF:
         walk_tree_if(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::WHILE) {
+        break;
+    case ast_type::WHILE:
         walk_tree_while(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::FUNCTION_DECL) {
+        break;
+    case ast_type::FUNCTION_DECL:
         walk_tree_fdecl(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::AND) {
+        break;
+    case ast_type::AND:
         walk_tree_and(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::OR) {
+        break;
+    case ast_type::OR:
         walk_tree_or(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::NAND) {
+        break;
+    case ast_type::NAND:
         walk_tree_nand(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::XOR) {
+        break;
+    case ast_type::XOR:
         walk_tree_xor(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::NOR) {
+        break;
+    case ast_type::NOR:
         walk_tree_nor(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::XNOR) {
+        break;
+    case ast_type::XNOR:
         walk_tree_xnor(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::NOT) {
+        break;
+    case ast_type::NOT:
         walk_tree_not(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::TYPE) {
+        break;
+    case ast_type::TYPE:
         walk_tree_type(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::STRUCT) {
+        break;
+    case ast_type::STRUCT:
         walk_tree_struct(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::DOTOPERATOR) {
+        break;
+    case ast_type::DOTOPERATOR:
         walk_tree_dotop(node, current_block, current_function, current_rvalue, current_lvalue);
-    } else if (type == ast_type::ADDRESS) {
+        break;
+    case ast_type::ADDRESS:
         walk_tree_address(node, current_block, current_function, current_rvalue);
-    } else if (type == ast_type::DEREF) {
+        break;
+    case ast_type::DEREF:
         walk_tree_deref(node, current_block, current_function, current_rvalue, current_lvalue);
-    } else if (type == ast_type::NAMESPACE) {
-        ; /* Do nothing. Only effects the AST buildup */
-    } else
+        break;
+    case ast_type::NAMESPACE:
+    case ast_type::USING:
+        /* Do nothing. Only effects the AST buildup */
+        break;
+    default:
         THROW_NOT_IMPLEMENTED("walk_tree not implemented: " + std::to_string((int)node->type));
+    }
 }
