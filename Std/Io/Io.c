@@ -3,109 +3,109 @@
 
 /* print(Type t) and println(Type t) implementations. */
 extern void
-engma_c58b_fn_N_print_L_ (long l)
+engma_c58b_fn_NStdIoN_print_L (long l)
 {
     printf("%ld", l);
 }
 
 extern void
-engma_c58b_fn_N_print_I_ (int i)
+engma_c58b_fn_NStdIoN_print_I (int i)
 {
     printf("%d", i);
 }
 
 extern void
-engma_c58b_fn_N_print_S_ (short s)
+engma_c58b_fn_NStdIoN_print_S (short s)
 {
     printf("%hd", s);
 }
 
 extern void
-engma_c58b_fn_N_print_Sb_ (signed char b)
+engma_c58b_fn_NStdIoN_print_SB (signed char b)
 {
     printf("%hhd", b);
 }
 
 extern void
-engma_c58b_fn_N_print_Ul_ (unsigned long ul)
+engma_c58b_fn_NStdIoN_print_UL (unsigned long ul)
 {
     printf("%lu", ul);
 }
 
 extern void
-engma_c58b_fn_N_print_U_ (unsigned int ui)
+engma_c58b_fn_NStdIoN_print_UI (unsigned int ui)
 {
     printf("%u", ui);
 }
 
 extern void
-engma_c58b_fn_N_print_Us_ (unsigned short us)
+engma_c58b_fn_NStdIoN_print_US (unsigned short us)
 {
     printf("%hu", us);
 }
 
 extern void
-engma_c58b_fn_N_print_Ub_ (unsigned char b)
+engma_c58b_fn_NStdIoN_print_UB (unsigned char b)
 {
     printf("%hhu", b);
 }
 
 extern void
-engma_c58b_fn_N_print_D_ (double d)
+engma_c58b_fn_NStdIoN_print_D (double d)
 {
     printf("%f", d);
 }
 
 extern void
-engma_c58b_fn_N_print_F_ (float f)
+engma_c58b_fn_NStdIoN_print_F (float f)
 {
     printf("%f", f);
 }
 
 extern void
-engma_c58b_fn_N_println_L_ (long l)
+engma_c58b_fn_NStdIoN_println_L (long l)
 {
     printf("%ld\n", l);
 }
 
 extern void
-engma_c58b_fn_N_println_I_ (int i)
+engma_c58b_fn_NStdIoN_println_I (int i)
 {
     printf("%d\n", i);
 }
 
 extern void
-engma_c58b_fn_N_println_S_ (short s)
+engma_c58b_fn_NStdIoN_println_S (short s)
 {
     printf("%hd\n", s);
 }
 
 extern void
-engma_c58b_fn_N_println_Sb_ (signed char b)
+engma_c58b_fn_NStdIoN_println_SB (signed char b)
 {
     printf("%hhd\n", b);
 }
 
 extern void
-engma_c58b_fn_N_println_Ul_ (unsigned long ul)
+engma_c58b_fn_NStdIoN_println_UL (unsigned long ul)
 {
     printf("%lu\n", ul);
 }
 
 extern void
-engma_c58b_fn_N_println_U_ (unsigned int ui)
+engma_c58b_fn_NStdIoN_println_UI (unsigned int ui)
 {
     printf("%u\n", ui);
 }
 
 extern void
-engma_c58b_fn_N_println_Us_ (unsigned short us)
+engma_c58b_fn_NStdIoN_println_US (unsigned short us)
 {
     printf("%hu\n", us);
 }
 
 extern void
-engma_c58b_fn_N_println_Ub_ (unsigned char b)
+engma_c58b_fn_NStdIoN_println_UB (unsigned char b)
 {
     printf("%hhu\n", b);
 }
@@ -117,7 +117,7 @@ engma_c58b_fn_NStdIoN_println_D (double d)
 }
 
 extern void
-engma_c58b_fn_N_println_F_ (float f)
+engma_c58b_fn_NStdIoN_println_F (float f)
 {
     printf("%f\n", f);
 }

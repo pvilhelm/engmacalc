@@ -465,8 +465,17 @@ std::vector<obj*> objscope_stack::find_objects_by_not_mangled_name(std::string n
      * Foo.Bar.b as b if we are in Foo.Bar */
     
     if (compilation_units.get_current_typestack().current_scope.size()) {
-        auto tmp_v = get_top_scope().find_objects_by_not_mangled_name(name, 
-                        compilation_units.get_current_typestack().current_scope + "." + nspace);
+        std::string current_scope = compilation_units.get_current_typestack().current_scope;
+        std::string full_nspace;
+        if (nspace.size() && current_scope.size())
+            full_nspace = current_scope + "." + nspace;
+        else if (nspace.size())
+            full_nspace = nspace;
+        else if (current_scope.size())
+            full_nspace = current_scope;
+        else
+            full_nspace = "";
+        auto tmp_v = get_top_scope().find_objects_by_not_mangled_name(name, full_nspace);
         for (auto e : tmp_v)
             ans.push_back(e);
     }
