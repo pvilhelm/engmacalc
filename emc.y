@@ -63,10 +63,16 @@ program:
 		/*| program*/ 
      	 cse
                         { 	
-                        	ast_root = $1;
+                            auto &cu = compilation_units.get_current_compilation_unit();
+                        	cu.ast_root = $1;
                         	YYACCEPT;
                         }
-     	| ENDOFFILE { ast_root = nullptr; parsed_eol = true; YYACCEPT;}
+        | ENDOFFILE     { 
+                            auto &cu = compilation_units.get_current_compilation_unit();
+                            cu.ast_root = nullptr;
+                            cu.parsed_eol = true; 
+                            YYACCEPT;
+                        }
      	;
 
     /* List of expressions */

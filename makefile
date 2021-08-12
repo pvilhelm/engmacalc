@@ -1,12 +1,12 @@
 
 GPP = g++
 GCC = gcc
-CPPFLAGS = -g
+CPPFLAGS = -g -std=gnu++17
 CFLAGS = -g
-OBJ = emc.tab.o lex.yy.o compile.o emc.o Io.o
+OBJ = emc.tab.o lex.yy.o compile.o emc.o Io.o util_string.o
 
 engmac: engma.cc $(OBJ) lexer.h  libjitruntime.so
-	$(GPP) $(CPPFLAGS) -L/mnt/c/repos/engmacalc/ engma.cc -o engmac $(OBJ) -ljitruntime -lgccjit
+	$(GPP) $(CPPFLAGS) -L/mnt/c/repos/engmacalc/ engma.cc -o engmac $(OBJ) -ljitruntime -lgccjit -lstdc++fs
 	sudo cp libjitruntime.so /usr/lib/libjitruntime.so  
 	
 lex.yy.c: emc_lexer.l emc.hh
@@ -26,6 +26,9 @@ emc.o: emc.cc emc.hh
 	
 compile.o: compile.cc compile.hh emc.hh
 	$(GPP) $(CPPFLAGS) compile.cc -c -o compile.o
+
+util_string.o: util_string.cc util_string.hh
+	$(GPP) $(CPPFLAGS) util_string.cc -c -o util_string.o
 
 # Std lib
 Io.o: Std/Io/Io.c

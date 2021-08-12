@@ -111,7 +111,7 @@ engma_c58b_fn_N_println_Ub_ (unsigned char b)
 }
 
 extern void
-engma_c58b_fn_N_println_D_ (double d)
+engma_c58b_fn_NStdIoN_println_D (double d)
 {
     printf("%f\n", d);
 }

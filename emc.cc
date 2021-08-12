@@ -5,7 +5,13 @@
 #include <cctype>
 
 #include "emc_assert.hh"
+/* Bison and flex requires this include order. */
 #include "emc.hh"
+typedef void *yyscan_t;
+#include "emc.tab.h"
+#include "lexer.h"
+/* End of stupid include order. */
+#include "util_string.hh"
 
 #ifndef NDEBUG
 int ast_node_count;
@@ -39,14 +45,14 @@ emc_type string_to_type(std::string type_name) {
         return emc_type{emc_types::STRING};
     
     /* See if it is a user defined type */
-    extern typescope_stack type_resolve_scopestack;
+    
 
-    return type_resolve_scopestack.find_type(type_name); /* Throws if not found */
+    return compilation_units.get_current_typestack().find_type(type_name); /* Throws if not found */
 }
 
 void push_dummyobject_to_resolve_scope(std::string var_name, emc_type type)
 {
-    extern objscope_stack obj_resolve_scopestack;
+    
     obj *od = nullptr;
     if (type.is_double())
         od = new object_double{var_name, 0, type.n_pointer_indirections};
@@ -74,28 +80,25 @@ void push_dummyobject_to_resolve_scope(std::string var_name, emc_type type)
         od = new object_struct{var_name, "", type, type.n_pointer_indirections};
     else
         THROW_NOT_IMPLEMENTED("Type not implemented: " + var_name);
-    obj_resolve_scopestack.get_top_scope().push_object(od);
+    compilation_units.get_current_objstack().get_top_scope().push_object(od);
 }
 
 emc_type ast_node_funcdef::resolve()
 {
-    extern objscope_stack obj_resolve_scopestack;
-    extern typescope_stack type_resolve_scopestack;
-
     ast_node_typedotnamechain *typedotnamenode = dynamic_cast<ast_node_typedotnamechain*>(typedotnamechain);
     DEBUG_ASSERT_NOTNULL(typedotnamenode);
     typedotnamenode->resolve();
 
     name = typedotnamenode->name;
     /* Append current namespace to relative namespace if any */
-    if (type_resolve_scopestack.current_scope.size())
-        nspace = type_resolve_scopestack.current_scope + "." + typedotnamenode->nspace;
+    if (compilation_units.get_current_typestack().current_scope.size())
+        nspace = compilation_units.get_current_typestack().current_scope + "." + typedotnamenode->nspace;
     else
         nspace = typedotnamenode->nspace;
 
     parlist->resolve(); /* TODO: Reduntant to parlist_t->resolve()? */
     
-    obj_resolve_scopestack.push_new_scope();
+    compilation_units.get_current_objstack().push_new_scope();
     auto parlist_t = dynamic_cast<ast_node_vardef_list*>(parlist);
     DEBUG_ASSERT_NOTNULL(parlist_t);
     parlist_t->resolve();
@@ -108,12 +111,12 @@ emc_type ast_node_funcdef::resolve()
         push_dummyobject_to_resolve_scope(var_name, par->value_type);
     }
     code_block->resolve();
-    obj_resolve_scopestack.pop_scope();
+    compilation_units.get_current_objstack().pop_scope();
 
     /* Hack to allow for return names with same names as other things ... */
-    obj_resolve_scopestack.push_new_scope();
+    compilation_units.get_current_objstack().push_new_scope();
     return_list->resolve();
-    obj_resolve_scopestack.pop_scope();
+    compilation_units.get_current_objstack().pop_scope();
 
     /* TODO: code_block is probably uneccesary. */
     auto fobj = new object_func { code_block->clone(), name, nspace,
@@ -123,40 +126,39 @@ emc_type ast_node_funcdef::resolve()
     mangled_name = mangle_emc_fn_name(*fobj);
     fobj->mangled_name = mangled_name;
     /* Push the function object to top scope */
-    obj_resolve_scopestack.get_top_scope().push_object(fobj);
+    compilation_units.get_current_objstack().get_top_scope().push_object(fobj);
 
     return value_type = emc_type{emc_types::FUNCTION}; /* TODO: Add types too */
 }
 
 emc_type ast_node_funcdec::resolve()
 {
-    extern objscope_stack obj_resolve_scopestack;
-    extern typescope_stack type_resolve_scopestack;
-
     ast_node_typedotnamechain *typedotnamenode = dynamic_cast<ast_node_typedotnamechain*>(typedotnamechain);
     DEBUG_ASSERT_NOTNULL(typedotnamenode);
     typedotnamenode->resolve();
 
     name = typedotnamenode->name;
     /* Append current namespace to relative namespace if any */
-    if (type_resolve_scopestack.current_scope.size())
-        nspace = type_resolve_scopestack.current_scope + "." + typedotnamenode->nspace;
-    else
+    if (compilation_units.get_current_typestack().current_scope.size()) {
+        nspace = compilation_units.get_current_typestack().current_scope;
+        if (typedotnamenode->nspace.size())
+            nspace += "." + typedotnamenode->nspace;
+    } else
         nspace = typedotnamenode->nspace;
     
     parlist->resolve();
     
-    obj_resolve_scopestack.push_new_scope();
+    compilation_units.get_current_objstack().push_new_scope();
     auto parlist_t = dynamic_cast<ast_node_vardef_list*>(parlist);
     DEBUG_ASSERT_NOTNULL(parlist_t);
     parlist_t->resolve();
 
-    obj_resolve_scopestack.pop_scope();
+    compilation_units.get_current_objstack().pop_scope();
 
     /* Hack to allow for return names with same names as other things ... */
-    obj_resolve_scopestack.push_new_scope();
+    compilation_units.get_current_objstack().push_new_scope();
     return_list->resolve();
-    obj_resolve_scopestack.pop_scope();
+    compilation_units.get_current_objstack().pop_scope();
 
     auto fobj = new object_func { 0, name, nspace,
             parlist->clone() , return_list->clone()};
@@ -177,10 +179,100 @@ emc_type ast_node_funcdec::resolve()
     }
     /* Push the function object to top scope */
     /* TODO: Declarations collide with definitions. Should be some flag. */
-    obj_resolve_scopestack.get_top_scope().push_object(fobj);
+    compilation_units.get_current_objstack().get_top_scope().push_object(fobj);
 
     return value_type = emc_type{emc_types::FUNCTION}; /* TODO: Add types too */
 }
+
+emc_type ast_node_using::resolve()
+{
+    auto usingchain_t = dynamic_cast<ast_node_usingchain*>(usingchain);
+    DEBUG_ASSERT_NOTNULL(usingchain_t);
+
+    usingchain_t->resolve();
+
+    if (usingchain_t->vec_typedotchains.size() > 1)
+        THROW_NOT_IMPLEMENTED("");
+
+    std::string path = usingchain_t->vec_typedotchains[0]->resolve_full_type_name();
+    
+    /* See if we already are using the file */
+    auto *cup = compilation_units.find_compilation_unit(path);
+    std::string dir_path = copy_and_replace_all_substrs(path, ".", "/");
+    
+    if (cup) {
+        THROW_NOT_IMPLEMENTED("");
+    } else {
+        
+        namespace fs = std::filesystem;
+        /* TODO: add support for looking for "system headers" in some folders */
+        /* TODO: add support for Foo.emh (headers) for refering to some object file */
+        bool dir_exists = fs::is_directory(dir_path);
+        if (!dir_exists)
+            THROW_BUG("Using do not resolve to a directory: " + dir_path);
+        /* Look for .em file in that dir */
+        std::string file_path = dir_path + "/" + split_last(dir_path, "/") + ".em";
+        bool file_exists = fs::is_regular_file(file_path);
+        if (!file_exists)
+            THROW_BUG("Using do not resolve to a file: " + file_path);
+
+        /* Push the scope and type stacks. */
+        compilation_units.push_compilation_unit(path);
+        /* Scan the file and parse it */
+        {
+            auto &cu = compilation_units.get_current_compilation_unit();
+
+            yyscan_t scanner;
+            yylex_init(&scanner);
+            auto f = fopen(file_path.c_str(),"r");
+            if (!f)
+                THROW_BUG("Could not open file: " + file_path);
+            yyset_in(f, scanner);
+
+            do {
+                int err = yyparse(scanner);
+                if (cu.ast_root) {
+                    cu.ast_root->resolve();
+                    cu.v_nodes.push_back(cu.ast_root);
+                    cu.ast_root = nullptr;
+                }
+                if (err) {
+                    yylex_destroy(scanner);
+                    THROW_BUG("Cannont parse file properly: " + file_path); 
+                }
+            } while (!cu.parsed_eol);
+            
+            // Closes f too
+            yylex_destroy(scanner);
+        }
+        /* Pop the scope and type stacks */
+        auto &new_cu = compilation_units.get_current_compilation_unit();
+        compilation_units.pop_compilation_unit();
+        auto &cu = compilation_units.get_current_compilation_unit();
+
+        /* Link in the type and object stacks from new to current.
+           So the linked scopes can be searched by current's type and object
+           stacks. */
+        cu.objstack.linked_objscope_stacks.push_back(&new_cu.objstack);
+        cu.typestack.linked_typescope_stacks.push_back(&new_cu.typestack);
+
+        /* Link this ast_node to the cu so the tree walker can find it */
+        compunit = &new_cu;
+    
+    }
+
+    return value_type = emc_type{emc_types::NONE};
+}
+
+void compilation_unit::clear()
+{
+    objstack.clear();
+    typestack.clear();
+    for (auto e : v_nodes)
+        delete e;
+    v_nodes.clear();
+}
+
 
 emc_type ast_node_vardef_list::resolve()
 {
@@ -291,153 +383,7 @@ emc_type standard_type_promotion_or_invalid(const emc_type &a, const emc_type &b
     return emc_type{emc_types::INVALID};
 }
 
-/* Replaces any c-like escaped characters in a string with the proper values.
- * Eg. '\' 'a' => 7 (bell)
- *
- * Only hex and octal escaped numbers valid (not UTF escapes)
- */
-void deescape_string(std::string &s)
-{
-    bool is_escaped = false;
-    bool octal_escape = false;
-    bool hex_escape = false;
 
-    for (int i = 0; i < s.size(); i++) {
-        char c = s[i];
-        bool is_last = i + 1 == s.size();
-        redo:
-        if (is_escaped) {
-            is_escaped = false;
-            bool hit = true;
-
-            switch (c) {
-            case 'n':
-                s.replace(i - 1, 2, "\n");
-                break;
-            case 'a':
-                s.replace(i - 1, 2, "\a");
-                break;
-            case 'v':
-                s.replace(i - 1, 2, "\v");
-                break;
-            case 't':
-                s.replace(i - 1, 2, "\t");
-                break;
-            case 'r':
-                s.replace(i - 1, 2, "\r");
-                break;
-            case '\\':
-                s.replace(i - 1, 2, "\\");
-                break;
-            case '\'':
-                s.replace(i - 1, 2, "\'");
-                break;
-            case '\"':
-                s.replace(i - 1, 2, "\"");
-                break;
-            case '\b':
-                s.replace(i - 1, 2, "\b");
-                break;
-            case '\?':
-                s.replace(i - 1, 2, "\?");
-                break;
-            default:
-                hit = false;
-            }
-
-            if (hit) {
-                i--;
-                continue;
-            }
-
-            if (std::isdigit(c)) { /* Octal escape sequence. */
-                octal_escape = true;
-                goto redo;
-            }
-
-            if (c == 'x') {
-                hex_escape = true;
-                if (is_last)
-                    throw std::runtime_error(
-                            "Not valid escape in string literal: " + s);
-                continue;
-            }
-
-            throw std::runtime_error(
-                    "Not valid escape in string literal: " + s);
-
-        } else if (octal_escape) {
-            /* s[i] is a digit here */
-            /* At most 3 characters. */
-            for (int j = i; j < s.size() && j < i + 3; j++) {
-                char c = s[j];
-                bool is_last = j + 1 == s.size() || j == i + 2;
-                if (!std::isdigit(c) || is_last) {
-                    int n;
-                    if (is_last && !std::isdigit(c))
-                        n = j - i;
-                    else
-                        n = j - i + 1;
-                    // s[n - 1] == '\\'
-                    unsigned int oct;
-                    try {
-                        oct = std::stoul(s.substr(i, n), 0, 8);
-                    } catch (std::invalid_argument &e) {
-                        throw std::runtime_error(
-                                "Not valid octal escape in string literal: "
-                                        + s);
-                    }
-                    if (oct > 255)
-                        throw std::runtime_error(
-                                "Not valid octal escape in string literal: "
-                                        + s);
-                    s.erase(i - 1, n);
-                    s[i - 1] = oct;
-                    i--;
-                    octal_escape = false;
-                    break;
-                }
-            }
-        } else if (hex_escape) {
-            /* s[i] is a the first digit here */
-            /* At most 2 characters. */
-            std::cout << "i : " << i << std::endl;
-            for (int j = i; (j < s.size()) && (j < i + 2); j++) {
-                std::cout << "inner i : " << i << " j " << j << std::endl;
-                char c = s[j];
-                bool is_last = j + 1 == s.size() || j == i + 1;
-                bool is_hex = std::isdigit(c) || (c <= 'F' && c >= 'A')
-                        || (c <= 'f' && c >= 'a');
-                if (!is_hex || is_last) {
-                    int n;
-                    if (is_last && !is_hex)
-                        n = j - i;
-                    else
-                        n = j - i + 1;
-                    // s[n - 1] == '\\'
-                    unsigned int hex;
-                    try {
-                        std::cout << "Hex: " << s.substr(i, n) << std::endl;
-                        hex = std::stoul(s.substr(i, n), 0, 16);
-                    } catch (std::invalid_argument &e) {
-                        throw std::runtime_error(
-                                "Not valid hex escape in string literal: " + s);
-                    }
-                    if (hex > 255)
-                        throw std::runtime_error(
-                                "Not valid hex escape in string literal: " + s);
-                    s.erase(i - 2, n + 1);
-                    s[i - 2] = hex;
-                    i -= 2;
-                    hex_escape = false;
-                    break;
-                }
-            }
-        } else if (c == '\\') {
-            is_escaped = true;
-        }
-    }
-}
 
 void objscope_stack::push_new_scope()
 {
@@ -471,6 +417,20 @@ obj* objscope_stack::find_object(std::string name)
             return p;
     }
 
+    /* Search built-in obj scope */
+    if (this != &builtin_objstack) {
+        obj *p = builtin_objstack.find_object(name);
+        if (p)
+            return p;
+    }
+
+    /* Search in linked scope stacks */
+    for (auto *objstack : linked_objscope_stacks) {
+        obj *p = objstack->find_object(name);
+        if (p)
+            return p;
+    }
+
     return nullptr;
 }
 
@@ -493,10 +453,24 @@ std::vector<obj*> objscope_stack::find_objects_by_not_mangled_name(std::string n
     }
     /* Also search the top scope with current namespace prepended to access eg.
      * Foo.Bar.b as b if we are in Foo.Bar */
-    extern typescope_stack type_resolve_scopestack;
-    if (type_resolve_scopestack.current_scope.size()) {
+    
+    if (compilation_units.get_current_typestack().current_scope.size()) {
         auto tmp_v = get_top_scope().find_objects_by_not_mangled_name(name, 
-                        type_resolve_scopestack.current_scope + "." + nspace);
+                        compilation_units.get_current_typestack().current_scope + "." + nspace);
+        for (auto e : tmp_v)
+            ans.push_back(e);
+    }
+
+    /* Search built-in obj scope */
+    if (this != &builtin_objstack) {
+        auto tmp_v = builtin_objstack.find_objects_by_not_mangled_name(name, nspace);
+        for (auto e : tmp_v)
+            ans.push_back(e);
+    }
+
+    /* Search all linked stacks too */
+    for (auto *objstack : linked_objscope_stacks) {
+        auto tmp_v = objstack->find_objects_by_not_mangled_name(name, nspace);
         for (auto e : tmp_v)
             ans.push_back(e);
     }
@@ -512,9 +486,9 @@ void init_linked_cfunctions()
 /* Helper function for init_linked_cfunctions */
 void register_double_var(std::string name, double d)
 {
-    extern objscope_stack obj_resolve_scopestack;
+    
     auto obj = new object_double {name, "", d, 0};
-    obj_resolve_scopestack.get_top_scope().push_object(obj);
+    compilation_units.get_current_objstack().get_top_scope().push_object(obj);
 }
 
 void init_standard_variables()
@@ -533,39 +507,19 @@ void init_builtin_functions()
 
 void init_builtin_types()
 {
-    extern typescope_stack type_resolve_scopestack;
- 
-    type_resolve_scopestack.push_type("Byte", {emc_types::BYTE});
-    type_resolve_scopestack.push_type("Sbyte", {emc_types::SBYTE});
-    type_resolve_scopestack.push_type("Short", {emc_types::SHORT});
-    type_resolve_scopestack.push_type("Ushort", {emc_types::USHORT});
-    type_resolve_scopestack.push_type("Int", {emc_types::INT});
-    type_resolve_scopestack.push_type("Uint", {emc_types::UINT});
-    type_resolve_scopestack.push_type("Long", {emc_types::LONG});
-    type_resolve_scopestack.push_type("Ulong", {emc_types::ULONG});
-    type_resolve_scopestack.push_type("Double", {emc_types::DOUBLE});
-    type_resolve_scopestack.push_type("Float", {emc_types::FLOAT});
+    builtin_typestack.push_type("Byte", {emc_types::BYTE});
+    builtin_typestack.push_type("Sbyte", {emc_types::SBYTE});
+    builtin_typestack.push_type("Short", {emc_types::SHORT});
+    builtin_typestack.push_type("Ushort", {emc_types::USHORT});
+    builtin_typestack.push_type("Int", {emc_types::INT});
+    builtin_typestack.push_type("Uint", {emc_types::UINT});
+    builtin_typestack.push_type("Long", {emc_types::LONG});
+    builtin_typestack.push_type("Ulong", {emc_types::ULONG});
+    builtin_typestack.push_type("Double", {emc_types::DOUBLE});
+    builtin_typestack.push_type("Float", {emc_types::FLOAT});
 }
 
-std::string copy_and_replace_all_substrs(const std::string &source, const std::string &from, const std::string &to)
-{
-    std::string ans;
-    ans.reserve(source.length());
 
-    std::string::size_type lastPos = 0;
-    std::string::size_type findPos;
-
-    while(std::string::npos != (findPos = source.find(from, lastPos)))
-    {
-        ans.append(source, lastPos, findPos - lastPos);
-        ans += to;
-        lastPos = findPos + from.length();
-    }
-
-    ans += source.substr(lastPos);
-    
-    return ans;
-}
 
 const std::map<emc_types, std::string> map_emc_types_to_mangled_shortversion = {
     {emc_types::LONG, "L"},
@@ -685,18 +639,3 @@ std::string demangle_emc_fn_name(std::string c_fn_name)
     THROW_NOT_IMPLEMENTED("");  
 }
 
-std::vector<std::string> split_string(std::string s, std::string delimiter)
-{
-    std::vector<std::string> ans;
-
-    size_t last = 0; 
-    size_t next = 0; 
-    while ((next = s.find(delimiter, last)) != std::string::npos) {   
-        ans.push_back(s.substr(last, next-last));
-        last = next + 1; 
-    } 
-       
-    ans.push_back( s.substr(last));
-
-    return ans;  
-}

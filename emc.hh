@@ -23,14 +23,23 @@
 #include <map>
 #include <cinttypes>
 #include <sstream>
+#include <filesystem>
 
 #include "emc_assert.hh"
+#include "util_string.hh"
 
 #ifndef NDEBUG
 extern int ast_node_count;
 extern int value_expr_count;
 #endif
 
+/* compilation_units keeps track of type and objects in scopes for each compilation unit. */
+class ast_compilation_units;
+class typescope_stack;
+class objscope_stack;
+extern ast_compilation_units compilation_units;
+extern typescope_stack builtin_typestack;
+extern objscope_stack builtin_objstack;
 
 enum class ast_type {
     INVALID = 0,
@@ -265,10 +274,6 @@ void init_standard_variables();
 void init_builtin_functions();
 void init_builtin_types();
 
-/* Util functions */
-void deescape_string(std::string &s);
-std::vector<std::string> split_string(std::string s, std::string delimiter);
-
 class obj {
 public:
     virtual ~obj()
@@ -320,9 +325,7 @@ class objscope_stack {
 public:
     /* There is always one root scope in the scope stack. */
     objscope_stack() {push_new_scope();}
-    objscope_stack(const objscope_stack&) = delete;
-    objscope_stack operator=(const objscope_stack&) = delete;
-
+    ~objscope_stack() {clear();}
     void push_new_scope();
 
     void pop_scope()
@@ -359,6 +362,8 @@ public:
     void debug_print();
 
     void clear();
+
+    std::vector<objscope_stack*> linked_objscope_stacks;
 };
 
 
@@ -366,17 +371,13 @@ public:
 class objscope {
 public:
     ~objscope()
-    { /* TODO: Fix så att inte minnet läcker ... */
-        for (auto p : vec_objs)
-            delete p;
-        for (auto p : vec_types)
-            delete p;
+    {
+        clear();
     }
     objscope(){}
     objscope(objscope &&s) 
     {
         std::swap(vec_objs, s.vec_objs);
-        std::swap(vec_types, s.vec_types);
     }
     /* Since this objects keeps track of pointers there can
      * be no copy or assignment ctor.
@@ -385,7 +386,6 @@ public:
     objscope operator=(const objscope&) = delete;
 
     std::vector<obj*> vec_objs;
-    std::vector<type_object*> vec_types;
 
     void push_object(obj *obj)
     {
@@ -436,9 +436,6 @@ public:
         for (auto p : vec_objs)
             delete p;
         vec_objs.clear();
-        for (auto p : vec_types)
-            delete p;
-        vec_types.clear();
     }
 };
 
@@ -446,8 +443,10 @@ class typescope_stack {
 public:
     /* There is always one root scope in the scope stack. */
     typescope_stack() {}
-    typescope_stack(const typescope_stack&) = delete;
-    typescope_stack operator=(const typescope_stack&) = delete;
+    ~typescope_stack()
+    {
+        clear(); /* TODO: Uneccesarry? */
+    }
 
     void push_new_scope(std::string scope_name)
     {
@@ -473,17 +472,56 @@ public:
 
         std::string full_type_name = prefix + name;
 
-        /* Search in typescopes relative to the current scope first */
+        /* Search built-in types first */
+        if (this != &builtin_typestack)
+            if (builtin_typestack.has_type(name))
+                return builtin_typestack.find_type(name);
+
+        /* Search in typescopes relative to the current scope */
         auto it = map_typename_to_type.find(full_type_name);
         if (it != map_typename_to_type.end())
-            it->second;
+            return it->second;
 
         /* Search from root scope */
         it = map_typename_to_type.find(name);
-        if (it == map_typename_to_type.end())
+        if (it != map_typename_to_type.end())
+            return it->second;
+
+        /* Searched all the linked type stacks for the type */
+        bool found = false;
+        emc_type ans;
+        for (auto *e : linked_typescope_stacks) {
+            if (e->has_type(name)) {
+                if (found)
+                    THROW_BUG("Collision on using type: " + name);
+                ans = e->find_type(name);
+                found = true;
+            }
+        }
+        if (!found)
             THROW_BUG("Type " + name + " not found in map of types");
 
-        return it->second;
+        return ans;
+    }
+
+    bool has_type(std::string name) 
+    {
+        std::string prefix;
+        if (current_scope.size())
+            prefix = current_scope + ".";
+
+        std::string full_type_name = prefix + name;
+
+        /* Search in typescopes relative to the current scope first */
+        auto it = map_typename_to_type.find(full_type_name);
+        if (it != map_typename_to_type.end())
+            return true;
+
+        /* Search from root scope */
+        it = map_typename_to_type.find(name);
+        if (it != map_typename_to_type.end())
+            return true;
+        return false;
     }
 
     void push_type(std::string name, emc_type type)
@@ -503,6 +541,15 @@ public:
     /* Essentially a vector of strings for each nested namespace scope. */
     std::vector<std::string> vec_scope;
     std::string current_scope;
+    std::map<std::string, emc_type> map_typename_to_type;
+    std::vector<typescope_stack*> linked_typescope_stacks;
+
+    void clear()
+    {
+        vec_scope.clear();
+        map_typename_to_type.clear();
+        linked_typescope_stacks.clear();
+    }
 
     /* Joins a vector of string to "A.B.C.D.", but an empty vector to "" */
     std::string join_scopes() const 
@@ -532,7 +579,111 @@ public:
         current_scope = join_scopes();
     }
 
-    std::map<std::string, emc_type> map_typename_to_type;
+
+};
+
+class compilation_unit {
+public:
+    objscope_stack objstack;
+    typescope_stack typestack;
+
+    bool parsed_eol = false;
+    ast_node *ast_root = nullptr;
+    std::vector<ast_node*> v_nodes;
+    /* Set to true by tree walk so that we only walk a unit once
+       if included multiple times. */
+    bool is_compiled = false;
+
+    ~compilation_unit()
+    {
+        clear();
+    }
+
+    void clear();    
+};
+
+class ast_compilation_units {
+public:
+
+    ~ast_compilation_units()
+    {
+        
+    }
+
+    void clear()
+    {
+        for (auto kv : map_compilation_units_by_paths)
+            delete kv.second;
+        map_compilation_units_by_paths.clear();
+        map_compunits_by_nspaceobj.clear();
+        stack.clear();
+        push_compilation_unit(""); /* Root compilation unit */
+    }
+
+    ast_compilation_units()
+    {
+        push_compilation_unit(""); /* Root compilation unit */
+    }
+
+    /* This map maps a compilation units root namespace to the compilation unit.
+     * All cu:s are saved in this map, so it is also used for deletion in the dtor. */
+    std::map<std::string, compilation_unit*> map_compilation_units_by_paths;
+    /* This map maps all individual namespace objects to the compilation unit they
+     * belong too. */
+    std::map<std::string, compilation_unit*> map_compunits_by_nspaceobj;
+
+    /* The stack is just a helper for walking nested compilation units */
+    std::vector<compilation_unit*> stack;
+    compilation_unit *current_cu = nullptr;
+
+    compilation_unit& get_current_compilation_unit()
+    {
+        DEBUG_ASSERT_NOTNULL(current_cu);
+        return *current_cu;
+    }
+
+    objscope_stack& get_current_objstack()
+    {
+        return get_current_compilation_unit().objstack;
+    }
+
+    typescope_stack& get_current_typestack()
+    {
+        return get_current_compilation_unit().typestack;
+    }
+
+    compilation_unit* find_compilation_unit_containing(std::string nspace)
+    {
+        THROW_NOT_IMPLEMENTED("");
+    }
+
+    compilation_unit* find_compilation_unit(std::string nspace)
+    {
+        auto it  = map_compilation_units_by_paths.find(nspace);
+        if (it == map_compilation_units_by_paths.end())
+            return nullptr;
+        return it->second;
+    }
+    
+    void push_compilation_unit(std::string nspace)
+    {
+        auto it = map_compilation_units_by_paths.find(nspace);
+        if (it != map_compilation_units_by_paths.end())
+            THROW_BUG("Compilation unit " + nspace + " allready processed");
+        
+        auto cu = new compilation_unit{};
+        map_compilation_units_by_paths[nspace] = cu;
+        stack.push_back(cu);
+        current_cu = stack.back();
+    }
+
+    void pop_compilation_unit()
+    {
+        if (stack.size() == 1)
+            THROW_BUG("Trying to pop last compilation unit");
+        stack.pop_back();
+        current_cu = stack.back();
+    }
 };
 
 
@@ -691,11 +842,9 @@ public:
 
     emc_type resolve()
     {
-        extern typescope_stack type_resolve_scopestack;
-
         std::string full_type_name = resolve_full_type_name();
 
-        value_type = type_resolve_scopestack.find_type(full_type_name);
+        value_type = compilation_units.get_current_typestack().find_type(full_type_name);
 
         return value_type;
     }
@@ -778,31 +927,6 @@ public:
     }
 };
 
-class ast_node_using: public ast_node {
-public:
-    ast_node_using(ast_node* usingchain) :
-        usingchain(usingchain)
-    {
-        type = ast_type::USING;
-    }
-
-    ~ast_node_using() { delete usingchain;}
-
-    ast_node* usingchain = nullptr;
-
-    emc_type resolve()
-    {
-        return value_type = emc_type{emc_types::NONE};
-    }
-
-    ast_node* clone()
-    {
-        auto c = new ast_node_using {usingchain};
-        c->value_type = value_type;
-        return c;        
-    }
-};
-
 class ast_node_usingchain: public ast_node {
 public:
     ast_node_usingchain(ast_node* typedotchain)
@@ -846,7 +970,30 @@ public:
     }
 };
 
+class ast_node_using: public ast_node {
+public:
+    ast_node_using(ast_node* usingchain) :
+        usingchain(usingchain)
+    {
+        type = ast_type::USING;
+    }
 
+    ~ast_node_using() { delete usingchain;}
+
+    ast_node* usingchain = nullptr;
+    ast_node* root = nullptr;
+    compilation_unit *compunit = nullptr;
+
+    emc_type resolve();
+    
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_using {usingchain};
+        c->value_type = value_type;
+        return c;        
+    }
+};
 
 class ast_node_return : public ast_node {
 public:
@@ -1565,7 +1712,7 @@ public:
 
     emc_type resolve()
     {
-        extern objscope_stack obj_resolve_scopestack;
+        
 
         ast_node_typedotnamechain *node = dynamic_cast<ast_node_typedotnamechain*>(typedotnamechain);
         DEBUG_ASSERT_NOTNULL(node);
@@ -1574,7 +1721,7 @@ public:
         nspace = node->nspace;
         full_name = node->full_name;
         
-        auto v = obj_resolve_scopestack.find_objects_by_not_mangled_name(name, nspace);
+        auto v = compilation_units.get_current_objstack().find_objects_by_not_mangled_name(name, nspace);
         if (v.size() == 0) /* TODO: Kanske borde throwa "inte hittat än" för att kunna fortsätta? */
             THROW_BUG("Object does not exist: >>" + full_name + "<<");
         /* Pick the object in top scope (which is in the front of the vector from find...() */
@@ -1737,10 +1884,10 @@ public:
 
     emc_type resolve()
     {
-        extern objscope_stack obj_resolve_scopestack;
-        obj_resolve_scopestack.push_new_scope();
+        
+        compilation_units.get_current_objstack().push_new_scope();
         value_type = first->resolve();
-        obj_resolve_scopestack.pop_scope();
+        compilation_units.get_current_objstack().pop_scope();
         return value_type;
     }
 
@@ -1790,19 +1937,19 @@ public:
     {
         cond_e->resolve();
         if (!else_el && !also_el) {
-            extern objscope_stack obj_resolve_scopestack;
-            obj_resolve_scopestack.push_new_scope();
+            
+            compilation_units.get_current_objstack().push_new_scope();
             value_type = if_el->resolve();
-            obj_resolve_scopestack.pop_scope();
+            compilation_units.get_current_objstack().pop_scope();
             return value_type;
         } else if (else_el && !also_el) {
-            extern objscope_stack obj_resolve_scopestack;
-            obj_resolve_scopestack.push_new_scope();
+            
+            compilation_units.get_current_objstack().push_new_scope();
             auto value_type_if = if_el->resolve();
-            obj_resolve_scopestack.pop_scope();
-            obj_resolve_scopestack.push_new_scope();
+            compilation_units.get_current_objstack().pop_scope();
+            compilation_units.get_current_objstack().push_new_scope();
             auto value_type_else = else_el->resolve();
-            obj_resolve_scopestack.pop_scope();
+            compilation_units.get_current_objstack().pop_scope();
 
             auto t = standard_type_promotion_or_invalid(value_type_if, value_type_else);
             if (t.is_valid())
@@ -1810,16 +1957,16 @@ public:
             else
                 return value_type = emc_type{emc_types::NONE};
         } else {
-            extern objscope_stack obj_resolve_scopestack;
-            obj_resolve_scopestack.push_new_scope();
+            
+            compilation_units.get_current_objstack().push_new_scope();
             auto value_type_if = if_el->resolve();
-            obj_resolve_scopestack.pop_scope();
-            obj_resolve_scopestack.push_new_scope();
+            compilation_units.get_current_objstack().pop_scope();
+            compilation_units.get_current_objstack().push_new_scope();
             auto value_type_else = else_el->resolve();
-            obj_resolve_scopestack.pop_scope();
-            obj_resolve_scopestack.push_new_scope();
+            compilation_units.get_current_objstack().pop_scope();
+            compilation_units.get_current_objstack().push_new_scope();
             auto value_type_also = also_el->resolve();
-            obj_resolve_scopestack.pop_scope();
+            compilation_units.get_current_objstack().pop_scope();
 
             auto t = standard_type_promotion_or_invalid(value_type_if, value_type_else);
             t = standard_type_promotion_or_invalid(t, value_type_also);
@@ -1881,19 +2028,19 @@ public:
     {
         cond_e->resolve();
         if (!else_el) {
-            extern objscope_stack obj_resolve_scopestack;
-            obj_resolve_scopestack.push_new_scope();
+            
+            compilation_units.get_current_objstack().push_new_scope();
             value_type = if_el->resolve();
-            obj_resolve_scopestack.pop_scope();
+            compilation_units.get_current_objstack().pop_scope();
             return value_type;
         } else {
-            extern objscope_stack obj_resolve_scopestack;
-            obj_resolve_scopestack.push_new_scope();
+            
+            compilation_units.get_current_objstack().push_new_scope();
             auto value_type_if = if_el->resolve();
-            obj_resolve_scopestack.pop_scope();
-            obj_resolve_scopestack.push_new_scope();
+            compilation_units.get_current_objstack().pop_scope();
+            compilation_units.get_current_objstack().push_new_scope();
             auto value_type_else = else_el->resolve();
-            obj_resolve_scopestack.pop_scope();
+            compilation_units.get_current_objstack().pop_scope();
 
             auto t = standard_type_promotion_or_invalid(value_type_if, value_type_else);
             if (t.is_valid())
@@ -2106,8 +2253,8 @@ public:
         name = typenamedot->name;
         nspace = typenamedot->nspace;
         
-        extern objscope_stack obj_resolve_scopestack;
-        std::vector<obj*> v_objs = obj_resolve_scopestack.find_objects_by_not_mangled_name(name, nspace);
+        
+        std::vector<obj*> v_objs = compilation_units.get_current_objstack().find_objects_by_not_mangled_name(name, nspace);
         if (!v_objs.size()) /* TODO: Kolla så fn */
             THROW_BUG("Could not find any function " + nspace + " " + name);
 
@@ -2493,10 +2640,6 @@ public:
 
     emc_type resolve()
     {
-        /* TODO: Typ implementationen är ful ... */
-        extern objscope_stack obj_resolve_scopestack;
-        extern typescope_stack type_resolve_scopestack;
-
         /* Resolve the type node */
         emc_type type = typedotchain->resolve();
 
@@ -2508,7 +2651,7 @@ public:
         var_name = typedotnamechain_T->name;
         nspace = typedotnamechain_T->nspace;
 
-        if (obj_resolve_scopestack.is_in_global_scope() && nspace.size())
+        if (compilation_units.get_current_objstack().is_in_global_scope() && nspace.size())
             THROW_BUG("Can't specify a namespace in variable declarations in a scope: " + nspace + "." + var_name);
 
         /* Set how many pointer indirections this var def has */
@@ -2554,15 +2697,15 @@ public:
         
         /* If we are in filescope (global scope) any declaration might be in a
          * namespace, so we add it to the specified namespace. */
-        if (obj_resolve_scopestack.is_in_global_scope())
-            if (type_resolve_scopestack.current_scope.size())
-                nspace = type_resolve_scopestack.current_scope + "." + nspace;
+        if (compilation_units.get_current_objstack().is_in_global_scope())
+            if (compilation_units.get_current_typestack().current_scope.size())
+                nspace = compilation_units.get_current_typestack().current_scope + "." + nspace;
 
         od->nspace = nspace;
         full_name = (nspace.size() ? nspace + ".": "") + var_name;
         
         /* Only filescope variables need mangling. TODO: Static variables */
-        if (obj_resolve_scopestack.is_in_global_scope()) {
+        if (compilation_units.get_current_objstack().is_in_global_scope()) {
             mangled_name = mangle_emc_var_name( var_name, 
                                                 nspace);
             od->mangled_name = mangled_name;
@@ -2571,7 +2714,7 @@ public:
             od->mangled_name = mangled_name = var_name;
         }
 
-        obj_resolve_scopestack.get_top_scope().push_object(od);
+        compilation_units.get_current_objstack().get_top_scope().push_object(od);
 
         if (value_node)
             value_node->resolve();
@@ -2624,7 +2767,7 @@ public:
 
     emc_type resolve()
     {
-        extern objscope_stack obj_resolve_scopestack;
+        
 
         first->resolve();
 
@@ -2673,7 +2816,7 @@ public:
 
     emc_type resolve()
     {
-        extern objscope_stack obj_resolve_scopestack;
+        
 
         for (auto e : v_fields)
             e->resolve_no_push();
@@ -2716,7 +2859,7 @@ public:
 
     emc_type resolve()
     {
-        extern typescope_stack type_resolve_scopestack;
+        
 
         auto type_node = dynamic_cast<ast_node_typedotchain*>(typedotchain);
         DEBUG_ASSERT_NOTNULL(type_node);
@@ -2733,7 +2876,7 @@ public:
         /* We need to supply the value type with what the struct is 
          * is called from here. */
         struct_node->value_type.name = type_name;
-        type_resolve_scopestack.push_type(full_relative_name, struct_node->value_type);
+        compilation_units.get_current_typestack().push_type(full_relative_name, struct_node->value_type);
 
         return value_type = emc_type{emc_types::NONE};
     }
@@ -2813,14 +2956,14 @@ public:
 
     emc_type resolve()
     {
-        extern typescope_stack type_resolve_scopestack;
+        
 
         auto typedotchain_T = dynamic_cast<ast_node_typedotchain*>(typedotchain);
         DEBUG_ASSERT_NOTNULL(typedotchain_T);
 
         std::string full_nspace = typedotchain_T->resolve_full_type_name();
         
-        type_resolve_scopestack.set_scopes(full_nspace);
+        compilation_units.get_current_typestack().set_scopes(full_nspace);
 
         return value_type = emc_type{emc_types::NONE};
     }

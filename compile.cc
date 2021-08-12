@@ -477,7 +477,7 @@ void jit::compile()
 {
     /* Close the root_block in root_func */
     gcc_jit_block_end_with_void_return(root_block, 0);
-          
+
     result = gcc_jit_context_compile(context);
     if (!result)
     {
@@ -1451,8 +1451,8 @@ void jit::walk_tree_fcall(ast_node *node,
     gcc_jit_function *func = it->second;
 
     /* Find the ast node of the corrensponding function declaration. */
-    extern objscope_stack obj_resolve_scopestack;
-    obj* fnobj_ = obj_resolve_scopestack.find_object(fcall_node->mangled_name);
+    
+    obj* fnobj_ = compilation_units.get_current_objstack().find_object(fcall_node->mangled_name);
     object_func *fnobj = dynamic_cast<object_func*>(fnobj_);
     if (!fnobj)
         THROW_BUG("Function " + fcall_node->mangled_name + " not defined/found.");
@@ -1530,8 +1530,8 @@ void jit::walk_tree_fdefi(ast_node *node,
     gcc_jit_block *fn_block = gcc_jit_function_new_block(fn, new_unique_name("fn_start").c_str());
 
     /* Add a new scope and push it with the parameter names. */
-    extern objscope_stack obj_resolve_scopestack; /* TODO: Borde inte behöva detta i compile.cc ... refactor */
-    obj_resolve_scopestack.push_new_scope();
+     /* TODO: Borde inte behöva detta i compile.cc ... refactor */
+    compilation_units.get_current_objstack().push_new_scope();
 
     for (auto e : ast_parlist->v_defs) {
         auto vardef = dynamic_cast<ast_node_def*>(e);
@@ -1544,7 +1544,7 @@ void jit::walk_tree_fdefi(ast_node *node,
     pop_scope();
 
     /* Pop the function's scope. */
-    obj_resolve_scopestack.pop_scope();
+    compilation_units.get_current_objstack().pop_scope();
 
     map_fnname_to_gccfnobj[ast_funcdec->mangled_name.c_str()] = fn;
 
@@ -1749,6 +1749,24 @@ void jit::walk_tree_dotop(  ast_node *node,
     } else
         THROW_NOT_IMPLEMENTED("walk_tree_dotop(): Not implemented");
 }
+
+void jit::walk_tree_using(  ast_node *node, 
+                            gcc_jit_block **current_block, 
+                            gcc_jit_function **current_function,
+                            gcc_jit_rvalue **current_rvalue)
+{
+    auto *node_t = dynamic_cast<ast_node_using*>(node);
+    DEBUG_ASSERT_NOTNULL(node_t);
+
+    DEBUG_ASSERT_NOTNULL(node_t->compunit);
+
+    /* Walk all the ast_node:s in the compilation unit */
+    for (ast_node * cu_node : node_t->compunit->v_nodes) {
+        walk_tree(cu_node, current_block, current_function, current_rvalue);
+    }
+
+}
+
 
 void jit::walk_tree_deref(  ast_node *node, 
                             gcc_jit_block **current_block, 
@@ -2335,8 +2353,10 @@ void jit::walk_tree(ast_node *node,
     case ast_type::DEREF:
         walk_tree_deref(node, current_block, current_function, current_rvalue, current_lvalue);
         break;
-    case ast_type::NAMESPACE:
     case ast_type::USING:
+        walk_tree_using(node, current_block, current_function, current_rvalue);
+        break;
+    case ast_type::NAMESPACE:
         /* Do nothing. Only effects the AST buildup */
         break;
     default:
