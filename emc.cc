@@ -217,6 +217,14 @@ emc_type ast_node_using::resolve()
             THROW_BUG("Using do not resolve to a file: " + file_path);
 
         /* Push the scope and type stacks. */
+        extern int curr_line; /* In the lexer TODO: Not globals */
+        extern int curr_col;
+
+        int curr_line_poped = curr_line;
+        curr_line = 1;
+        int curr_col_poped = curr_col;
+        curr_col = 1;
+
         compilation_units.push_compilation_unit(path);
         /* Scan the file and parse it */
         {
@@ -258,7 +266,9 @@ emc_type ast_node_using::resolve()
 
         /* Link this ast_node to the cu so the tree walker can find it */
         compunit = &new_cu;
-    
+
+        curr_line = curr_line_poped;
+        curr_col = curr_col_poped;
     }
 
     return value_type = emc_type{emc_types::NONE};

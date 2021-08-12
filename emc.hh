@@ -28,6 +28,17 @@
 #include "emc_assert.hh"
 #include "util_string.hh"
 
+# define YYLTYPE_IS_DECLARED 1
+# define YYLTYPE_IS_TRIVIAL 1
+typedef struct YYLTYPE YYLTYPE;
+struct YYLTYPE
+{
+  int first_line;
+  int first_column;
+  int last_line;
+  int last_column;
+};
+
 #ifndef NDEBUG
 extern int ast_node_count;
 extern int value_expr_count;
@@ -802,7 +813,7 @@ class ast_node {
 public:
 
     ast_node()
-{
+    {
 #ifndef NDEBUG
         extern int ast_node_count; ast_node_count++;
 #endif
@@ -814,6 +825,8 @@ public:
 #endif
     }
     
+    YYLTYPE loc = {-1, -1, -1, -1};
+
     ast_node(const ast_node&) = delete;
     ast_node& operator=(const ast_node&) = delete;
 
@@ -1078,9 +1091,9 @@ public:
          * so that -2147483648 works as a int literal. */
         if (l > std::numeric_limits<int>::max() ||
             l < std::numeric_limits<int>::min())
-            THROW_BUG("Value out of Int range: " + s);
+            THROW_USER_ERROR_LOC("Value out of Int range: " + s);
         if (errno == ERANGE)
-            THROW_BUG("String not an valid Int: " + s);
+            THROW_USER_ERROR_LOC("String not an valid Int: " + s);
         i = (int)l;
     }
     ~ast_node_int_literal()
@@ -1723,7 +1736,7 @@ public:
         
         auto v = compilation_units.get_current_objstack().find_objects_by_not_mangled_name(name, nspace);
         if (v.size() == 0) /* TODO: Kanske borde throwa "inte hittat än" för att kunna fortsätta? */
-            THROW_BUG("Object does not exist: >>" + full_name + "<<");
+            THROW_USER_ERROR_LOC("Object does not exist: " + full_name);
         /* Pick the object in top scope (which is in the front of the vector from find...() */
         auto p = v.front();
 
@@ -2256,7 +2269,7 @@ public:
         
         std::vector<obj*> v_objs = compilation_units.get_current_objstack().find_objects_by_not_mangled_name(name, nspace);
         if (!v_objs.size()) /* TODO: Kolla så fn */
-            THROW_BUG("Could not find any function " + nspace + " " + name);
+            THROW_USER_ERROR_LOC("Could not find any function " + nspace + " " + name);
 
         /* TODO: Make fancier argument matching then exact. */
         obj* choosen_obj = nullptr;
@@ -2652,7 +2665,7 @@ public:
         nspace = typedotnamechain_T->nspace;
 
         if (compilation_units.get_current_objstack().is_in_global_scope() && nspace.size())
-            THROW_BUG("Can't specify a namespace in variable declarations in a scope: " + nspace + "." + var_name);
+            THROW_USER_ERROR_LOC("Can't specify a namespace in variable declarations in a scope: " + nspace + "." + var_name);
 
         /* Set how many pointer indirections this var def has */
         int n_pointer_indirections = 0;
@@ -2774,7 +2787,7 @@ public:
         auto struct_type = first->value_type;
         
         if (!struct_type.is_struct())
-            THROW_BUG("Dot operator on non struct");
+            THROW_USER_ERROR_LOC("Dot operator on non struct");
 
         return value_type = struct_type.find_type_of_child(field_name);
     }
@@ -2956,8 +2969,6 @@ public:
 
     emc_type resolve()
     {
-        
-
         auto typedotchain_T = dynamic_cast<ast_node_typedotchain*>(typedotchain);
         DEBUG_ASSERT_NOTNULL(typedotchain_T);
 

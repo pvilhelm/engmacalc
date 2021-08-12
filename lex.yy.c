@@ -2458,10 +2458,10 @@ void yyfree (void * ptr , yyscan_t yyscanner)
 #line 130 "emc_lexer.l"
 
 
+int curr_line = 1;
+int curr_col = 1;
+
 static void update_loc(struct YYLTYPE * yylloc_param, char *yytext_arg) {
-	static int curr_line = 1; /* TODO: Does not work with nested parsing */
-	static int curr_col = 1;
-	
 	if (yylloc_param->first_line == 0) {
 		curr_line = 1;
 		curr_col = 1;

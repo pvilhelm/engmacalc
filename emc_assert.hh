@@ -4,7 +4,16 @@
 #include <iostream>
 #include <stdexcept>
 
-// THROW_NOT_IMPLEMENTED("");
+#define THROW_USER_ERROR_LOC(msg)\
+do {\
+    std::cerr << __FILE__ << ":" << __LINE__ << " in " << __PRETTY_FUNCTION__ <<\
+        "\n" << "Error in " << loc.first_line << ":" << loc.first_column << " to " <<\
+        loc.last_line << ":" << loc.last_column << "\n" <<\
+         msg <<\
+        "\nAborting ..."<< std::endl;\
+    throw std::runtime_error("Bad user code");\
+} while((0))
+
 #define THROW_NOT_IMPLEMENTED(msg)\
 do {\
     std::cerr << __FILE__ << ":" << __LINE__ << " in " << __PRETTY_FUNCTION__ <<\
@@ -13,7 +22,6 @@ do {\
     throw std::runtime_error("Not implemented");\
 } while((0))
 
-// THROW_BUG("");
 #define THROW_BUG(msg)\
 do {\
     std::cerr << __FILE__ << ":" << __LINE__ << " in " << __PRETTY_FUNCTION__ <<\
