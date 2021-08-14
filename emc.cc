@@ -196,6 +196,13 @@ emc_type ast_node_using::resolve()
 
     std::string path = usingchain_t->vec_typedotchains[0]->resolve_full_type_name();
     
+    /* Push the namespace to the stack of "usings" if it was a USING IMPORT */
+    if (using_ns) {
+        auto &ts = compilation_units.get_current_typestack();
+        ts.push_using(path);
+    }
+
+
     /* See if we already are using the file */
     auto *cup = compilation_units.find_compilation_unit(path);
     std::string dir_path = copy_and_replace_all_substrs(path, ".", "/");
@@ -444,7 +451,7 @@ obj* objscope_stack::find_object(std::string name)
     return nullptr;
 }
 
-std::vector<obj*> objscope_stack::find_objects_by_not_mangled_name(std::string name, std::string nspace)
+std::vector<obj*> objscope_stack::find_objects_by_not_mangled_name_helper(std::string name, std::string nspace)
 {
     std::vector<obj*> ans;
     /* We are not searching for a namespace match */
@@ -463,7 +470,6 @@ std::vector<obj*> objscope_stack::find_objects_by_not_mangled_name(std::string n
     }
     /* Also search the top scope with current namespace prepended to access eg.
      * Foo.Bar.b as b if we are in Foo.Bar */
-    
     if (compilation_units.get_current_typestack().current_scope.size()) {
         std::string current_scope = compilation_units.get_current_typestack().current_scope;
         std::string full_nspace;
@@ -492,6 +498,52 @@ std::vector<obj*> objscope_stack::find_objects_by_not_mangled_name(std::string n
         auto tmp_v = objstack->find_objects_by_not_mangled_name(name, nspace);
         for (auto e : tmp_v)
             ans.push_back(e);
+    }
+
+    return ans;
+}
+
+emc_type typescope_stack::find_type(std::string name)
+{
+    emc_type ans;
+    bool hit = false;
+    /* First search looking from current scope */
+    hit = find_type_helper(name, ans);
+    if (hit)
+        return ans;
+
+    /* Now relook but with the namespace specified by USING directives. */
+    auto &ts = compilation_units.get_current_typestack();
+    for (auto scopes : ts.using_scopes) {
+        for (std::string ns : scopes) {
+            if (ns.size()) {
+                hit = find_type_helper(ns + "." + name, ans);
+                if (hit)
+                    return ans;
+            }
+        }
+    }
+    THROW_BUG("Could not find type: " + name);
+}
+
+std::vector<obj*> objscope_stack::find_objects_by_not_mangled_name(std::string name, std::string nspace)
+{
+    std::vector<obj*> ans;
+    /* First search looking from current scope */
+    auto tmp_vec = find_objects_by_not_mangled_name_helper(name, nspace);
+    for (auto e : tmp_vec)
+        ans.push_back(e);
+
+    /* Now relook but with the namespace specified by USING directives. */
+    auto &ts = compilation_units.get_current_typestack();
+    for (auto scopes : ts.using_scopes) {
+        for (std::string ns : scopes) {
+            if (ns.size()) {
+                auto tmp_vec = find_objects_by_not_mangled_name_helper(name, ns);
+                for (auto e : tmp_vec)
+                    ans.push_back(e);
+            }
+        }
     }
 
     return ans;

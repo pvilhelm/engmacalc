@@ -25,3 +25,6 @@ FUNC println(Byte b)
 FUNC println(Double d)
 FUNC println(Float f)
 
+TYPE Foo = STRUCT
+    Int i
+END

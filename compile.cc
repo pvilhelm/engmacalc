@@ -1845,7 +1845,7 @@ void jit::walk_tree_type(   ast_node *node,
         /* Create a c-struct corrensponding to the struct */
         for (auto e : var_struct->v_fields) {
             const char *field_name = e->var_name.c_str();
-            gcc_jit_type *field_type = emc_type_to_jit_type(string_to_type(e->type_name));
+            gcc_jit_type *field_type = emc_type_to_jit_type(e->value_type);
             gcc_jit_field *field = gcc_jit_context_new_field(context, 0, field_type, field_name);
             sw.add_field(field_name, field);
         }

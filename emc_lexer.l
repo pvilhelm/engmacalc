@@ -79,6 +79,7 @@ ENDLN "\r\n"|"\n"
 "NOT" return NOT;
 "NAMESPACE" return NAMESPACE;
 "USING" return USING;
+"IMPORT" return IMPORT;
 
 "c::" return CLINKAGE;
 

@@ -337,6 +337,10 @@ public:
     /* There is always one root scope in the scope stack. */
     objscope_stack() {push_new_scope();}
     ~objscope_stack() {clear();}
+
+    objscope_stack(const objscope_stack&) = delete;
+    objscope_stack& operator=(const objscope_stack&) = delete;
+
     void push_new_scope();
 
     void pop_scope()
@@ -367,6 +371,7 @@ public:
 
     obj* find_object(std::string name);
     std::vector<obj*> find_objects_by_not_mangled_name(std::string name, std::string nspace);
+    std::vector<obj*> find_objects_by_not_mangled_name_helper(std::string name, std::string nspace);
 
     std::vector<objscope> vec_scope;
 
@@ -453,17 +458,22 @@ public:
 class typescope_stack {
 public:
     /* There is always one root scope in the scope stack. */
-    typescope_stack() {}
+    typescope_stack() {using_scopes.push_back({});}
     ~typescope_stack()
     {
         clear(); /* TODO: Uneccesarry? */
     }
+
+    typescope_stack(const typescope_stack&) = delete;
+    typescope_stack& operator=(const typescope_stack&) = delete;
 
     void push_new_scope(std::string scope_name)
     {
         vec_scope.push_back(scope_name);
         /* Create a cached string on the form Ns.Ns.Ns for the current scope */
         current_scope = join_scopes();
+        /* using scopes */
+        using_scopes.push_back({});
     }
 
     void pop_scope()
@@ -473,9 +483,17 @@ public:
         vec_scope.pop_back();
         /* Create a cached string on the form Ns.Ns.Ns for the current scope */
         current_scope = join_scopes();
+        
+        using_scopes.pop_back();
     }
 
-    emc_type find_type(std::string name)
+    void push_using(std::string ns)
+    {
+        DEBUG_ASSERT(using_scopes.size(),"");
+        using_scopes.back().push_back(ns);
+    }
+
+    bool find_type_helper(std::string name, emc_type &ans)
     {
         std::string prefix;
         if (current_scope.size())
@@ -485,22 +503,27 @@ public:
 
         /* Search built-in types first */
         if (this != &builtin_typestack)
-            if (builtin_typestack.has_type(name))
-                return builtin_typestack.find_type(name);
+            if (builtin_typestack.has_type(name)) { /* TODO: Wastefull check */
+                ans = builtin_typestack.find_type(name);
+                return true;
+            }
 
         /* Search in typescopes relative to the current scope */
         auto it = map_typename_to_type.find(full_type_name);
-        if (it != map_typename_to_type.end())
-            return it->second;
+        if (it != map_typename_to_type.end()) {
+            ans = it->second;
+            return true;
+        }
 
         /* Search from root scope */
         it = map_typename_to_type.find(name);
-        if (it != map_typename_to_type.end())
-            return it->second;
-
+        if (it != map_typename_to_type.end()) {
+            ans = it->second;
+            return true;
+        }
         /* Searched all the linked type stacks for the type */
         bool found = false;
-        emc_type ans;
+
         for (auto *e : linked_typescope_stacks) {
             if (e->has_type(name)) {
                 if (found)
@@ -509,11 +532,13 @@ public:
                 found = true;
             }
         }
-        if (!found)
-            THROW_BUG("Type " + name + " not found in map of types");
 
-        return ans;
+        if (found)
+            return true;
+        return false;
     }
+
+    emc_type find_type(std::string name);    
 
     bool has_type(std::string name) 
     {
@@ -554,6 +579,8 @@ public:
     std::string current_scope;
     std::map<std::string, emc_type> map_typename_to_type;
     std::vector<typescope_stack*> linked_typescope_stacks;
+    /* vector of vector of using:s */
+    std::vector<std::vector<std::string>> using_scopes;
 
     void clear()
     {
@@ -589,8 +616,6 @@ public:
         vec_scope = split_string(full_nspace, ".");
         current_scope = join_scopes();
     }
-
-
 };
 
 class compilation_unit {
@@ -693,6 +718,7 @@ public:
         if (stack.size() == 1)
             THROW_BUG("Trying to pop last compilation unit");
         stack.pop_back();
+        DEBUG_ASSERT(stack.size(),"");
         current_cu = stack.back();
     }
 };
@@ -990,15 +1016,19 @@ public:
     {
         type = ast_type::USING;
     }
+    ast_node_using(ast_node* usingchain, bool using_ns) :
+        usingchain(usingchain) , using_ns(using_ns)
+    {
+        type = ast_type::USING;
+    }
 
     ~ast_node_using() { delete usingchain;}
 
     ast_node* usingchain = nullptr;
     ast_node* root = nullptr;
     compilation_unit *compunit = nullptr;
-
+    bool using_ns = false;
     emc_type resolve();
-    
 
     ast_node* clone()
     {
@@ -2872,10 +2902,11 @@ public:
 
     emc_type resolve()
     {
-        
-
         auto type_node = dynamic_cast<ast_node_typedotchain*>(typedotchain);
         DEBUG_ASSERT_NOTNULL(type_node);
+        /* We prepend the current namespace scope to the type (it is stored
+           with absolute namespace). */
+        nspace = compilation_units.get_current_typestack().current_scope;
         
         type_node->resolve_name_and_namespace(&type_name, &nspace);
         if (nspace.size())

@@ -27,7 +27,7 @@ typedef void* yyscan_t;
 %token <s> TYPENAME 
 %token <s> ESC_STRING
 
-%token EOL IF DO END ELSE WHILE ENDOFFILE FUNC ELSEIF ALSO RETURN STRUCT TYPE CLINKAGE NAMESPACE USING
+%token EOL IF DO END ELSE WHILE ENDOFFILE FUNC ELSEIF ALSO RETURN STRUCT TYPE CLINKAGE NAMESPACE USING IMPORT
 
 %right '='
 %left OR NOR XOR XNOR
@@ -307,8 +307,12 @@ typedotnamechain: NAME                      {
                                                 $$ = p; $$->loc = @$;
                                             }
 
-using:  USING usingchain                    { 
+using:  IMPORT usingchain                    { 
                                                 $$ = new ast_node_using{$2};
+                                                $$->loc = @$; $$->loc = @$;
+                                            }
+        | USING IMPORT usingchain           { 
+                                                $$ = new ast_node_using{$3, true};
                                                 $$->loc = @$; $$->loc = @$;
                                             }
 
