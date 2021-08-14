@@ -715,6 +715,7 @@ std::string mangle_emc_type_name(std::string full_path)
     std::string mangled_name = "engma_c58b_type_";
     std::string nspace = strip_last(full_path, ".");
     std::string name = split_last(full_path, ".");
+        
     if (nspace.size()) {
         /* '_' is used as a delimiter so we need to double them if some is in a string */
         nspace = copy_and_replace_all_substrs(nspace, "_", "__");

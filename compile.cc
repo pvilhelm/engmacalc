@@ -1673,9 +1673,9 @@ void jit::walk_tree_assign(ast_node *node,
         DEBUG_ASSERT_NOTNULL(left_lv);
 
         /* Find the struct definition */
-        auto gcc_struct_it = map_structtypename_to_gccstructobj.find(dotop_node->first->value_type.name);
+        auto gcc_struct_it = map_structtypename_to_gccstructobj.find(dotop_node->first->value_type.mangled_name);
                 if (gcc_struct_it == map_structtypename_to_gccstructobj.end())
-                    THROW_BUG("Cant find struct type: " + dotop_node->first->value_type.name);
+                    THROW_BUG("Cant find struct type: " + dotop_node->first->value_type.mangled_name);
         /* Get the field */
         gcc_jit_field *field = gcc_struct_it->second.get_field(dotop_node->field_name);
         assign_lv = gcc_jit_lvalue_access_field(left_lv, 0, field);
@@ -1736,9 +1736,9 @@ void jit::walk_tree_dotop(  ast_node *node,
 
     if (var_dotop->first->value_type.is_struct()) {
         /* Find the struct definition */
-        auto gcc_struct_it = map_structtypename_to_gccstructobj.find(var_dotop->first->value_type.name);
+        auto gcc_struct_it = map_structtypename_to_gccstructobj.find(var_dotop->first->value_type.mangled_name);
                 if (gcc_struct_it == map_structtypename_to_gccstructobj.end())
-                    THROW_BUG("Cant find struct type: " + var_dotop->first->value_type.name);
+                    THROW_BUG("Cant find struct type: " + var_dotop->first->value_type.mangled_name);
         /* Get the field */
         gcc_jit_field *field = gcc_struct_it->second.get_field(var_dotop->field_name);
 

@@ -253,11 +253,12 @@ struct emc_type {
 
     bool operator==(const emc_type &r) const
     {
+        DEBUG_ASSERT(is_struct() || is_primitive(), ""); //Other not implemented
         if (
                 type != r.type ||
                 n_pointer_indirections != r.n_pointer_indirections ||
                 is_const != r.is_const ||
-                name != r.name ||
+                is_struct() && (mangled_name != r.mangled_name) ||
                 children_types != r.children_types
             )
             return false;
