@@ -3,6 +3,7 @@
 #include <vector>
 
 std::string split_last(std::string const &s, std::string const split_at);
+std::string strip_last(std::string const &s, std::string const split_at);
 
 std::vector<std::string> split_string(std::string s, std::string delimiter);
 

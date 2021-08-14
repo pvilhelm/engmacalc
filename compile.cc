@@ -457,7 +457,7 @@ gcc_jit_type* jit::emc_type_to_jit_type(emc_type t)
     else if (t.is_void())
         var_type = VOID_TYPE;
     else if (t.is_struct()) {
-        std::string struct_name = t.name;
+        std::string struct_name = t.mangled_name;
         auto sw = map_structtypename_to_gccstructobj.find(struct_name);
         if (sw == map_structtypename_to_gccstructobj.end())
             THROW_BUG("Struct " + struct_name + " not defined");
@@ -1832,7 +1832,7 @@ void jit::walk_tree_type(   ast_node *node,
     DEBUG_ASSERT(var_type != nullptr, "var_type was null");
 
     if (var_type->first->type == ast_type::STRUCT) {
-        std::string walk_tree_type_typename = var_type->type_name;
+        std::string walk_tree_type_typename = var_type->mangled_name;
 
         walk_tree(var_type->first, current_block, current_function, current_rvalue);
 
@@ -1902,12 +1902,15 @@ void jit::walk_tree_def(ast_node *node,
     var_type = emc_type_to_jit_type(ast_def->value_type);
 
     if (!is_file_scope) /* local */
-        lval = gcc_jit_function_new_local(*current_function, 0, var_type, ast_def->mangled_name.c_str());
+        lval = gcc_jit_function_new_local(*current_function, 
+            0, 
+            var_type, 
+            ast_def->mangled_name.c_str());
     else
         lval = gcc_jit_context_new_global(
-        context, 0, GCC_JIT_GLOBAL_EXPORTED,
-        var_type,
-        ast_def->mangled_name.c_str());
+            context, 0, GCC_JIT_GLOBAL_EXPORTED,
+            var_type,
+            ast_def->mangled_name.c_str());
 
     push_lval(ast_def->var_name, lval);
 
@@ -1989,9 +1992,9 @@ void jit::walk_tree_def(ast_node *node,
                 gcc_jit_block_add_assignment(*current_block, 0, lval, rv_assignment);
         } else if (ast_def->value_type.is_struct()) {
             /* TODO: Zero fields */
-            auto gcc_struct_it = map_structtypename_to_gccstructobj.find(ast_def->value_type.name);
+            auto gcc_struct_it = map_structtypename_to_gccstructobj.find(ast_def->value_type.mangled_name);
             if (gcc_struct_it == map_structtypename_to_gccstructobj.end())
-                THROW_BUG("Cant find struct type: " + ast_def->value_type.name);
+                THROW_BUG("Cant find struct type: " + ast_def->value_type.mangled_name);
     
             for (gcc_jit_field *field : gcc_struct_it->second.gccjit_fields) {
                 gcc_jit_lvalue *field_lv = gcc_jit_lvalue_access_field(lval, 0, field);

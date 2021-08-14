@@ -235,6 +235,7 @@ struct emc_type {
     std::vector<emc_type> children_types;
     /* Used for fields in structs etc. */
     std::string name;
+    std::string mangled_name;
 
     emc_type find_type_of_child(std::string name) const 
     {
@@ -278,12 +279,16 @@ class objscope;
 class objscope_stack;
 class ast_node;
 class obj;
+class object_func;
 
 /* Functions */
 void init_linked_cfunctions();
 void init_standard_variables();
 void init_builtin_functions();
 void init_builtin_types();
+std::string mangle_emc_fn_name(const object_func &fn_obj);
+std::string demangle_emc_fn_name(std::string c_fn_name);
+std::string mangle_emc_type_name(std::string full_path);
 
 class obj {
 public:
@@ -2899,6 +2904,7 @@ public:
     std::string type_name;
     std::string nspace; /* Relative namespace */
     std::string full_relative_name;
+    std::string mangled_name;
 
     emc_type resolve()
     {
@@ -2913,13 +2919,16 @@ public:
             full_relative_name = nspace + "." + type_name;
         else
             full_relative_name = type_name;
-
+        
+        mangled_name = mangle_emc_type_name(full_relative_name);
+        
         first->resolve(); 
 
         auto struct_node = dynamic_cast<ast_node_struct_def*>(first);
         /* We need to supply the value type with what the struct is 
          * is called from here. */
         struct_node->value_type.name = type_name;
+        struct_node->value_type.mangled_name = mangled_name;
         compilation_units.get_current_typestack().push_type(full_relative_name, struct_node->value_type);
 
         return value_type = emc_type{emc_types::NONE};
@@ -2932,6 +2941,7 @@ public:
         c->type_name = type_name;
         c->nspace = nspace;
         c->full_relative_name = full_relative_name;
+        c->mangled_name = mangled_name;
         return c;        
     }
 };
@@ -3013,5 +3023,3 @@ public:
 
 void push_dummyobject_to_resolve_scope(std::string var_name, emc_type type);
 
-std::string mangle_emc_fn_name(const object_func &fn_obj);
-std::string demangle_emc_fn_name(std::string c_fn_name);

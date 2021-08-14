@@ -12,6 +12,16 @@ std::string split_last(std::string const &s, std::string const split_at)
     return s.substr(pos + 1);
 }
 
+std::string strip_last(std::string const &s, std::string const split_at)
+{
+    auto pos = s.find_last_of(split_at);
+    if (pos == std::string::npos)
+        return s;
+    if (pos == 0)
+        return "";
+    return s.substr(0, pos);
+}
+
 std::vector<std::string> split_string(std::string s, std::string delimiter)
 {
     std::vector<std::string> ans;
