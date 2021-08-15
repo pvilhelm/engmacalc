@@ -1435,6 +1435,18 @@ void jit::walk_tree_ilit(ast_node *node,
     DEBUG_ASSERT(*current_rvalue != nullptr, "INT_LITERAL current_rvalue is null");        
 }
 
+void jit::walk_tree_slit(ast_node *node, 
+                        gcc_jit_block **current_block, 
+                        gcc_jit_function **current_function, 
+                        gcc_jit_rvalue **current_rvalue)
+{
+    /* A string literal is an rvalue. */
+    auto node_t = dynamic_cast<ast_node_string_literal*>(node);
+    /* TODO: Handle long */
+    *current_rvalue = gcc_jit_context_new_string_literal(context, node_t->s.c_str());
+    DEBUG_ASSERT_NOTNULL(current_rvalue);
+}
+
 void jit::walk_tree_fcall(ast_node *node, 
                         gcc_jit_block **current_block, 
                         gcc_jit_function **current_function, 
@@ -1886,6 +1898,38 @@ void jit::walk_tree_var(ast_node *node,
         THROW_BUG("");
 }
 
+/* Recursive zero setter for fields in structs */
+void jit::walk_tree_def_zero_structs_helper(bool is_file_scope, 
+                          gcc_jit_block **current_block,
+                          const std::vector<gcc_jit_field *> &gccjit_fields,
+                          std::vector<emc_type> &children_types,
+                          gcc_jit_lvalue *lval)
+ { 
+    for (int i = 0; i < gccjit_fields.size(); i++) {
+        gcc_jit_field *field = gccjit_fields[i];
+        gcc_jit_lvalue *field_lv = gcc_jit_lvalue_access_field(lval, 0, field);
+        gcc_jit_type *field_type = gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(field_lv));
+        emc_type &type = children_types[i];
+
+        if (type.is_primitive()) {
+            gcc_jit_rvalue *rv_0 = gcc_jit_context_zero(context, field_type);
+            if (is_file_scope)
+                gcc_jit_block_add_assignment(root_block, 0, field_lv, rv_0); /* TODO: USe new initializer in gcc_jit instead? */
+            else
+                gcc_jit_block_add_assignment(*current_block, 0, field_lv, rv_0);
+        } else if (type.is_struct()) {
+            auto gcc_struct_it = map_structtypename_to_gccstructobj.find(type.mangled_name);
+            if (gcc_struct_it == map_structtypename_to_gccstructobj.end())
+                THROW_BUG("Cant find struct type: " + type.mangled_name);
+            walk_tree_def_zero_structs_helper(is_file_scope, current_block,
+                          gcc_struct_it->second.gccjit_fields,
+                          type.children_types,
+                          field_lv);
+        }
+    }
+}
+
+
 /* TODO: A bit messy. No support for nested structs */
 void jit::walk_tree_def(ast_node *node, 
                         gcc_jit_block **current_block, 
@@ -1992,20 +2036,24 @@ void jit::walk_tree_def(ast_node *node,
                 gcc_jit_block_add_assignment(*current_block, 0, lval, rv_assignment);
         } else if (ast_def->value_type.is_struct()) {
             /* TODO: Zero fields */
-            auto gcc_struct_it = map_structtypename_to_gccstructobj.find(ast_def->value_type.mangled_name);
-            if (gcc_struct_it == map_structtypename_to_gccstructobj.end())
-                THROW_BUG("Cant find struct type: " + ast_def->value_type.mangled_name);
-    
-            for (gcc_jit_field *field : gcc_struct_it->second.gccjit_fields) {
-                gcc_jit_lvalue *field_lv = gcc_jit_lvalue_access_field(lval, 0, field);
-                gcc_jit_type *field_type = gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(field_lv));
+            std::string mangled_name = ast_def->value_type.mangled_name;
 
-                gcc_jit_rvalue *rv_0 = gcc_jit_context_zero(context, field_type);
-                if (is_file_scope)
-                    gcc_jit_block_add_assignment(root_block, 0, field_lv, rv_0); /* TODO: USe new initializer in gcc_jit instead? */
-                else
-                    gcc_jit_block_add_assignment(*current_block, 0, field_lv, rv_0);
-            }
+            auto gcc_struct_it = map_structtypename_to_gccstructobj.find(mangled_name);
+            if (gcc_struct_it == map_structtypename_to_gccstructobj.end())
+                THROW_BUG("Cant find struct type: " + mangled_name);
+    
+            DEBUG_ASSERT(ast_def->value_type.children_types.size() == gcc_struct_it->second.gccjit_fields.size(),"");
+
+            const std::vector<gcc_jit_field *> &gccjit_fields = gcc_struct_it->second.gccjit_fields;
+            std::vector<emc_type> &children_types = ast_def->value_type.children_types;
+
+            /* Since structs can have structs this need to be a recursive mess */
+            walk_tree_def_zero_structs_helper(
+                is_file_scope, 
+                current_block,
+                gccjit_fields,
+                children_types,
+                lval);
         } else 
             THROW_NOT_IMPLEMENTED("");
     }
@@ -2286,6 +2334,9 @@ void jit::walk_tree(ast_node *node,
         break;
     case ast_type::INT_LITERAL:
         walk_tree_ilit(node, current_block, current_function, current_rvalue);
+        break;
+    case ast_type::STRING_LITERAL:
+        walk_tree_slit(node, current_block, current_function, current_rvalue);
         break;
     case ast_type::FUNCTION_CALL:
         walk_tree_fcall(node, current_block, current_function, current_rvalue);

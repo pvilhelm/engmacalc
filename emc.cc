@@ -588,6 +588,7 @@ void init_builtin_types()
     builtin_typestack.push_type("Ulong", {emc_types::ULONG});
     builtin_typestack.push_type("Double", {emc_types::DOUBLE});
     builtin_typestack.push_type("Float", {emc_types::FLOAT});
+
 }
 
 
@@ -668,10 +669,15 @@ std::string mangle_emc_fn_name(const object_func &fn_obj)
     DEBUG_ASSERT_NOTNULL(parlist_node);
     for (ast_node *para : parlist_node->v_defs) {
         if (para->value_type.is_primitive()) {
+            ss << "_";
+            /* Add a 'P' per pointer indirection. */
+            if (para->value_type.n_pointer_indirections)
+                for (int i = 0; i < para->value_type.n_pointer_indirections; i++)
+                    ss << "P";
             auto iter = map_emc_types_to_mangled_shortversion.find(para->value_type.type);
             if (iter == map_emc_types_to_mangled_shortversion.end())
                 THROW_BUG("Could not find mangled short version of type: " + std::to_string((int)para->value_type.type));
-            ss << "_" << iter->second;
+            ss << iter->second;
         } else
             THROW_NOT_IMPLEMENTED("Mangle of type not impelmented: " + std::to_string((int)para->value_type.type));
     }
@@ -713,9 +719,16 @@ std::string demangle_emc_fn_name(std::string c_fn_name)
 std::string mangle_emc_type_name(std::string full_path)
 {
     std::string mangled_name = "engma_c58b_type_";
-    std::string nspace = strip_last(full_path, ".");
-    std::string name = split_last(full_path, ".");
-        
+    std::string nspace;
+    std::string name;
+    
+    if (full_path.find(".") != std::string::npos) {
+        nspace = strip_last(full_path, ".");
+        name = split_last(full_path, ".");
+    } else {
+        name = full_path;
+    }
+
     if (nspace.size()) {
         /* '_' is used as a delimiter so we need to double them if some is in a string */
         nspace = copy_and_replace_all_substrs(nspace, "_", "__");

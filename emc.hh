@@ -230,6 +230,10 @@ struct emc_type {
     {
         return n_pointer_indirections;
     }
+    bool is_string() const
+    {
+        return type == emc_types::STRING;
+    }
 
     /* For structs etc with children types. */
     std::vector<emc_type> children_types;
@@ -1153,10 +1157,11 @@ public:
 
 class ast_node_string_literal: public ast_node {
 public:
-    ast_node_string_literal(std::string s) :
-            s(s)
+    ast_node_string_literal(std::string s)
     {
         type = ast_type::STRING_LITERAL;
+        deescape_string(s);
+        this->s = s;
     }
     ~ast_node_string_literal()
     {
@@ -1322,7 +1327,7 @@ public:
     }
     ~ast_node_ptrdef_list()
     {
-
+        
     }
     
     std::vector<bool> v_const;
@@ -2865,8 +2870,6 @@ public:
 
     emc_type resolve()
     {
-        
-
         for (auto e : v_fields)
             e->resolve_no_push();
 

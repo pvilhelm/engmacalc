@@ -36,11 +36,11 @@ typedef void* yyscan_t;
 %left CMP LEQ GEQ EQU NEQ '>' '<'
 %left '+' '-' 
 %left '*' '/' 
-%right '^' 
+%right '^' '@' '&'
 
 %nonassoc DO
 %nonassoc END        
-%nonassoc '|' UMINUS '@' '&' 
+%nonassoc '|' UMINUS  
 
 %start program
 
@@ -349,7 +349,13 @@ exp: exp '+' exp            {$$ = new ast_node_add{$1, $3}; $$->loc = @$;}
 
     /* Pointer manipulation */
     | '@' exp               {$$ = new ast_node_deref{$2}; $$->loc = @$;}
-    | '&' exp               {$$ = new ast_node_address{$2}; $$->loc = @$;}
+    | ptrdef_list exp       { /* ptrdef_list instead of '&' to resolve shift/reduce conflict */
+                                auto p = dynamic_cast<ast_node_ptrdef_list*>($1);
+                                if (p->v_const.size() != 1)
+                                    throw std::runtime_error("To many '&'s for an expression");
+                                delete p;
+                                $$ = new ast_node_address{$2}; $$->loc = @$;
+                            }
     
     | exp AND exp           {$$ = new ast_node_and{$1, $3}; $$->loc = @$;}
     | exp OR exp            {$$ = new ast_node_or{$1, $3}; $$->loc = @$;}

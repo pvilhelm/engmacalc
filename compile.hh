@@ -23,6 +23,7 @@ struct default_types {
     gcc_jit_type *ulong_type = 0;
     gcc_jit_type *float_type = 0;
     gcc_jit_type *double_type = 0;
+    gcc_jit_type *string_type = 0;
     
 
     default_types(gcc_jit_context *context)
@@ -40,6 +41,7 @@ struct default_types {
         short_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_SHORT);
         ushort_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_UNSIGNED_SHORT);
         float_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_FLOAT);
+                
         /*
         GCC_JIT_TYPE_VOID,
         GCC_JIT_TYPE_VOID_PTR,
@@ -196,6 +198,7 @@ private:
     void walk_tree_address(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
     void walk_tree_dlit(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
     void walk_tree_ilit(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
+    void walk_tree_slit(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
 
     void walk_tree_using(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
     void walk_tree_struct(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
@@ -211,5 +214,11 @@ private:
     void walk_tree_doblock(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
     void walk_tree_if(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
     void walk_tree_while(ast_node *node, gcc_jit_block **current_block, gcc_jit_function **current_function, gcc_jit_rvalue **current_rvalue);
+
+    void walk_tree_def_zero_structs_helper(bool is_file_scope, 
+                          gcc_jit_block **current_block,
+                          const std::vector<gcc_jit_field *> &gccjit_fields,
+                          std::vector<emc_type> &children_types,
+                          gcc_jit_lvalue *lval);
 };
 

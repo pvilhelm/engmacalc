@@ -11,6 +11,7 @@ FUNC print(Ushort us)
 FUNC print(Byte b)
 FUNC print(Double d)
 FUNC print(Float f)
+FUNC print(&Sbyte s)
 
 
 /* Print the argument to standard output and then print a new line */
@@ -24,6 +25,7 @@ FUNC println(Ushort us)
 FUNC println(Byte b)
 FUNC println(Double d)
 FUNC println(Float f)
+FUNC println(&Sbyte s)
 
 TYPE Foo = STRUCT
     Int i

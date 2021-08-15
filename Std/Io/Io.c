@@ -121,3 +121,15 @@ engma_c58b_fn_NStdIoN_println_F (float f)
 {
     printf("%f\n", f);
 }
+
+extern void
+engma_c58b_fn_NStdIoN_print_PSB (char *s)
+{
+    printf("%s", s);
+}
+
+extern void
+engma_c58b_fn_NStdIoN_println_PSB (char *s)
+{
+    printf("%s\n", s);
+}
