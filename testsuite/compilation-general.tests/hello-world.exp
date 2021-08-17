@@ -1,0 +1,7 @@
+
+spawn ./engmac testsuite/$subdir/hello-world.em
+
+expect {
+    "Hello world!\r\n" {pass "Test passed.\n"}
+    default         {fail "Test failed.\n"}
+}

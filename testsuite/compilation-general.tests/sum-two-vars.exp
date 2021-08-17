@@ -1,0 +1,6 @@
+spawn ./engmac testsuite/$subdir/sum-two-vars.em
+
+expect {
+    -re "3.0* 3.0* 3 3 3 3 3 3 3 3\r\n" {pass "Test passed.\n"}
+    default                             {fail "Test failed.\n"}
+}

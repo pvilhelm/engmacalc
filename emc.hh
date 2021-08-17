@@ -105,7 +105,8 @@ enum class ast_type {
     TYPEDOTNAMECHAIN,
     NAMESPACE,
     USINGCHAIN,
-    USING
+    USING,
+    REM
 };
 
 enum class object_type {
@@ -1570,6 +1571,40 @@ public:
     ast_node* clone()
     {
         auto c = new ast_node_mul { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
+    }
+};
+
+class ast_node_rem: public ast_node {
+public:
+    ast_node_rem() :
+            ast_node_rem(nullptr, nullptr)
+    {
+    }
+    ast_node_rem(ast_node *first, ast_node *sec) :
+            first(first), sec(sec)
+    {
+        type = ast_type::REM;
+    }
+
+    ~ast_node_rem()
+    {
+        if (first) delete first;
+        if (sec) delete sec;
+    }
+    
+    ast_node *first;
+    ast_node *sec;
+
+    emc_type resolve()
+    {
+        return value_type = standard_type_promotion(first->resolve(), sec->resolve());
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_rem { first->clone(), sec->clone() };
         c->value_type = value_type;
         return c;
     }

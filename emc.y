@@ -35,7 +35,7 @@ typedef void* yyscan_t;
 %right NOT
 %left CMP LEQ GEQ EQU NEQ '>' '<'
 %left '+' '-' 
-%left '*' '/' 
+%left '*' '/' '%'
 %right '^' '@' '&'
 
 %nonassoc DO
@@ -345,6 +345,8 @@ exp: exp '+' exp            {$$ = new ast_node_add{$1, $3}; $$->loc = @$;}
     | exp '-' exp           {$$ = new ast_node_sub{$1, $3}; $$->loc = @$;}
     | exp '*' exp           {$$ = new ast_node_mul{$1, $3}; $$->loc = @$;}
     | exp '/' exp           {$$ = new ast_node_rdiv{$1, $3}; $$->loc = @$;}
+    | exp '%' exp           {$$ = new ast_node_rem{$1, $3}; $$->loc = @$;}
+
     | exp '.' NAME          {$$ = new ast_node_dotop{$1, *$3}; delete $3; $$->loc = @$;}
 
     /* Pointer manipulation */

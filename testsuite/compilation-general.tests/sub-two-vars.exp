@@ -1,0 +1,6 @@
+spawn ./engmac testsuite/$subdir/sub-two-vars.em
+
+expect {
+    -re "1.0* 1.0* 1 1 1 1 1 1 1 1\r\n" {pass "Test passed.\n"}
+    default                             {fail "Test failed.\n"}
+}
