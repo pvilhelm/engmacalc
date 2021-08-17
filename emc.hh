@@ -257,7 +257,29 @@ struct emc_type {
 
     bool operator==(const emc_type &r) const
     {
-        DEBUG_ASSERT(is_struct() || is_primitive(), ""); //Other not implemented
+        DEBUG_ASSERT(is_struct() || is_primitive() || is_string(), ""); //Other not implemented
+
+        if (r.is_string() && is_primitive()) {
+            if (
+                type == emc_types::SBYTE &&
+                n_pointer_indirections == 1 &&
+                is_const == r.is_const && // TODO: Const support for strings
+                children_types == r.children_types
+            )
+                return true;
+            return false;
+        }
+        if (r.is_primitive() && is_string()) {
+            if (
+                r.type == emc_types::SBYTE &&
+                r.n_pointer_indirections == 1 &&
+                is_const == r.is_const &&
+                children_types == r.children_types
+            )
+                return true;
+            return false;
+        }
+
         if (
                 type != r.type ||
                 n_pointer_indirections != r.n_pointer_indirections ||
@@ -1171,7 +1193,8 @@ public:
 
     emc_type resolve()
     {
-        return value_type = emc_type{emc_types::STRING};
+        value_type = emc_type{emc_types::STRING};
+        return value_type;
     }
 
     ast_node* clone()

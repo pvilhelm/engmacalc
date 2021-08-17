@@ -33,6 +33,14 @@ int main(int argc, char **argv)
 
     yylex_init(&scanner);
 
+    FILE *f = nullptr;
+
+    if (argc > 1) {
+        f = fopen(argv[1], "r");
+        DEBUG_ASSERT_NOTNULL(f);
+        yyset_in(f, scanner);
+    }
+
     redo:
     int err = yyparse(scanner);
 
@@ -44,9 +52,10 @@ int main(int argc, char **argv)
 
     auto &cu = compilation_units.get_current_compilation_unit();
 
-    if (!isatty(0)) {
+    if (!isatty(0) || f) {
         if (cu.ast_root) {
-            cu.ast_root->resolve(), cu.v_nodes.push_back(cu.ast_root);
+            cu.ast_root->resolve(), 
+            cu.v_nodes.push_back(cu.ast_root);
             cu.ast_root = nullptr;
         }
         if (!cu.parsed_eol)
@@ -60,7 +69,6 @@ int main(int argc, char **argv)
         jit.dump("./dump.txt");
         jit.compile();
         jit.execute();
-
     } else if (isatty(0) && cu.ast_root && err == 0) {
         emc_type type = cu.ast_root->resolve();
         {
@@ -91,7 +99,7 @@ int main(int argc, char **argv)
         }
         if (std::cin && !cu.parsed_eol)
             goto redo;
-    } else if (std::cin && !cu.parsed_eol)
+    } else if (std::cin)
             goto redo;
 
     yylex_destroy(scanner);

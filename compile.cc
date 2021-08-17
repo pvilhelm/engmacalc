@@ -2035,7 +2035,6 @@ void jit::walk_tree_def(ast_node *node,
             else
                 gcc_jit_block_add_assignment(*current_block, 0, lval, rv_assignment);
         } else if (ast_def->value_type.is_struct()) {
-            /* TODO: Zero fields */
             std::string mangled_name = ast_def->value_type.mangled_name;
 
             auto gcc_struct_it = map_structtypename_to_gccstructobj.find(mangled_name);
