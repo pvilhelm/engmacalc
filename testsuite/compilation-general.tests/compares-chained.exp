@@ -1,0 +1,8 @@
+spawn ./engmac testsuite/$subdir/compares-chained.em
+
+expect {
+    "FAIL" {fail "Test failed.\n"}
+    "DONE" {pass "Test passed.\n"}
+    default {fail "Test failed.\n"}
+}
+

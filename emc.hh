@@ -2507,8 +2507,11 @@ public:
         if (v_children.size() >= 1)
             p->v_children.push_back(dynamic_cast<ast_node_chainable*>(v_children.front()->clone()));
 
-        for (int i = 1; i < v_children.size(); i++)
-            p->append_next(dynamic_cast<ast_node_chainable*>(v_children[i]->clone()));
+        for (int i = 1; i < v_children.size(); i++) {
+            auto c = dynamic_cast<ast_node_chainable*>(v_children[i]->clone());
+            c->first = nullptr; /* Is relinked in append_next ... */
+            p->append_next(c);
+        }
         return p;
     }
 
