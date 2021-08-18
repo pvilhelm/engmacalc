@@ -1666,7 +1666,8 @@ public:
     emc_type resolve()
     {
         value_type = first->resolve();
-        ASSERT(value_type.n_pointer_indirections, "Dereferencing non-pointer");
+        if(!value_type.n_pointer_indirections)
+            THROW_USER_ERROR_LOC("Dereferencing non-pointer");
         value_type.n_pointer_indirections--;
         return value_type;
     }
@@ -1700,7 +1701,9 @@ public:
 
     emc_type resolve()
     {
-        return value_type = first->resolve();
+        value_type = first->resolve();
+        value_type.n_pointer_indirections++;
+        return value_type;
     }
 
     ast_node* clone()
@@ -2364,7 +2367,8 @@ public:
 
         name = typenamedot->name;
         nspace = typenamedot->nspace;
-        
+        if (name == "one_ptrto_long")
+            int b = 0;
         
         std::vector<obj*> v_objs = compilation_units.get_current_objstack().find_objects_by_not_mangled_name(name, nspace);
         if (!v_objs.size()) /* TODO: Kolla så fn */
@@ -2399,10 +2403,10 @@ public:
                     break;
                 }
             } else 
-                throw std::runtime_error("There are objects of '" + name + "' that is not a function");
+                THROW_USER_ERROR_LOC("There are objects of '" + name + "' that is not a function");
         }
         if (!choosen_obj)
-            throw std::runtime_error("There are no objects of '" + name + "' that match the call signature");
+            THROW_USER_ERROR_LOC("There are no objects of '" + name + "' that match the call signature");
         /* This function call will call this mangled name */
         mangled_name = choosen_obj->mangled_name;
 

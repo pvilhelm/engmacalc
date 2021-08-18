@@ -37,7 +37,9 @@ int main(int argc, char **argv)
 
     if (argc > 1) {
         f = fopen(argv[1], "r");
-        DEBUG_ASSERT_NOTNULL(f);
+        if(!f) {
+            throw std::runtime_error("Could not open file: " + std::string{argv[1]});
+        }
         yyset_in(f, scanner);
     }
 
