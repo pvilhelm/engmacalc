@@ -15,7 +15,7 @@ engma_c58b_fn_NStdIoN_print_I (int i)
 }
 
 extern void
-engma_c58b_fn_NStdIoN_print_S (short s)
+engma_c58b_fn_NStdIoN_print_H (short s)
 {
     printf("%hd", s);
 }
@@ -39,7 +39,7 @@ engma_c58b_fn_NStdIoN_print_UI (unsigned int ui)
 }
 
 extern void
-engma_c58b_fn_NStdIoN_print_US (unsigned short us)
+engma_c58b_fn_NStdIoN_print_UH (unsigned short us)
 {
     printf("%hu", us);
 }
@@ -75,7 +75,7 @@ engma_c58b_fn_NStdIoN_println_I (int i)
 }
 
 extern void
-engma_c58b_fn_NStdIoN_println_S (short s)
+engma_c58b_fn_NStdIoN_println_H (short s)
 {
     printf("%hd\n", s);
 }
@@ -99,7 +99,7 @@ engma_c58b_fn_NStdIoN_println_UI (unsigned int ui)
 }
 
 extern void
-engma_c58b_fn_NStdIoN_println_US (unsigned short us)
+engma_c58b_fn_NStdIoN_println_UH (unsigned short us)
 {
     printf("%hu\n", us);
 }

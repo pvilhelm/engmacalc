@@ -50,6 +50,217 @@ emc_type string_to_type(std::string type_name) {
     return compilation_units.get_current_typestack().find_type(type_name); /* Throws if not found */
 }
 
+/* TODO: Should have LOC parameter to do nicer errors */
+void verify_obj_fits_in_type(obj* obj, emc_type type)
+{
+    DEBUG_ASSERT_NOTNULL(obj);
+    /* TODO: Verify that ulong and long can be compared like this .. */
+    /* TODO: Refactor to a long max and long min, this is stupid. */
+
+#define DO_CHECK(obj_class, ctype) do {\
+auto obj_t = dynamic_cast<obj_class*>(obj);\
+DEBUG_ASSERT_NOTNULL(obj_t);\
+\
+if (obj_t->val > std::numeric_limits<ctype>::max() ||\
+    obj_t->val < std::numeric_limits<ctype>::lowest())\
+    THROW_BUG("Invalid range slipped through to code generation: " <<\
+        obj_t->val << " does not fit in a " #ctype );\
+} while((0))
+
+    /* TODO: Floats, only if exact conversion maybe? */
+    if (type.is_long()) {
+        switch (obj->type) {
+        case object_type::ULONG:
+            DO_CHECK(object_ulong, int64_t);
+            break;
+        case object_type::LONG:
+        case object_type::INT:
+        case object_type::SHORT:
+        case object_type::SBYTE:
+        case object_type::UINT:
+        case object_type::USHORT:
+        case object_type::BYTE:
+            break; /* These all fits */
+        default:
+            THROW_NOT_IMPLEMENTED("");
+        }
+    } else if (type.is_int()) {
+        switch (obj->type) {
+        case object_type::ULONG:
+            DO_CHECK(object_ulong, int32_t);
+            break;
+        case object_type::UINT:
+            DO_CHECK(object_uint, int32_t);
+            break;
+        case object_type::LONG:
+            DO_CHECK(object_long, int32_t);
+            break;
+        case object_type::INT:
+        case object_type::SHORT:
+        case object_type::SBYTE:
+        case object_type::USHORT:
+        case object_type::BYTE:
+            break; /* These all fits */
+        default:
+            THROW_NOT_IMPLEMENTED("");
+        }
+    } else if (type.is_short()) {
+        switch (obj->type) {
+        case object_type::ULONG:
+            DO_CHECK(object_ulong, int16_t);
+            break;
+        case object_type::UINT:
+            DO_CHECK(object_uint, int16_t);
+            break;
+        case object_type::USHORT:
+            DO_CHECK(object_ushort, int16_t);
+            break;
+        case object_type::LONG:
+            DO_CHECK(object_long, int16_t);
+            break;
+        case object_type::INT:
+            DO_CHECK(object_int, int16_t);
+            break;
+        case object_type::SHORT:
+        case object_type::SBYTE:
+        case object_type::BYTE:
+            break; /* These all fits */
+        default:
+            THROW_NOT_IMPLEMENTED("");
+        }
+    } else if (type.is_sbyte()) {
+        switch (obj->type) {
+        case object_type::ULONG:
+            DO_CHECK(object_ulong, int8_t);
+            break;
+        case object_type::UINT:
+            DO_CHECK(object_uint, int8_t);
+            break;
+        case object_type::USHORT:
+            DO_CHECK(object_ushort, int8_t);
+            break;
+        case object_type::LONG:
+            DO_CHECK(object_long, int8_t);
+            break;
+        case object_type::INT:
+            DO_CHECK(object_int, int8_t);
+            break;
+        case object_type::SHORT:
+            DO_CHECK(object_short, int8_t);
+            break;
+        case object_type::BYTE:
+            DO_CHECK(object_byte, int8_t);
+            break;
+        case object_type::SBYTE:
+            break; /* These all fits */
+        default:
+            THROW_NOT_IMPLEMENTED("");
+        }
+    } else if (type.is_ulong())  {
+        switch (obj->type) {
+        case object_type::LONG:
+            DO_CHECK(object_long, uint64_t);
+            break;
+        case object_type::INT:
+            DO_CHECK(object_int, uint64_t);
+            break;
+        case object_type::SHORT:
+            DO_CHECK(object_short, uint64_t);
+            break;
+        case object_type::SBYTE:
+            DO_CHECK(object_sbyte, uint64_t);
+            break;
+        case object_type::BYTE:
+        case object_type::ULONG:
+        case object_type::UINT:
+        case object_type::USHORT:
+            break; /* These all fits */
+        default:
+            THROW_NOT_IMPLEMENTED("");
+        }
+    } else if (type.is_uint()) {
+        switch (obj->type) {
+        case object_type::LONG:
+            DO_CHECK(object_long, uint32_t);
+            break;
+        case object_type::INT:
+            DO_CHECK(object_int, uint32_t);
+            break;
+        case object_type::SHORT:
+            DO_CHECK(object_short, uint32_t);
+            break;
+        case object_type::SBYTE:
+            DO_CHECK(object_sbyte, uint32_t);
+            break;
+        case object_type::ULONG:
+            DO_CHECK(object_ulong, uint32_t);
+            break;
+        case object_type::UINT:
+        case object_type::USHORT:
+        case object_type::BYTE:
+            break; /* These all fits */
+        default:
+            THROW_NOT_IMPLEMENTED("");
+        }
+    } else if (type.is_ushort()) {
+        switch (obj->type) {
+        case object_type::LONG:
+            DO_CHECK(object_long, uint16_t);
+            break;
+        case object_type::INT:
+            DO_CHECK(object_int, uint16_t);
+            break;
+        case object_type::SHORT:
+            DO_CHECK(object_short, uint16_t);
+            break;
+        case object_type::SBYTE:
+            DO_CHECK(object_sbyte, uint16_t);
+            break;
+        case object_type::ULONG:
+            DO_CHECK(object_ulong, uint16_t);
+            break;
+        case object_type::UINT:
+            DO_CHECK(object_uint, uint16_t);
+            break;
+        case object_type::USHORT:
+        case object_type::BYTE:
+            break; /* These all fits */
+        default:
+            THROW_NOT_IMPLEMENTED("");
+        }
+    } else if (type.is_byte()) {
+        switch (obj->type) {
+        case object_type::LONG:
+            DO_CHECK(object_long, uint8_t);
+            break;
+        case object_type::INT:
+            DO_CHECK(object_int, uint8_t);
+            break;
+        case object_type::SHORT:
+            DO_CHECK(object_short, uint8_t);
+            break;
+        case object_type::SBYTE:
+            DO_CHECK(object_sbyte, uint8_t);
+            break;
+        case object_type::ULONG:
+            DO_CHECK(object_ulong, uint8_t);
+            break;
+        case object_type::UINT:
+            DO_CHECK(object_uint, uint8_t);
+            break;
+        case object_type::USHORT:
+            DO_CHECK(object_ushort, uint8_t);
+            break;
+        case object_type::BYTE:
+            break; /* These all fits */
+        default:
+            THROW_NOT_IMPLEMENTED("");
+        }
+    } 
+
+#undef DO_CHECK
+}
+
 void push_dummyobject_to_resolve_scope(std::string var_name, emc_type type)
 {
     
@@ -92,7 +303,10 @@ emc_type ast_node_funcdef::resolve()
     name = typedotnamenode->name;
     /* Append current namespace to relative namespace if any */
     if (compilation_units.get_current_typestack().current_scope.size())
-        nspace = compilation_units.get_current_typestack().current_scope + "." + typedotnamenode->nspace;
+        if (typedotnamenode->nspace.size())
+            nspace = compilation_units.get_current_typestack().current_scope + "." + typedotnamenode->nspace;
+        else
+            nspace = compilation_units.get_current_typestack().current_scope; 
     else
         nspace = typedotnamenode->nspace;
 
@@ -101,7 +315,7 @@ emc_type ast_node_funcdef::resolve()
     compilation_units.get_current_objstack().push_new_scope();
     auto parlist_t = dynamic_cast<ast_node_vardef_list*>(parlist);
     DEBUG_ASSERT_NOTNULL(parlist_t);
-    parlist_t->resolve();
+    //parlist_t->resolve();
 
     /* Create variables with the arguments' names in the function scope. */
     for (int i = 0; i < parlist_t->v_defs.size(); i++) {
@@ -331,8 +545,10 @@ emc_type standard_type_promotion_or_invalid(const emc_type &a, const emc_type &b
     auto at = a.type;
     auto bt = b.type;
 
+    bool is_const_expr = a.is_const_expr && b.is_const_expr;
+
     if (at == bt)
-        return emc_type{at};
+        return emc_type{at, is_const_expr};
 
     bool a_is_intish = at == emc_types::INT || at == emc_types::SHORT || 
                         at == emc_types::LONG || at == emc_types::SBYTE;
@@ -348,13 +564,13 @@ emc_type standard_type_promotion_or_invalid(const emc_type &a, const emc_type &b
     /* TODO: Make a array table instead maybe? */
     if (        at == emc_types::DOUBLE && b_is_xintish || 
                 bt == emc_types::DOUBLE && a_is_xintish)
-        return emc_type{emc_types::DOUBLE};
+        return emc_type{emc_types::DOUBLE, is_const_expr};
     else if (   at == emc_types::DOUBLE && bt == emc_types::FLOAT || 
                 bt == emc_types::DOUBLE && at == emc_types::FLOAT)
-        return emc_type{emc_types::DOUBLE};
+        return emc_type{emc_types::DOUBLE, is_const_expr};
     else if (   at == emc_types::FLOAT && b_is_xintish || 
                 bt == emc_types::FLOAT && a_is_xintish)
-        return emc_type{emc_types::FLOAT};
+        return emc_type{emc_types::FLOAT, is_const_expr};
     else if (   at == emc_types::LONG && bt == emc_types::INT || 
                 bt == emc_types::LONG && at == emc_types::INT ||
                 at == emc_types::LONG && bt == emc_types::SHORT || 
@@ -367,7 +583,7 @@ emc_type standard_type_promotion_or_invalid(const emc_type &a, const emc_type &b
                 bt == emc_types::LONG && at == emc_types::USHORT ||
                 at == emc_types::LONG && bt == emc_types::BYTE || 
                 bt == emc_types::LONG && at == emc_types::BYTE)
-        return emc_type{emc_types::LONG};
+        return emc_type{emc_types::LONG, is_const_expr};
     else if (   at == emc_types::INT && bt == emc_types::SHORT || 
                 bt == emc_types::INT && at == emc_types::SHORT ||
                 at == emc_types::INT && bt == emc_types::SBYTE || 
@@ -376,27 +592,27 @@ emc_type standard_type_promotion_or_invalid(const emc_type &a, const emc_type &b
                 bt == emc_types::INT && at == emc_types::USHORT ||
                 at == emc_types::INT && bt == emc_types::BYTE || 
                 bt == emc_types::INT && at == emc_types::BYTE)
-        return emc_type{emc_types::INT};
+        return emc_type{emc_types::INT, is_const_expr};
     else if (   at == emc_types::SHORT && bt == emc_types::SBYTE || 
                 bt == emc_types::SHORT && at == emc_types::SBYTE ||
                 at == emc_types::SHORT && bt == emc_types::BYTE || 
                 bt == emc_types::SHORT && at == emc_types::BYTE)
-        return emc_type{emc_types::SHORT};
+        return emc_type{emc_types::SHORT, is_const_expr};
     else if (   at == emc_types::ULONG && bt == emc_types::UINT || 
                 bt == emc_types::ULONG && at == emc_types::UINT ||
                 at == emc_types::ULONG && bt == emc_types::USHORT || 
                 bt == emc_types::ULONG && at == emc_types::USHORT ||
                 at == emc_types::ULONG && bt == emc_types::BYTE || 
                 bt == emc_types::ULONG && at == emc_types::BYTE)
-        return emc_type{emc_types::ULONG};
+        return emc_type{emc_types::ULONG, is_const_expr};
     else if (   at == emc_types::UINT && bt == emc_types::USHORT || 
                 bt == emc_types::UINT && at == emc_types::USHORT ||
                 at == emc_types::UINT && bt == emc_types::BYTE || 
                 bt == emc_types::UINT && at == emc_types::BYTE)
-        return emc_type{emc_types::UINT};
+        return emc_type{emc_types::UINT, is_const_expr};
     else if (   at == emc_types::USHORT && bt == emc_types::BYTE || 
                 bt == emc_types::USHORT && at == emc_types::BYTE)
-        return emc_type{emc_types::USHORT};
+        return emc_type{emc_types::USHORT, is_const_expr};
     return emc_type{emc_types::INVALID};
 }
 
@@ -464,7 +680,7 @@ std::vector<obj*> objscope_stack::find_objects_by_not_mangled_name_helper(std::s
         }
     /* Namespace specified. In that case the object can only be in global scope */
     } else {
-        auto tmp_v = get_top_scope().find_objects_by_not_mangled_name(name, nspace);
+        auto tmp_v = get_global_scope().find_objects_by_not_mangled_name(name, nspace);
         for (auto e : tmp_v)
             ans.push_back(e);
     }
@@ -481,7 +697,7 @@ std::vector<obj*> objscope_stack::find_objects_by_not_mangled_name_helper(std::s
             full_nspace = current_scope;
         else
             full_nspace = "";
-        auto tmp_v = get_top_scope().find_objects_by_not_mangled_name(name, full_nspace);
+        auto tmp_v = get_global_scope().find_objects_by_not_mangled_name(name, full_nspace);
         for (auto e : tmp_v)
             ans.push_back(e);
     }
@@ -598,8 +814,8 @@ const std::map<emc_types, std::string> map_emc_types_to_mangled_shortversion = {
     {emc_types::ULONG, "UL"},
     {emc_types::INT, "I"},
     {emc_types::UINT, "UI"},
-    {emc_types::SHORT, "S"},
-    {emc_types::USHORT, "US"},
+    {emc_types::SHORT, "H"},
+    {emc_types::USHORT, "UH"},
     {emc_types::SBYTE, "SB"},
     {emc_types::BYTE, "UB"},
     {emc_types::BOOL, "B"},
@@ -678,6 +894,10 @@ std::string mangle_emc_fn_name(const object_func &fn_obj)
             if (iter == map_emc_types_to_mangled_shortversion.end())
                 THROW_BUG("Could not find mangled short version of type: " + std::to_string((int)para->value_type.type));
             ss << iter->second;
+        } else if (para->value_type.is_struct()) {
+            DEBUG_ASSERT(para->value_type.mangled_name.size(),"");
+            std::string s = copy_and_replace_all_substrs(para->value_type.mangled_name,"engma_c58b_type_","");
+            ss << "_S" << s << "S";
         } else
             THROW_NOT_IMPLEMENTED("Mangle of type not impelmented: " + std::to_string((int)para->value_type.type));
     }

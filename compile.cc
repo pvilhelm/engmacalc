@@ -93,6 +93,119 @@ gcc_jit_rvalue* jit::cast_to(gcc_jit_rvalue *a_rv,
     return gcc_jit_context_new_cast(context, 0, a_rv, target_type);
 }
 
+gcc_jit_type* jit::promote_rvals_for_compare( gcc_jit_rvalue *a_rv,
+                        gcc_jit_rvalue *b_rv,
+                        gcc_jit_rvalue **a_casted_rv,
+                        gcc_jit_rvalue **b_casted_rv) 
+{
+    gcc_jit_type *at = gcc_jit_rvalue_get_type(a_rv);
+    gcc_jit_type *bt = gcc_jit_rvalue_get_type(b_rv);
+    /* Assume no cast is needed */
+    *a_casted_rv = a_rv;
+    *b_casted_rv = b_rv;
+
+    if (at == bt) { /* Same types no cast needed. */
+        return bt;
+    } else if (at == ULONG_TYPE && (bt == LONG_TYPE || bt == INT_TYPE || bt == SHORT_TYPE || bt == SCHAR_TYPE) ||
+               bt == ULONG_TYPE && (at == LONG_TYPE || at == INT_TYPE || at == SHORT_TYPE || at == SCHAR_TYPE))
+        THROW_BUG("Invalid cast for compare: Ulong and signed type");   
+    /* Double has highest prio. */
+    else if (at == DOUBLE_TYPE || bt == DOUBLE_TYPE) { 
+        if (at != DOUBLE_TYPE)
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, DOUBLE_TYPE);
+        if (bt != DOUBLE_TYPE)
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, DOUBLE_TYPE);
+        return DOUBLE_TYPE;
+    /* Float has next highest prio. */
+    } else if (at == FLOAT_TYPE || bt == FLOAT_TYPE) { 
+        if (at != FLOAT_TYPE)
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, FLOAT_TYPE);
+        if (bt != FLOAT_TYPE)
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, FLOAT_TYPE);
+        return FLOAT_TYPE;
+    } else if (
+                (at == LONG_TYPE || bt == LONG_TYPE) ||
+                (at == INT_TYPE && bt == UINT_TYPE) ||
+                (bt == INT_TYPE && at == UINT_TYPE)
+              ) 
+     {
+        if (at != LONG_TYPE)
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, LONG_TYPE);
+        if (bt != LONG_TYPE)
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, LONG_TYPE);
+        return LONG_TYPE;
+    } else if (
+                (at == INT_TYPE || bt == INT_TYPE) ||
+                (at == SHORT_TYPE && bt == USHORT_TYPE) ||
+                (bt == SHORT_TYPE && at == USHORT_TYPE)
+              ) 
+    {
+        if (at != INT_TYPE)
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, INT_TYPE);
+        if (bt != INT_TYPE)
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, INT_TYPE);
+        return INT_TYPE;
+    } else if (
+                (at == SHORT_TYPE || bt == SHORT_TYPE) ||
+                (at == SCHAR_TYPE && bt == UCHAR_TYPE) ||
+                (bt == SCHAR_TYPE && at == UCHAR_TYPE)
+              ) 
+    {
+        if (at != SHORT_TYPE)
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, SHORT_TYPE);
+        if (bt != SHORT_TYPE)
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, SHORT_TYPE);
+        return SHORT_TYPE;
+    } else if (
+                (at == SCHAR_TYPE || bt == SCHAR_TYPE)
+              ) 
+    {
+        if (at != SCHAR_TYPE)
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, SCHAR_TYPE);
+        if (bt != SCHAR_TYPE)
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, SCHAR_TYPE);
+        return SCHAR_TYPE;
+    } else if (
+                at == ULONG_TYPE || bt == ULONG_TYPE
+              ) 
+    {
+        if (at != ULONG_TYPE)
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, ULONG_TYPE);
+        if (bt != ULONG_TYPE)
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, ULONG_TYPE);
+        return ULONG_TYPE;
+    } else if (
+                at == UINT_TYPE || bt == UINT_TYPE
+              ) 
+    {
+        if (at != UINT_TYPE)
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, UINT_TYPE);
+        if (bt != UINT_TYPE)
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, UINT_TYPE);
+        return UINT_TYPE;
+    } else if (
+                at == USHORT_TYPE || bt == USHORT_TYPE
+              ) 
+    {
+        if (at != USHORT_TYPE)
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, USHORT_TYPE);
+        if (bt != USHORT_TYPE)
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, USHORT_TYPE);
+        return USHORT_TYPE;
+    } else if (
+                at == UCHAR_TYPE || bt == UCHAR_TYPE
+              ) 
+    {
+        if (at != UCHAR_TYPE)
+            *a_casted_rv = gcc_jit_context_new_cast(context, 0, a_rv, UCHAR_TYPE);
+        if (bt != UCHAR_TYPE)
+            *b_casted_rv = gcc_jit_context_new_cast(context, 0, b_rv, UCHAR_TYPE);
+        return UCHAR_TYPE;
+    } else 
+        THROW_BUG("Cast not supported");
+
+}
+
 /* TODO: Duplicates logic with standard_type_promotion_or_invalid() ? */
 gcc_jit_type* jit::promote_rvals(gcc_jit_rvalue *a_rv,
                         gcc_jit_rvalue *b_rv,
@@ -102,7 +215,8 @@ gcc_jit_type* jit::promote_rvals(gcc_jit_rvalue *a_rv,
     gcc_jit_type *at = gcc_jit_rvalue_get_type(a_rv);
     gcc_jit_type *bt = gcc_jit_rvalue_get_type(b_rv);
 
-    /* TODO: Kanske borde göra en LuT för casterna? Typ en map med mapar ... */
+    /* TODO: Kanske borde göra en LuT för casterna? Typ en map med mapar ... 
+       eller switch? */
     if (at == bt) { /* Same types no cast needed. */
         *a_casted_rv = a_rv;
         *b_casted_rv = b_rv;
@@ -419,6 +533,52 @@ gcc_jit_type* jit::promote_rval(gcc_jit_type *at,
     
     } else 
         THROW_BUG("Cast not supported");
+}
+
+gcc_jit_rvalue* jit::obj_to_gcc_literal(obj* obj)
+{   
+    DEBUG_ASSERT_NOTNULL(obj);
+
+    gcc_jit_rvalue* rv = nullptr;
+
+#define MAKE_RV(obj_class, type) do {\
+auto obj_t = dynamic_cast<obj_class*>(obj);\
+DEBUG_ASSERT_NOTNULL(obj_t);\
+rv = gcc_jit_context_new_rvalue_from_long(context,\
+    type, obj_t->val); } while((0));
+
+    switch (obj->type) {
+    case object_type::LONG:
+        MAKE_RV(object_long, LONG_TYPE)
+        break;
+    case object_type::INT:
+        MAKE_RV(object_int, INT_TYPE)
+        break;
+    case object_type::SHORT:
+        MAKE_RV(object_short, SHORT_TYPE)
+        break;
+    case object_type::SBYTE:
+        MAKE_RV(object_sbyte, SCHAR_TYPE)
+        break;
+    case object_type::ULONG:
+        MAKE_RV(object_ulong, ULONG_TYPE)
+        break;
+    case object_type::UINT:
+        MAKE_RV(object_uint, UINT_TYPE)
+        break;
+    case object_type::USHORT:
+        MAKE_RV(object_ushort, USHORT_TYPE)
+        break;
+    case object_type::BYTE:
+        MAKE_RV(object_byte, UCHAR_TYPE)
+        break;
+    default:
+        THROW_NOT_IMPLEMENTED("");
+    }
+
+#undef MAKE_RV
+
+    return rv;
 }
 
 void jit::dump(std::string path)
@@ -1380,7 +1540,7 @@ DEBUG_ASSERT_NOTNULL(a_rv); \
 \
 gcc_jit_rvalue *a_casted_rv = nullptr; \
 gcc_jit_rvalue *b_casted_rv = nullptr; \
-promote_rvals(a_rv, b_rv, &a_casted_rv, &b_casted_rv); \
+promote_rvals_for_compare(a_rv, b_rv, &a_casted_rv, &b_casted_rv); \
 \
 gcc_jit_rvalue *rv_result = gcc_jit_context_new_comparison(\
                                 context, nullptr, gcc_jit_type,\
@@ -1413,8 +1573,6 @@ void jit::walk_tree_equ(ast_node *node,
                         gcc_jit_function **current_function, 
                         gcc_jit_rvalue **current_rvalue)
 {
-    DEBUG_ASSERT_NOTNULL(current_rvalue);
-    DEBUG_ASSERT_NOTNULL(node); 
     CMP_FNC(ast_node_equ, GCC_JIT_COMPARISON_EQ)
 }
 
@@ -2045,14 +2203,28 @@ void jit::walk_tree_def(ast_node *node,
     if (ast_def->value_node) {
         if (ast_def->value_type.is_primitive()) {
             gcc_jit_rvalue *rv_assignment = nullptr;
-            walk_tree(ast_def->value_node, current_block, current_function, &rv_assignment);
-            /* Cast to the local's type */
-            gcc_jit_rvalue *cast_rv = gcc_jit_context_new_cast(context, 0, rv_assignment, var_type);
+            gcc_jit_rvalue *cast_rv = nullptr;
+            /* If the rh side is a const expr, e.g. Int a = 2+3 we don't walk the 
+               tree but use the compiled value from the ast tree. */
+            if (ast_def->value_node->value_type.is_const_expr) {
+                auto rh_obj = ast_def->value_node->value_obj;
+                rv_assignment = obj_to_gcc_literal(rh_obj);
+                /* Verify that the const expression fits in the target type (throws).
+                   Should be cought in the ast tree but check here anyways */
+                verify_obj_fits_in_type(rh_obj, ast_def->value_type);
+                /* Do a forcing cast (since it fits) */
+                cast_rv = gcc_jit_context_new_cast(context, 0, rv_assignment, var_type); 
+            } else {
+                walk_tree(ast_def->value_node, current_block, current_function, &rv_assignment);
+                /* Cast to the local's type */
+                promote_rval(var_type, rv_assignment, &cast_rv);
+            }
             /* Assign the value */
             if (is_file_scope)
                 gcc_jit_block_add_assignment(root_block, 0, lval, cast_rv); /* TODO: USe new initializer in gcc_jit instead? */
             else
                 gcc_jit_block_add_assignment(*current_block, 0, lval, cast_rv);
+
         /* For structs */
         } else if (ast_def->value_type.is_struct()) {
             /* Assigning a list literal to the struct */
@@ -2062,9 +2234,9 @@ void jit::walk_tree_def(ast_node *node,
                 auto arglist = dynamic_cast<ast_node_arglist*>(listlit->first);
                 DEBUG_ASSERT_NOTNULL(arglist);
 
-                auto gcc_struct_it = map_structtypename_to_gccstructobj.find(ast_def->value_type.name);
+                auto gcc_struct_it = map_structtypename_to_gccstructobj.find(ast_def->value_type.mangled_name);
                 if (gcc_struct_it == map_structtypename_to_gccstructobj.end())
-                    THROW_BUG("Cant find struct type: " + ast_def->value_type.name);
+                    THROW_BUG("Cant find struct type: " + ast_def->value_type.mangled_name);
                 
                 ASSERT(arglist->v_ast_args.size() == gcc_struct_it->second.gccjit_fields.size(), 
                     "Arg list node and struct has different number of children");
@@ -2076,10 +2248,23 @@ void jit::walk_tree_def(ast_node *node,
                     gcc_jit_type *field_type = gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(field_lv));
 
                     gcc_jit_rvalue *rv_arg = nullptr;
-                    walk_tree(arg, current_block, current_function, &rv_arg);
-
                     gcc_jit_rvalue *rv_arg_casted = nullptr;
-                    promote_rval(field_type, rv_arg, &rv_arg_casted);
+
+                    /* If the rh side is a const expr, e.g. Int a = 2+3 we don't walk the 
+                       tree but use the compiled value from the ast tree. */
+                    if (arglist->v_ast_args[i]->value_type.is_const_expr) {
+                        auto rh_obj = arglist->v_ast_args[i]->value_obj;
+                        rv_arg = obj_to_gcc_literal(rh_obj);
+                        /* Verify that the const expression fits in the target type (throws).
+                           Should be cought in the ast tree but check here anyways */
+                        verify_obj_fits_in_type(rh_obj, ast_def->value_type.children_types[i]);
+                        /* Do a forcing cast (since it fits) */
+                        rv_arg_casted = gcc_jit_context_new_cast(context, 0, rv_arg, field_type); 
+                    } else {
+                        walk_tree(arg, current_block, current_function, &rv_arg);
+                        promote_rval(field_type, rv_arg, &rv_arg_casted);
+                    }
+
                     if (is_file_scope)
                         gcc_jit_block_add_assignment(root_block, 0, field_lv, rv_arg_casted); /* TODO: USe new initializer in gcc_jit instead? */
                     else
@@ -2088,9 +2273,9 @@ void jit::walk_tree_def(ast_node *node,
             /* Copy "constructor". */
             } else if (ast_def->value_node->value_type.is_struct()) {
                 DEBUG_ASSERT(ast_def->value_node->value_type.name == ast_def->value_type.name, "Struct name missmatch");
-                auto gcc_struct_it = map_structtypename_to_gccstructobj.find(ast_def->value_type.name);
+                auto gcc_struct_it = map_structtypename_to_gccstructobj.find(ast_def->value_type.mangled_name);
                 if (gcc_struct_it == map_structtypename_to_gccstructobj.end())
-                    THROW_BUG("Cant find struct type: " + ast_def->value_type.name);
+                    THROW_BUG("Cant find struct type: " + ast_def->value_type.mangled_name);
                 
                 gcc_jit_rvalue *rv_assignment = nullptr;
                 walk_tree(ast_def->value_node, current_block, current_function, &rv_assignment);

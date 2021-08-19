@@ -158,6 +158,12 @@ struct emc_type {
     {
         this->type = type;
     }
+
+    emc_type(emc_types type, bool is_const_expr)
+        : is_const_expr(is_const_expr)
+    {
+        this->type = type;
+    }
   
     bool is_valid() const 
     {
@@ -254,6 +260,7 @@ struct emc_type {
              vector only for structs etc. */
     int n_pointer_indirections = 0;
     bool is_const = false;
+    bool is_const_expr = false;
     emc_types type;
 
     bool operator==(const emc_type &r) const
@@ -317,6 +324,7 @@ void init_builtin_types();
 std::string mangle_emc_fn_name(const object_func &fn_obj);
 std::string demangle_emc_fn_name(std::string c_fn_name);
 std::string mangle_emc_type_name(std::string full_path);
+void verify_obj_fits_in_type(obj* obj, emc_type type);
 
 class obj {
 public:
@@ -593,18 +601,20 @@ public:
         return false;
     }
 
+    /* The namespace if any need to be in name.
+       Eg. Foo.Bar.Structy or Long */
     void push_type(std::string name, emc_type type)
     {
-        std::string prefix;
+        /*std::string prefix;
         if (current_scope.size())
             prefix = current_scope + ".";
 
-        std::string full_name = prefix + name;
+        std::string full_name = prefix + name;*/
 
-        auto it = map_typename_to_type.find(full_name);
+        auto it = map_typename_to_type.find(name);
         if (it != map_typename_to_type.end())
-            THROW_BUG("Type " + full_name + " in map of types already");
-        map_typename_to_type[full_name] = type;
+            THROW_BUG("Type " + name + " in map of types already");
+        map_typename_to_type[name] = type;
     }
 
     /* Essentially a vector of strings for each nested namespace scope. */
@@ -817,7 +827,7 @@ public:
     {
     }
     
-    object_struct(std::string name, std::string nspace, emc_type struct_type, int n_pointer_indirections)
+    object_struct(std::string name, std::string nspace, emc_type struct_type, int n_pointer_indirection)
         : struct_type(struct_type)
     {
         this->n_pointer_indirection = n_pointer_indirection;
@@ -882,6 +892,7 @@ public:
 #ifndef NDEBUG
         extern int ast_node_count; ast_node_count--;
 #endif
+        delete value_obj;
     }
     
     YYLTYPE loc = {-1, -1, -1, -1};
@@ -891,8 +902,11 @@ public:
 
     virtual ast_node* clone() = 0;
     virtual emc_type resolve() = 0;
+    virtual obj* resolve_value() {THROW_BUG("");}
+
     ast_type type = ast_type::INVALID;
     emc_type value_type = emc_type{emc_types::INVALID};
+    obj *value_obj = nullptr;
 };
 
 class ast_node_typedotchain: public ast_node {
@@ -1121,7 +1135,14 @@ public:
 
     emc_type resolve()
     {
-        return value_type = emc_type{emc_types::DOUBLE};
+        value_type = emc_type{emc_types::DOUBLE};
+        value_type.is_const_expr = true;
+        return value_type;
+    }
+
+    obj* resolve_value()
+    {
+        return value_obj = new object_double{d};
     }
 
     ast_node* clone()
@@ -1167,7 +1188,14 @@ public:
 
     emc_type resolve()
     {
-        return value_type = emc_type{emc_types::INT};
+        value_type = emc_type{emc_types::INT};
+        value_type.is_const_expr = true;
+        return value_type;
+    }
+
+    obj* resolve_value()
+    {
+        return value_obj = new object_long{i};
     }
 
     ast_node* clone()
@@ -1801,10 +1829,60 @@ public:
         return c;
     }
 
+#define MAKE_VALUE_OBJ(obj_class, obj_ctype) \
+do {auto child_obj_t = dynamic_cast<obj_class*>(child_obj);\
+DEBUG_ASSERT_NOTNULL(child_obj_t);\
+auto obj_t = new obj_class{};\
+if (child_obj_t->val == std::numeric_limits<obj_ctype>::min()) {\
+    THROW_USER_ERROR_LOC("Negating int will be out of range: " + child_obj_t->val);\
+}\
+obj_t->val = -child_obj_t->val;\
+value_obj = obj_t; } while((0))\
+
     emc_type resolve()
     {
-        return value_type = first->resolve();
+        value_type = first->resolve();
+
+        if (value_type.is_const_expr) {
+            auto child_obj = first->resolve_value();
+             
+            switch (child_obj->type) {
+            case object_type::LONG:
+                MAKE_VALUE_OBJ(object_long, int64_t);
+                break;
+            case object_type::INT:
+                MAKE_VALUE_OBJ(object_int, int32_t);
+                break;
+            case object_type::SHORT:
+                MAKE_VALUE_OBJ(object_short, int16_t);
+                break;
+            case object_type::SBYTE:
+                MAKE_VALUE_OBJ(object_short, int8_t);
+                break;
+            case object_type::ULONG:
+            case object_type::UINT:
+            case object_type::USHORT:
+            case object_type::BYTE:
+                THROW_USER_ERROR_LOC("Can't negate unsigned integer type with unary minus");
+                break;
+            case object_type::BOOL:
+                THROW_USER_ERROR_LOC("Can't negate bool type with unary minus");
+                break;
+            }
+        }
+
+        return value_type;
     }
+
+    obj* resolve_value()
+    {
+        return value_obj;
+    }
+
+#undef MAKE_VALUE_OBJ
+
+
+
 };
 
 class ast_node_var: public ast_node {
@@ -2608,7 +2686,18 @@ public:
     }
     emc_type resolve()
     {
-        first->resolve(); sec->resolve();
+        emc_type type1 = first->resolve(); 
+        emc_type type2 = sec->resolve();
+
+        /* TODO: This node could be const_expr too if
+           both these are that. */
+        if (type1.is_const_expr) {
+            first->resolve_value();
+        }
+        if (type2.is_const_expr) {
+            sec->resolve_value();
+        }
+
         return value_type = emc_type{emc_types::INT};
     }
     ast_node* clone()
@@ -2774,7 +2863,6 @@ public:
             THROW_USER_ERROR_LOC("Can't specify a namespace in variable declarations in a scope: " + nspace + "." + var_name);
 
         /* Set how many pointer indirections this var def has */
-        int n_pointer_indirections = 0;
         if (ptrdef_node) {
             ptrdef_node->resolve();
             auto ptrdef_node_t = dynamic_cast<ast_node_ptrdef_list*>(ptrdef_node);
@@ -2817,8 +2905,12 @@ public:
         /* If we are in filescope (global scope) any declaration might be in a
          * namespace, so we add it to the specified namespace. */
         if (compilation_units.get_current_objstack().is_in_global_scope())
-            if (compilation_units.get_current_typestack().current_scope.size())
-                nspace = compilation_units.get_current_typestack().current_scope + "." + nspace;
+            if (compilation_units.get_current_typestack().current_scope.size()) {
+                if (nspace.size())
+                    nspace = compilation_units.get_current_typestack().current_scope + "." + nspace;
+                else
+                    nspace = compilation_units.get_current_typestack().current_scope;
+            }
 
         od->nspace = nspace;
         full_name = (nspace.size() ? nspace + ".": "") + var_name;
@@ -2837,7 +2929,13 @@ public:
 
         if (value_node)
             value_node->resolve();
-        return value_type = type;
+
+        value_type = type;
+        if (value_node->value_type.is_const_expr) {
+            auto child_obj = value_node->resolve_value();
+            verify_obj_fits_in_type(child_obj, value_type);
+        }
+        return value_type;
     }
 
     emc_type resolve_no_push()
@@ -2854,7 +2952,6 @@ public:
         nspace = typedotnamechain_T->nspace;
 
         /* Set how many pointer indirections this var def has */
-        int n_pointer_indirections = 0;
         if (ptrdef_node) {
             ptrdef_node->resolve();
             auto ptrdef_node_t = dynamic_cast<ast_node_ptrdef_list*>(ptrdef_node);
@@ -3046,8 +3143,11 @@ public:
         if (first->type == ast_type::ARGUMENT_LIST) {
             auto arg_list = dynamic_cast<ast_node_arglist*>(first);
             DEBUG_ASSERT_NOTNULL(arg_list);
-            for (ast_node* node : arg_list->v_ast_args)
+            for (ast_node* node : arg_list->v_ast_args) {
                 value_type.children_types.push_back(node->value_type);
+                if (node->value_type.is_const_expr)
+                    node->resolve_value();
+            }
         } else
             THROW_BUG("Child first is not an arglist");
 

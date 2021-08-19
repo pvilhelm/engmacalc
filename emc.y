@@ -35,8 +35,8 @@ typedef void* yyscan_t;
 %right NOT
 %left CMP LEQ GEQ EQU NEQ '>' '<'
 %left '+' '-' 
-%left '*' '/' '%'
-%right '^' '@' '&'
+%left '*' '/' '%' '.'
+%right '^' '@' '&' 
 
 %nonassoc DO
 %nonassoc END        

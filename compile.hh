@@ -109,11 +109,27 @@ private:
     std::map<std::string, gcc_jit_function*> map_fnname_to_gccfnobj;
     int call_depth = 0;
 
+    
+
+
     /* Cast a and b according to promotion rules. The casted values can be
      * pointing to the original rvalues if no cast was done. 
      * 
      * The return value is of the type promoted to or the original type. */
     gcc_jit_type* promote_rvals( gcc_jit_rvalue *a_rv,
+                        gcc_jit_rvalue *b_rv,
+                        gcc_jit_rvalue **a_casted_rv,
+                        gcc_jit_rvalue **b_casted_rv);
+
+    /* Cast a and b in such a way that they can be compared. The casted 
+     * values can be pointing to the original rvalues if no cast was done. 
+     * 
+     * E.g. (int, long) -> (long, long) returning long
+     * 
+     * Note that ulong and long can't be compared
+     * 
+     * The return value is of the type promoted to or the original type. */
+    gcc_jit_type* promote_rvals_for_compare( gcc_jit_rvalue *a_rv,
                         gcc_jit_rvalue *b_rv,
                         gcc_jit_rvalue **a_casted_rv,
                         gcc_jit_rvalue **b_casted_rv);
@@ -156,14 +172,8 @@ private:
 
     std::vector<std::string> v_node_fn_names;
 
-    /* Helper functions ... */
-    /*
-    walk_tree(ast_node *node, 
-        gcc_jit_block **current_block,
-        gcc_jit_function **current_function, 
-        gcc_jit_rvalue **current_rvalue, 
-        gcc_jit_lvalue **current_lvalue)
-    */
+    gcc_jit_rvalue* obj_to_gcc_literal(obj* obj);
+    
     /* walk_tree(node, current_block, current_function, current_rvalue); */
     void walk_tree(ast_node *node, 
         gcc_jit_block **current_block,
