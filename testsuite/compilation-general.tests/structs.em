@@ -77,6 +77,25 @@ FUNC struct_ptr_as_parameter(&Each_type e) DO
 END
 struct_ptr_as_parameter(&each)
 
+/* Try to copy construct a struct */
+Each_type each1 = each
+struct_as_parameter(each1)
+/* Assign to members. */
+Each_type each2
+each2.l = -4 
+each2.i = -3  
+each2.h = -2  
+each2.c = -1 
+each2.ul = one_ul  /* No support for Ulong integer literals yet ... */
+each2.ui = 2   
+each2.uh = 3 
+each2.uc = 4 
+struct_as_parameter(each2)
+
+/* Try to copy a struct */
+Each_type each3
+each3 = each
+struct_as_parameter(each3)
 
 print("DONE")
     

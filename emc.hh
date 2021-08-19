@@ -2931,7 +2931,8 @@ public:
             value_node->resolve();
 
         value_type = type;
-        if (value_node->value_type.is_const_expr) {
+        /* If the rh node is a constant expression, resolve its value */
+        if (value_node && value_node->value_type.is_const_expr) {
             auto child_obj = value_node->resolve_value();
             verify_obj_fits_in_type(child_obj, value_type);
         }
