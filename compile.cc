@@ -2377,12 +2377,38 @@ void jit::walk_tree_doblock(    ast_node *node,
     *current_rvalue = rval;    
 }
 
+/* TODO: Global, refactor away. */
+gcc_jit_block *active_also_block = nullptr;
+
 void jit::walk_tree_if(ast_node *node, 
                         gcc_jit_block **current_block, 
                         gcc_jit_function **current_function, 
                         gcc_jit_rvalue **current_rvalue)
 {
+    gcc_jit_block *active_also_block_poped = nullptr;
+    
     auto if_ast = dynamic_cast<ast_node_if*>(node);
+    /* Messy stack of active also block for nested ifs ... TODO: Refactor */
+    if (if_ast->is_root_ifnode) {
+        active_also_block_poped = active_also_block;
+        active_also_block = nullptr;
+    }
+    /* Create the also block (if any)*/
+    gcc_jit_block *also_block = nullptr;
+    /* Walk the tree and append any blocks to the if block or any statements to the block in question */
+    gcc_jit_rvalue *also_rv = nullptr;
+    gcc_jit_block *last_also_block = nullptr;
+
+    v_block_terminated.push_back(false);
+    if (if_ast->also_el) {
+        also_block = gcc_jit_function_new_block(*current_function, new_unique_name("also_block").c_str());
+        last_also_block = also_block;
+        walk_tree(if_ast->also_el, &last_also_block, current_function, &also_rv);
+        /* active_also_block is used by superceeding ifs */
+        active_also_block = also_block;
+    }
+    bool also_was_terminated = v_block_terminated.back();
+    v_block_terminated.pop_back();
 
     /* Create the if-block */
     gcc_jit_block_add_comment(*current_block, 0, "IF");
@@ -2394,14 +2420,17 @@ void jit::walk_tree_if(ast_node *node,
     walk_tree(if_ast->if_el, &last_if_block, current_function, &if_rv);
     bool if_was_terminated = v_block_terminated.back();
     v_block_terminated.pop_back();
-    /* Create the else block */
-    gcc_jit_block *else_block = gcc_jit_function_new_block(*current_function, new_unique_name("else_block").c_str());
+
+    /* Create the else block (if any)*/
+    gcc_jit_block *else_block = nullptr;
     /* Walk the tree and append any blocks to the if block or any statements to the block in question */
     gcc_jit_rvalue *else_rv = nullptr;
-    gcc_jit_block *last_else_block = else_block;
+    gcc_jit_block *last_else_block = nullptr;
 
     v_block_terminated.push_back(false);
     if (if_ast->else_el) {
+        else_block = gcc_jit_function_new_block(*current_function, new_unique_name("else_block").c_str());
+        last_else_block = else_block;
         walk_tree(if_ast->else_el, &last_else_block, current_function, &else_rv);
     }
     bool else_was_terminated = v_block_terminated.back();
@@ -2417,15 +2446,36 @@ void jit::walk_tree_if(ast_node *node,
             gcc_jit_context_new_cast(context, 0, cond_rv, INT_TYPE),
             BOOL_TYPE);
 
-    gcc_jit_block_end_with_conditional(*current_block, 0, bool_cond_rv, if_block, else_block);
+    gcc_jit_block *after_block = nullptr;
+
+    if (if_ast->else_el)
+        gcc_jit_block_end_with_conditional(*current_block, 0, bool_cond_rv, if_block, else_block);
+    else {
+        after_block = gcc_jit_function_new_block(*current_function, new_unique_name("after_block").c_str());
+        gcc_jit_block_end_with_conditional(*current_block, 0, bool_cond_rv, if_block, after_block);
+    }
 
     /* The last block in the if and else part need to jump to the after_block,
      * unless both the if and else block are terminated. */
-    if (!if_was_terminated || !else_was_terminated) {
-        gcc_jit_block *after_block = gcc_jit_function_new_block(*current_function, new_unique_name("after_block").c_str());
-        if (!if_was_terminated)
-            gcc_jit_block_end_with_jump(last_if_block, 0, after_block);
-        if (!else_was_terminated)
+    if (!if_was_terminated || !else_was_terminated || !also_was_terminated) {
+        if (!after_block)
+            after_block = gcc_jit_function_new_block(*current_function, new_unique_name("after_block").c_str());
+
+        /* If the also block is not terminated, it need to go to the after block */
+        if (if_ast->also_el && !also_was_terminated) {
+            gcc_jit_block_end_with_jump(last_also_block, 0, after_block);
+        }
+        if (!if_was_terminated) {
+            /* If there is an also block, the if need to go there. */
+            if (if_ast->also_el) {
+                gcc_jit_block_end_with_jump(last_if_block, 0, also_block);
+            /* If the linked if has an active also, we need to go there. */
+            } else if (active_also_block)
+                gcc_jit_block_end_with_jump(last_if_block, 0, active_also_block);
+            else
+                gcc_jit_block_end_with_jump(last_if_block, 0, after_block);    
+        }
+        if (if_ast->else_el && !else_was_terminated)
             gcc_jit_block_end_with_jump(last_else_block, 0, after_block);
         /* Repoint the head block. */
         *current_block = after_block;
@@ -2433,7 +2483,11 @@ void jit::walk_tree_if(ast_node *node,
         /* Both the if and else was terminated so there can be no after-block. I.e.
          * both returned. */
         v_block_terminated.back() = true;
-    }    
+    }
+
+    if (if_ast->is_root_ifnode) {
+        active_also_block = active_also_block_poped;
+    }
 }
 
 void jit::walk_tree_while(ast_node *node, 

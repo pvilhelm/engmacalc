@@ -110,45 +110,57 @@ se: e                           {$$ = $1; $$->loc = @$;}
     | RETURN e                  {$$ = new ast_node_return{$2}; $$->loc = @$;}
     /* IFs with ELSE:s are a headache to make grammar for. So ... */
     /* These with se are for one line if:s */
-	| IF e DO se END { $$ = new ast_node_if{$2, $4}; $$->loc = @$;}
-    | IF e DO se ELSE DO se END { $$ = new ast_node_if{$2, $4, $7}; $$->loc = @$;}
-    | IF e DO se ELSE sl_elseif_list END { $$ = new ast_node_if{$2, $4, $6}; $$->loc = @$;}
+	| IF e DO se END { $$ = new ast_node_if{true, $2, $4}; $$->loc = @$;}
+    | IF e DO se ELSE DO se END { $$ = new ast_node_if{true, $2, $4, $7}; $$->loc = @$;}
+    | IF e DO se ELSE sl_elseif_list END { $$ = new ast_node_if{true, $2, $4, $6}; $$->loc = @$;}
         /* The also statement expression is executed if atleast of IF condition was true. */
-    | IF e DO se ELSE sl_elseif_list ALSO DO se END { $$ = new ast_node_if{$2, $4, $6, $9}; $$->loc = @$;}
+    | IF e DO se ELSE sl_elseif_list ALSO DO se END { $$ = new ast_node_if{true, $2, $4, $6, $9}; $$->loc = @$;}
     | IF e DO se ELSE sl_elseif_list ELSE DO se END 
                             { 
-                                $$ = new ast_node_if{$2, $4, $6};
+                                $$ = new ast_node_if{true, $2, $4, $6};
                                 auto p = dynamic_cast<ast_node_if*>($6);
                                 p->append_linked_if($9);
                                 $$->loc = @$;
                             }    
     | IF e DO se ELSE sl_elseif_list ALSO DO se ELSE DO se END 
                             { 
-                                $$ = new ast_node_if{$2, $4, $9};
+                                $$ = new ast_node_if{true, $2, $4, $9};
                                 auto p = dynamic_cast<ast_node_if*>($6);
                                 p->append_linked_if($12);
                                 $$->loc = @$;
                             }  
     /* Multiline if:s with ELSE IFs */
-    | IF e DO exp_list END { $$ = new ast_node_if{$2, $4}; $$->loc = @$;}
-    | IF e DO exp_list ELSE DO exp_list END { $$ = new ast_node_if{$2, $4, $7}; $$->loc = @$;}
-    | IF e DO exp_list ELSE elseif_list END { $$ = new ast_node_if{$2, $4, $6}; $$->loc = @$;}
+    | IF e DO exp_list END { $$ = new ast_node_if{true, $2, $4}; $$->loc = @$;}
+    | IF e DO exp_list ELSE DO exp_list END { $$ = new ast_node_if{true, $2, $4, $7}; $$->loc = @$;}
+    | IF e DO exp_list ALSO DO exp_list END { $$ = new ast_node_if{true, $2, $4, 0, $7}; $$->loc = @$;}
+    | IF e DO exp_list ALSO DO exp_list ELSE DO exp_list END 
+                                            { $$ = new ast_node_if{true, $2, $4, $10, $7}; $$->loc = @$;}
+    | IF e DO exp_list ELSE DO exp_list ALSO DO exp_list END 
+                                            { $$ = new ast_node_if{true, $2, $4, $7, $10}; $$->loc = @$;}
+    | IF e DO exp_list ELSE elseif_list END { $$ = new ast_node_if{true, $2, $4, $6}; $$->loc = @$;}
     | IF e DO exp_list ELSE elseif_list ALSO DO exp_list END 
-                                            { $$ = new ast_node_if{$2, $4, $6, $9}; $$->loc = @$;}
+                                            { $$ = new ast_node_if{true, $2, $4, $6, $9}; $$->loc = @$;}
     | IF e DO exp_list ELSE elseif_list ELSE DO exp_list END
                             { 
-                                $$ = new ast_node_if{$2, $4, $6};
+                                $$ = new ast_node_if{true, $2, $4, $6};
                                 auto p = dynamic_cast<ast_node_if*>($6);
                                 p->append_linked_if($9);
                                 $$->loc = @$;
                             } 
     | IF e DO exp_list ELSE elseif_list ALSO DO exp_list ELSE DO exp_list END
                             { 
-                                $$ = new ast_node_if{$2, $4, $6, $9};
+                                $$ = new ast_node_if{true, $2, $4, $6, $9};
                                 auto p = dynamic_cast<ast_node_if*>($6);
                                 p->append_linked_if($12);
                                 $$->loc = @$;
-                            }                             
+                            }  
+    | IF e DO exp_list ELSE elseif_list ELSE DO exp_list ALSO DO exp_list END
+                            { 
+                                $$ = new ast_node_if{true, $2, $4, $6, $12};
+                                auto p = dynamic_cast<ast_node_if*>($6);
+                                p->append_linked_if($9);
+                                $$->loc = @$;
+                            }                                         
 
     | code_block
     /* Function definition */
@@ -238,17 +250,17 @@ se: e                           {$$ = $1; $$->loc = @$;}
     ;
     
 /* A list of ifelses */
-elseif_list: IF e DO exp_list              { $$ = new ast_node_if{$2, $4, 0}; $$->loc = @$;}
+elseif_list: IF e DO exp_list              { $$ = new ast_node_if{false, $2, $4, 0}; $$->loc = @$;}
        | elseif_list ELSE IF e DO exp_list { 
-                                             auto p = new ast_node_if{$4, $6, 0};
+                                             auto p = new ast_node_if{false, $4, $6, 0};
                                              auto pp = dynamic_cast<ast_node_if*>($1);
                                              pp->append_linked_if(p);
                                              $$ = $1; $$->loc = @$;
                                            }
 /* A list of ifelsies for one liner. */                                         
-sl_elseif_list: IF e DO se                 { $$ = new ast_node_if{$2, $4, 0}; $$->loc = @$;}
+sl_elseif_list: IF e DO se                 { $$ = new ast_node_if{false, $2, $4, 0}; $$->loc = @$;}
        | sl_elseif_list ELSE IF e DO se    { 
-                                             auto p = new ast_node_if{$4, $6, 0};
+                                             auto p = new ast_node_if{false, $4, $6, 0};
                                              auto pp = dynamic_cast<ast_node_if*>($1);
                                              pp->append_linked_if(p);
                                              $$ = $1; $$->loc = @$;

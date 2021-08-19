@@ -2096,14 +2096,14 @@ public:
 
 class ast_node_if: public ast_node {
 public:
-    ast_node_if(ast_node *cond_e, ast_node *if_el) :
-            ast_node_if(cond_e, if_el, nullptr)
+    ast_node_if(bool is_root_ifnode, ast_node *cond_e, ast_node *if_el) :
+            ast_node_if(is_root_ifnode, cond_e, if_el, nullptr)
     {
     }
-    ast_node_if(ast_node *cond_e, ast_node *if_el, ast_node *else_el) :
-                ast_node_if(cond_e, if_el, else_el, nullptr) {}
-    ast_node_if(ast_node *cond_e, ast_node *if_el, ast_node *else_el, ast_node *also_el) :
-            cond_e(cond_e), if_el(if_el), else_el(else_el), also_el(also_el)
+    ast_node_if(bool is_root_ifnode, ast_node *cond_e, ast_node *if_el, ast_node *else_el) :
+                ast_node_if(is_root_ifnode, cond_e, if_el, else_el, nullptr) {}
+    ast_node_if(bool is_root_ifnode, ast_node *cond_e, ast_node *if_el, ast_node *else_el, ast_node *also_el) :
+            is_root_ifnode(is_root_ifnode), cond_e(cond_e), if_el(if_el), else_el(else_el), also_el(also_el)
     {
         type = ast_type::IF;
     }
@@ -2115,6 +2115,7 @@ public:
         delete also_el;
     }
     
+    bool is_root_ifnode = false;
     ast_node *cond_e;
     ast_node *if_el;
     ast_node *else_el; /* else_el can be a linked IF or another expression (for IF ELSE ... ) */
@@ -2149,8 +2150,20 @@ public:
                 return value_type = t;
             else
                 return value_type = emc_type{emc_types::NONE};
+        } else if (!else_el && also_el) {
+            compilation_units.get_current_objstack().push_new_scope();
+            auto value_type_if = if_el->resolve();
+            compilation_units.get_current_objstack().pop_scope();
+            compilation_units.get_current_objstack().push_new_scope();
+            auto value_type_also = also_el->resolve();
+            compilation_units.get_current_objstack().pop_scope();
+
+            auto t = standard_type_promotion_or_invalid(value_type_if, value_type_also);
+            if (t.is_valid())
+                return value_type = t;
+            else
+                return value_type = emc_type{emc_types::NONE};
         } else {
-            
             compilation_units.get_current_objstack().push_new_scope();
             auto value_type_if = if_el->resolve();
             compilation_units.get_current_objstack().pop_scope();
@@ -2180,7 +2193,7 @@ public:
 
     ast_node* clone()
     {
-        auto c = new ast_node_if { cond_e->clone(), if_el->clone(),
+        auto c = new ast_node_if {is_root_ifnode, cond_e->clone(), if_el->clone(),
                 else_el ? else_el->clone() : nullptr };
         c->value_type = value_type;
         return c;        

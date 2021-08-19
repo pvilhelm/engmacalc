@@ -1,0 +1,45 @@
+spawn ./engmac testsuite/$subdir/flowcontrol-ifs.em
+
+set ok 0
+expect {
+    "ELSE-WORKS" { set ok 1 }
+    "FAIL"  {fail "Test failed.\n"}
+    default {fail "Test failed.\n"}
+}
+
+if {$ok == 1} {
+    set ok 0
+    expect {
+        "IF-WORKS" { set ok 1 }
+        "FAIL"  {fail "Test failed.\n"}
+        default {fail "Test failed.\n"}
+    }
+}
+
+if {$ok == 1} {
+    set ok 0
+    expect {
+        "ELSE-IF-WORKS" { set ok 1 }
+        "FAIL"  {fail "Test failed.\n"}
+        default {fail "Test failed.\n"}
+    }
+}
+
+if {$ok == 1} {
+    set ok 0
+    expect {
+        "ELSE-IF'S-ELSE-WORKS" { set ok 1 }
+        "FAIL"  {fail "Test failed.\n"}
+        default {fail "Test failed.\n"}
+    }
+}
+
+if {$ok == 1} {
+    set ok 0
+    expect {
+        "DONE"  {pass "Test passed.\n"}
+        "FAIL"  {fail "Test failed.\n"}
+        default {fail "Test failed.\n"}
+    }
+}
+
