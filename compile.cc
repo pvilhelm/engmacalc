@@ -2365,7 +2365,10 @@ void jit::walk_tree_doblock(    ast_node *node,
 
     gcc_jit_rvalue *rval = nullptr;
     gcc_jit_block *last_block = *current_block;
+    
+    push_scope();
     walk_tree(do_ast->first, &last_block, current_function, &rval);
+    pop_scope();
 
     if (last_block != *current_block) { /* Atleast one block was added */
         *current_block = last_block; /* Point the head to the last block added */
@@ -2403,7 +2406,9 @@ void jit::walk_tree_if(ast_node *node,
     if (if_ast->also_el) {
         also_block = gcc_jit_function_new_block(*current_function, new_unique_name("also_block").c_str());
         last_also_block = also_block;
+        push_scope();
         walk_tree(if_ast->also_el, &last_also_block, current_function, &also_rv);
+        pop_scope();
         /* active_also_block is used by superceeding ifs */
         active_also_block = also_block;
     }
@@ -2417,7 +2422,9 @@ void jit::walk_tree_if(ast_node *node,
     gcc_jit_rvalue *if_rv = nullptr;
     gcc_jit_block *last_if_block = if_block;
     v_block_terminated.push_back(false);
+    push_scope();
     walk_tree(if_ast->if_el, &last_if_block, current_function, &if_rv);
+    pop_scope();
     bool if_was_terminated = v_block_terminated.back();
     v_block_terminated.pop_back();
 
@@ -2431,7 +2438,9 @@ void jit::walk_tree_if(ast_node *node,
     if (if_ast->else_el) {
         else_block = gcc_jit_function_new_block(*current_function, new_unique_name("else_block").c_str());
         last_else_block = else_block;
+        push_scope();
         walk_tree(if_ast->else_el, &last_else_block, current_function, &else_rv);
+        pop_scope();
     }
     bool else_was_terminated = v_block_terminated.back();
     v_block_terminated.pop_back();

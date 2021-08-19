@@ -150,12 +150,14 @@ private:
 
     void push_scope()
     {
+        compilation_units.get_current_objstack().push_new_scope();
         v_of_map_of_varname_to_lval.push_back(
                 (std::map<std::string, gcc_jit_lvalue*>){});
     }
 
     void pop_scope()
     {
+        compilation_units.get_current_objstack().pop_scope();
         v_of_map_of_varname_to_lval.pop_back();
     }
 

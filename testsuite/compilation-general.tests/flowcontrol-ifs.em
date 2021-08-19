@@ -183,4 +183,17 @@ FUNC alsos1() DO
 END
 alsos1()
 
+/* Test scope */
+FUNC ifs2() DO
+    Int i = 333
+
+    IF 1 DO
+        Int i = 222
+        IF i != 222 DO
+            print("FAIL")
+        END
+    END
+END
+ifs2()
+
 print("DONE")
