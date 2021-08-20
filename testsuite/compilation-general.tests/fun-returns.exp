@@ -1,0 +1,7 @@
+spawn ./engmac testsuite/$subdir/fun-returns.em
+
+expect {
+    "FAIL"  {fail "Test failed.\n"}
+    "DONE"  {pass "Test passed.\n"}
+    default {fail "Test failed.\n"}
+}

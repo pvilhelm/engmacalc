@@ -50,6 +50,80 @@ emc_type string_to_type(std::string type_name) {
     return compilation_units.get_current_typestack().find_type(type_name); /* Throws if not found */
 }
 
+/* Allocate a new obj by casting from object to type. 
+   Throws if the source object value wont fit in the target
+   object.
+   
+   Caller deletes pointer. */
+obj* cast_obj_to_type_return_new_obj(obj* obj, emc_type type)
+{
+/* Macro that checks range and returns a new object with the specified type */
+#define MAKE_OBJ_RETURN(obj_class, obj_val_type)\
+do {\
+    auto obj_t = dynamic_cast<obj_class*>(obj);\
+    DEBUG_ASSERT_NOTNULL(obj_t);\
+    if (type.is_long()) {\
+        check_in_range<obj_val_type, int64_t>(obj_t->val);\
+        return new object_long{(int64_t)obj_t->val};\
+    } else if (type.is_int()) {\
+        check_in_range<obj_val_type, int32_t>(obj_t->val);\
+        return new object_int{(int32_t)obj_t->val};\
+    } else if (type.is_short()) {\
+        check_in_range<obj_val_type, int16_t>(obj_t->val);\
+        return new object_short{(int16_t)obj_t->val};\
+    } else if (type.is_sbyte()) {\
+        check_in_range<obj_val_type, int8_t>(obj_t->val);\
+        return new object_sbyte{(int8_t)obj_t->val};\
+    } else if (type.is_ulong()) {\
+        check_in_range<obj_val_type, uint64_t>(obj_t->val);\
+        return new object_ulong{(uint64_t)obj_t->val};\
+    } else if (type.is_uint()) {\
+        check_in_range<obj_val_type, uint32_t>(obj_t->val);\
+        return new object_uint{(uint32_t)obj_t->val};\
+    } else if (type.is_ushort()) {\
+        check_in_range<obj_val_type, uint16_t>(obj_t->val);\
+        return new object_ushort{(uint16_t)obj_t->val};\
+    } else if (type.is_byte()) {\
+        check_in_range<obj_val_type, uint8_t>(obj_t->val);\
+        return new object_byte{(uint8_t)obj_t->val};\
+    } else if (type.is_double()) {\
+        check_exact_as_double<obj_val_type>(obj_t->val);\
+        return new object_double{(double)obj_t->val};\
+    } else if (type.is_float()) {\
+        check_exact_as_float<obj_val_type>(obj_t->val);\
+        return new object_float{(float)obj_t->val};\
+    }\
+    THROW_BUG("");\
+} while((0))
+
+    switch (obj->type) {
+    case object_type::LONG:
+        MAKE_OBJ_RETURN(object_long, int64_t);
+    case object_type::INT:
+        MAKE_OBJ_RETURN(object_int, int32_t);
+    case object_type::SHORT:
+        MAKE_OBJ_RETURN(object_short, int16_t);
+    case object_type::SBYTE:
+        MAKE_OBJ_RETURN(object_sbyte, int8_t);
+    case object_type::ULONG:
+        MAKE_OBJ_RETURN(object_ulong, uint64_t);
+    case object_type::UINT:
+        MAKE_OBJ_RETURN(object_uint, uint32_t);
+    case object_type::USHORT:
+        MAKE_OBJ_RETURN(object_ushort, uint16_t);
+    case object_type::BYTE:
+        MAKE_OBJ_RETURN(object_byte, uint8_t);
+    case object_type::DOUBLE:
+        MAKE_OBJ_RETURN(object_double, double);
+    case object_type::FLOAT:
+        MAKE_OBJ_RETURN(object_double, float);
+    default:
+        THROW_BUG("");
+    }
+
+#undef MAKE_OBJ_RETURN
+}
+
 /* TODO: Should have LOC parameter to do nicer errors */
 void verify_obj_fits_in_type(obj* obj, emc_type type)
 {

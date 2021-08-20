@@ -1,7 +1,7 @@
 
 GPP = g++
 GCC = gcc
-CPPFLAGS = -g -std=gnu++17
+CPPFLAGS = -g -std=gnu++20
 CFLAGS = -g
 OBJ = emc.tab.o lex.yy.o compile.o emc.o Io.o util_string.o
 

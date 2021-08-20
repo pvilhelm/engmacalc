@@ -325,6 +325,7 @@ std::string mangle_emc_fn_name(const object_func &fn_obj);
 std::string demangle_emc_fn_name(std::string c_fn_name);
 std::string mangle_emc_type_name(std::string full_path);
 void verify_obj_fits_in_type(obj* obj, emc_type type);
+obj* cast_obj_to_type_return_new_obj(obj* obj, emc_type type);
 
 class obj {
 public:
@@ -876,6 +877,80 @@ public:
 
     emc_type resolve();
 };
+
+/* Macro helper for creating a value_obj in a ast_node from
+   the child nodes first and sec. For binary operators. 
+   
+   For maximum mess the macro is split up between a non-float 
+   part and a float part ... */
+
+#define MAKE_VALUE_OBJ_FOR_BIN_OP_FLOATS_PART(op) \
+else if (value_type.is_double()) {\
+    auto *f = dynamic_cast<object_double*>(casted_1);\
+    auto *s = dynamic_cast<object_double*>(casted_2);\
+    value_obj = new object_double{(double)(f->val op s->val)};\
+} else if (value_type.is_float()) {\
+    auto *f = dynamic_cast<object_float*>(casted_1);\
+    auto *s = dynamic_cast<object_float*>(casted_2);\
+    value_obj = new object_float{(float)(f->val op s->val)};\
+}\
+
+#define MAKE_VALUE_OBJ_FOR_BIN_OP_START_PATH(op) \
+do {\
+obj* obj_1 = first->resolve_value();\
+obj* obj_2 = sec->resolve_value();\
+\
+obj* casted_1 = cast_obj_to_type_return_new_obj(obj_1, value_type);\
+obj* casted_2 = cast_obj_to_type_return_new_obj(obj_2, value_type);\
+\
+if (value_type.is_long()) {\
+    auto *f = dynamic_cast<object_long*>(casted_1);\
+    auto *s = dynamic_cast<object_long*>(casted_2);\
+    value_obj = new object_long{(int64_t)(f->val op s->val)};\
+} else if (value_type.is_int()) {\
+    auto *f = dynamic_cast<object_int*>(casted_1);\
+    auto *s = dynamic_cast<object_int*>(casted_2);\
+    value_obj = new object_int{(int32_t)(f->val op s->val)};\
+} else if (value_type.is_short()) {\
+    auto *f = dynamic_cast<object_short*>(casted_1);\
+    auto *s = dynamic_cast<object_short*>(casted_2);\
+    value_obj = new object_short{(int16_t)(f->val op s->val)};\
+} else if (value_type.is_sbyte()) {\
+    auto *f = dynamic_cast<object_sbyte*>(casted_1);\
+    auto *s = dynamic_cast<object_sbyte*>(casted_2);\
+    value_obj = new object_sbyte{(int8_t)(f->val op s->val)};\
+} else if (value_type.is_ulong()) {\
+    auto *f = dynamic_cast<object_ulong*>(casted_1);\
+    auto *s = dynamic_cast<object_ulong*>(casted_2);\
+    value_obj = new object_ulong{(uint64_t)(f->val op s->val)};\
+} else if (value_type.is_uint()) {\
+    auto *f = dynamic_cast<object_uint*>(casted_1);\
+    auto *s = dynamic_cast<object_uint*>(casted_2);\
+    value_obj = new object_uint{(uint32_t)(f->val op s->val)};\
+} else if (value_type.is_ushort()) {\
+    auto *f = dynamic_cast<object_ushort*>(casted_1);\
+    auto *s = dynamic_cast<object_ushort*>(casted_2);\
+    value_obj = new object_ushort{(uint16_t)(f->val op s->val)};\
+} else if (value_type.is_byte()) {\
+    auto *f = dynamic_cast<object_byte*>(casted_1);\
+    auto *s = dynamic_cast<object_byte*>(casted_2);\
+    value_obj = new object_byte{(uint8_t)(f->val op s->val)};\
+}\
+
+#define MAKE_VALUE_OBJ_FOR_BIN_OP(op)\
+MAKE_VALUE_OBJ_FOR_BIN_OP_START_PATH(op) \
+MAKE_VALUE_OBJ_FOR_BIN_OP_FLOATS_PART(op) \
+else\
+    THROW_NOT_IMPLEMENTED("");\
+delete casted_1; delete casted_2;\
+} while((0))
+
+#define MAKE_VALUE_OBJ_FOR_BIN_OP_NO_FLOATS(op)\
+MAKE_VALUE_OBJ_FOR_BIN_OP_START_PATH(op) \
+else\
+    THROW_NOT_IMPLEMENTED("");\
+delete casted_1; delete casted_2;\
+} while((0))
 
 /* Base class for a node in the abstract syntax tree. */
 class ast_node {
@@ -1525,7 +1600,18 @@ public:
 
     emc_type resolve()
     {
-        return value_type = standard_type_promotion(first->resolve(), sec->resolve());
+        value_type = standard_type_promotion(first->resolve(), sec->resolve());
+
+        /* Create an object from the value of first and sec's objects */
+        if (value_type.is_const_expr)
+            MAKE_VALUE_OBJ_FOR_BIN_OP(+);
+
+        return value_type;
+    }
+
+    obj* resolve_value()
+    {
+        return value_obj;
     }
 
     ast_node* clone()
@@ -1566,7 +1652,18 @@ public:
 
     emc_type resolve()
     {
-        return value_type = standard_type_promotion(first->resolve(), sec->resolve());
+        value_type = standard_type_promotion(first->resolve(), sec->resolve());
+
+        /* Create an object from the value of first and sec's objects */
+        if (value_type.is_const_expr)
+            MAKE_VALUE_OBJ_FOR_BIN_OP(-);
+
+        return value_type;
+    }
+
+    obj* resolve_value()
+    {
+        return value_obj;
     }
 };
 
@@ -1593,7 +1690,18 @@ public:
 
     emc_type resolve()
     {
-        return value_type = standard_type_promotion(first->resolve(), sec->resolve());
+        value_type = standard_type_promotion(first->resolve(), sec->resolve());
+
+        /* Create an object from the value of first and sec's objects */
+        if (value_type.is_const_expr)
+            MAKE_VALUE_OBJ_FOR_BIN_OP(*);
+
+        return value_type;
+    }
+
+    obj* resolve_value()
+    {
+        return value_obj;
     }
 
     ast_node* clone()
@@ -1627,7 +1735,17 @@ public:
 
     emc_type resolve()
     {
-        return value_type = standard_type_promotion(first->resolve(), sec->resolve());
+        value_type = standard_type_promotion(first->resolve(), sec->resolve());
+
+        /* Create an object from the value of first and sec's objects */
+        if (value_type.is_const_expr)
+            MAKE_VALUE_OBJ_FOR_BIN_OP_NO_FLOATS(%);
+        return value_type;
+    }
+
+    obj* resolve_value()
+    {
+        return value_obj;
     }
 
     ast_node* clone()
@@ -1661,7 +1779,18 @@ public:
 
     emc_type resolve()
     {
-        return value_type = standard_type_promotion(first->resolve(), sec->resolve());
+        value_type = standard_type_promotion(first->resolve(), sec->resolve());
+
+        /* Create an object from the value of first and sec's objects */
+        if (value_type.is_const_expr)
+            MAKE_VALUE_OBJ_FOR_BIN_OP(/);
+
+        return value_type;
+    }
+
+    obj* resolve_value()
+    {
+        return value_obj;
     }
 
     ast_node* clone()
@@ -1833,11 +1962,11 @@ public:
 do {auto child_obj_t = dynamic_cast<obj_class*>(child_obj);\
 DEBUG_ASSERT_NOTNULL(child_obj_t);\
 auto obj_t = new obj_class{};\
-if (child_obj_t->val == std::numeric_limits<obj_ctype>::min()) {\
-    THROW_USER_ERROR_LOC("Negating int will be out of range: " + child_obj_t->val);\
+if (std::is_integral<obj_ctype>() && child_obj_t->val == std::numeric_limits<obj_ctype>::lowest()) {\
+    THROW_USER_ERROR_LOC("Negating int will be out of range: " + std::to_string(child_obj_t->val));\
 }\
 obj_t->val = -child_obj_t->val;\
-value_obj = obj_t; } while((0))\
+value_obj = obj_t; } while((0))
 
     emc_type resolve()
     {
@@ -1847,6 +1976,12 @@ value_obj = obj_t; } while((0))\
             auto child_obj = first->resolve_value();
              
             switch (child_obj->type) {
+            case object_type::DOUBLE:
+                MAKE_VALUE_OBJ(object_double, double);
+                break;
+            case object_type::FLOAT:
+                MAKE_VALUE_OBJ(object_float, float);
+                break;
             case object_type::LONG:
                 MAKE_VALUE_OBJ(object_long, int64_t);
                 break;

@@ -547,6 +547,12 @@ DEBUG_ASSERT_NOTNULL(obj_t);\
 rv = gcc_jit_context_new_rvalue_from_long(context,\
     type, obj_t->val); } while((0));
 
+#define MAKE_RV_FLOATS(obj_class, type) do {\
+auto obj_t = dynamic_cast<obj_class*>(obj);\
+DEBUG_ASSERT_NOTNULL(obj_t);\
+rv = gcc_jit_context_new_rvalue_from_double(context,\
+    type, obj_t->val); } while((0));
+
     switch (obj->type) {
     case object_type::LONG:
         MAKE_RV(object_long, LONG_TYPE)
@@ -571,6 +577,12 @@ rv = gcc_jit_context_new_rvalue_from_long(context,\
         break;
     case object_type::BYTE:
         MAKE_RV(object_byte, UCHAR_TYPE)
+        break;
+    case object_type::DOUBLE:
+        MAKE_RV_FLOATS(object_double, DOUBLE_TYPE);
+        break;
+    case object_type::FLOAT:
+        MAKE_RV_FLOATS(object_float, FLOAT_TYPE);
         break;
     default:
         THROW_NOT_IMPLEMENTED("");
