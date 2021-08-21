@@ -15,7 +15,13 @@ expect {
 6.0*\r
 8.0*\r
 2.0*\r
-2.0*\r" {pass "Test passed.\n"}
+2.0*\r
+6.0*\r
+8.0*\r
+2.0*\r
+2.0*\r
+2\r
+0\r" {pass "Test passed.\n"}
     default                             {fail "Test failed.\n"}
 }
 

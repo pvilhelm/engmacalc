@@ -231,6 +231,9 @@ DO
 END
 
 DO
+    Double d = 7. % 3.
+    Float f = 7. % 3.
+
     Long l = 7 % 3
     Int i = 7 % 3
     Short h = 7 % 3
@@ -242,6 +245,12 @@ DO
     Ushort uh = 7 % 3
     Byte uc = 7 % 3
 
+    IF d != 1 DO
+        print("FAIL")
+    END
+    IF f != 1 DO
+        print("FAIL")
+    END
     IF l != 1 DO
         print("FAIL")
     END

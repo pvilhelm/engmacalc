@@ -24,6 +24,7 @@
 #include <cinttypes>
 #include <sstream>
 #include <filesystem>
+#include <functional>
 
 #include "emc_assert.hh"
 #include "util_string.hh"
@@ -331,8 +332,16 @@ class obj {
 public:
     virtual ~obj()
     {
+#ifndef NDEBUG
+        value_expr_count--;
+#endif
     }
-    obj(){}
+    obj()
+    {
+#ifndef NDEBUG
+        value_expr_count++;
+#endif
+    }
     obj(const obj&) = delete;
     obj& operator=(const obj&) = delete;
 
@@ -349,31 +358,8 @@ public:
     int n_pointer_indirection = 0;
 };
 
-class type_object {
-public:
-    virtual ~type_object()
-    {
-    }
-
-    virtual obj* ctor() = 0;
-    virtual void debug_print()
-    {
-        std::cout << "Type object, Name: " << name << std::endl;
-    }
-    std::string name;
-};
-
 class objscope;
 class objscope_stack;
-
-/*
-class scopes {
-public:
-    objscope_stack runtime_scopestack;
-    objscope_stack resolve_scopestack;
-};
-*/
-
 class objscope_stack {
 public:
     /* There is always one root scope in the scope stack. */
@@ -423,8 +409,6 @@ public:
 
     std::vector<objscope_stack*> linked_objscope_stacks;
 };
-
-
 
 class objscope {
 public:
@@ -878,80 +862,6 @@ public:
     emc_type resolve();
 };
 
-/* Macro helper for creating a value_obj in a ast_node from
-   the child nodes first and sec. For binary operators. 
-   
-   For maximum mess the macro is split up between a non-float 
-   part and a float part ... */
-
-#define MAKE_VALUE_OBJ_FOR_BIN_OP_FLOATS_PART(op) \
-else if (value_type.is_double()) {\
-    auto *f = dynamic_cast<object_double*>(casted_1);\
-    auto *s = dynamic_cast<object_double*>(casted_2);\
-    value_obj = new object_double{(double)(f->val op s->val)};\
-} else if (value_type.is_float()) {\
-    auto *f = dynamic_cast<object_float*>(casted_1);\
-    auto *s = dynamic_cast<object_float*>(casted_2);\
-    value_obj = new object_float{(float)(f->val op s->val)};\
-}\
-
-#define MAKE_VALUE_OBJ_FOR_BIN_OP_START_PATH(op) \
-do {\
-obj* obj_1 = first->resolve_value();\
-obj* obj_2 = sec->resolve_value();\
-\
-obj* casted_1 = cast_obj_to_type_return_new_obj(obj_1, value_type);\
-obj* casted_2 = cast_obj_to_type_return_new_obj(obj_2, value_type);\
-\
-if (value_type.is_long()) {\
-    auto *f = dynamic_cast<object_long*>(casted_1);\
-    auto *s = dynamic_cast<object_long*>(casted_2);\
-    value_obj = new object_long{(int64_t)(f->val op s->val)};\
-} else if (value_type.is_int()) {\
-    auto *f = dynamic_cast<object_int*>(casted_1);\
-    auto *s = dynamic_cast<object_int*>(casted_2);\
-    value_obj = new object_int{(int32_t)(f->val op s->val)};\
-} else if (value_type.is_short()) {\
-    auto *f = dynamic_cast<object_short*>(casted_1);\
-    auto *s = dynamic_cast<object_short*>(casted_2);\
-    value_obj = new object_short{(int16_t)(f->val op s->val)};\
-} else if (value_type.is_sbyte()) {\
-    auto *f = dynamic_cast<object_sbyte*>(casted_1);\
-    auto *s = dynamic_cast<object_sbyte*>(casted_2);\
-    value_obj = new object_sbyte{(int8_t)(f->val op s->val)};\
-} else if (value_type.is_ulong()) {\
-    auto *f = dynamic_cast<object_ulong*>(casted_1);\
-    auto *s = dynamic_cast<object_ulong*>(casted_2);\
-    value_obj = new object_ulong{(uint64_t)(f->val op s->val)};\
-} else if (value_type.is_uint()) {\
-    auto *f = dynamic_cast<object_uint*>(casted_1);\
-    auto *s = dynamic_cast<object_uint*>(casted_2);\
-    value_obj = new object_uint{(uint32_t)(f->val op s->val)};\
-} else if (value_type.is_ushort()) {\
-    auto *f = dynamic_cast<object_ushort*>(casted_1);\
-    auto *s = dynamic_cast<object_ushort*>(casted_2);\
-    value_obj = new object_ushort{(uint16_t)(f->val op s->val)};\
-} else if (value_type.is_byte()) {\
-    auto *f = dynamic_cast<object_byte*>(casted_1);\
-    auto *s = dynamic_cast<object_byte*>(casted_2);\
-    value_obj = new object_byte{(uint8_t)(f->val op s->val)};\
-}\
-
-#define MAKE_VALUE_OBJ_FOR_BIN_OP(op)\
-MAKE_VALUE_OBJ_FOR_BIN_OP_START_PATH(op) \
-MAKE_VALUE_OBJ_FOR_BIN_OP_FLOATS_PART(op) \
-else\
-    THROW_NOT_IMPLEMENTED("");\
-delete casted_1; delete casted_2;\
-} while((0))
-
-#define MAKE_VALUE_OBJ_FOR_BIN_OP_NO_FLOATS(op)\
-MAKE_VALUE_OBJ_FOR_BIN_OP_START_PATH(op) \
-else\
-    THROW_NOT_IMPLEMENTED("");\
-delete casted_1; delete casted_2;\
-} while((0))
-
 /* Base class for a node in the abstract syntax tree. */
 class ast_node {
 public:
@@ -982,6 +892,245 @@ public:
     ast_type type = ast_type::INVALID;
     emc_type value_type = emc_type{emc_types::INVALID};
     obj *value_obj = nullptr;
+};
+
+enum class emc_operators {
+    PLUS,
+    MINUS,
+    MULT,
+    REM,
+    RDIV,
+    POW
+};
+
+/* Abstract class for binary operators, with a helper function. */
+class ast_node_bin_op : public ast_node {
+public:
+    ast_node_bin_op(ast_node *first, ast_node *sec) : first(first), sec(sec)
+    {}
+    virtual ~ast_node_bin_op() 
+    {
+        delete first;
+        delete sec;
+    };
+
+    ast_node *first;
+    ast_node *sec;
+
+    template <emc_operators op_type>
+    void make_value_obj()
+    {
+        obj* obj_1 = first->resolve_value();
+        obj* obj_2 = sec->resolve_value();
+
+        obj* casted_1 = cast_obj_to_type_return_new_obj(obj_1, value_type);
+        obj* casted_2 = cast_obj_to_type_return_new_obj(obj_2, value_type);
+        
+        if (value_type.is_long()) {
+            auto *f = dynamic_cast<object_long*>(casted_1);
+            auto *s = dynamic_cast<object_long*>(casted_2);
+
+            if constexpr (op_type == emc_operators::PLUS)
+                value_obj = new object_long{(int64_t)(f->val + s->val)};
+            else if constexpr (op_type == emc_operators::MINUS)
+                value_obj = new object_long{(int64_t)(f->val - s->val)};
+            else if constexpr (op_type == emc_operators::MULT)
+                value_obj = new object_long{(int64_t)(f->val * s->val)};
+            else if constexpr (op_type == emc_operators::RDIV)
+                value_obj = new object_long{(int64_t)(f->val / s->val)};
+            else if constexpr (op_type == emc_operators::REM)
+                value_obj = new object_long{(int64_t)(f->val % s->val)};
+            else if constexpr (op_type == emc_operators::POW) {
+                double p = pow(f->val, s->val);
+                if (p < -9007199254740992 || p > 9007199254740992)
+                    THROW_NOT_IMPLEMENTED("To big answer from Long power operator");
+                value_obj = new object_long{(int64_t)p};
+            } else
+                THROW_BUG("");
+        } else if (value_type.is_int()) {
+            auto *f = dynamic_cast<object_int*>(casted_1);
+            auto *s = dynamic_cast<object_int*>(casted_2);
+            
+            if constexpr (op_type == emc_operators::PLUS)
+                value_obj = new object_int{(int32_t)(f->val + s->val)};
+            else if constexpr (op_type == emc_operators::MINUS)
+                value_obj = new object_int{(int32_t)(f->val - s->val)};
+            else if constexpr (op_type == emc_operators::MULT)
+                value_obj = new object_int{(int32_t)(f->val * s->val)};
+            else if constexpr (op_type == emc_operators::RDIV)
+                value_obj = new object_int{(int32_t)(f->val / s->val)};
+            else if constexpr (op_type == emc_operators::REM)
+                value_obj = new object_int{(int32_t)(f->val % s->val)};
+            else if constexpr (op_type == emc_operators::POW) {
+                double p = pow(f->val, s->val);
+                check_in_range<double, int32_t>(p);
+                value_obj = new object_int{(int32_t)p};
+            } else
+                THROW_BUG("");
+        } else if (value_type.is_short()) {
+            auto *f = dynamic_cast<object_short*>(casted_1);
+            auto *s = dynamic_cast<object_short*>(casted_2);
+
+            if constexpr (op_type == emc_operators::PLUS)
+                value_obj = new object_short{(int16_t)(f->val + s->val)};
+            else if constexpr (op_type == emc_operators::MINUS)
+                value_obj = new object_short{(int16_t)(f->val - s->val)};
+            else if constexpr (op_type == emc_operators::MULT)
+                value_obj = new object_short{(int16_t)(f->val * s->val)};
+            else if constexpr (op_type == emc_operators::RDIV)
+                value_obj = new object_short{(int16_t)(f->val / s->val)};
+            else if constexpr (op_type == emc_operators::REM)
+                value_obj = new object_short{(int16_t)(f->val % s->val)};
+            else if constexpr (op_type == emc_operators::POW) {
+                double p = pow(f->val, s->val);
+                check_in_range<double, int16_t>(p);                
+                value_obj = new object_short{(int16_t)p};
+            } else
+                THROW_BUG("");
+        } else if (value_type.is_sbyte()) {
+            auto *f = dynamic_cast<object_sbyte*>(casted_1);
+            auto *s = dynamic_cast<object_sbyte*>(casted_2);
+            
+            if constexpr (op_type == emc_operators::PLUS)
+                value_obj = new object_sbyte{(int8_t)(f->val + s->val)};
+            else if constexpr (op_type == emc_operators::MINUS)
+                value_obj = new object_sbyte{(int8_t)(f->val - s->val)};
+            else if constexpr (op_type == emc_operators::MULT)
+                value_obj = new object_sbyte{(int8_t)(f->val * s->val)};
+            else if constexpr (op_type == emc_operators::RDIV)
+                value_obj = new object_sbyte{(int8_t)(f->val / s->val)};
+            else if constexpr (op_type == emc_operators::REM)
+                value_obj = new object_sbyte{(int8_t)(f->val % s->val)};
+            else if constexpr (op_type == emc_operators::POW) {
+                double p = pow(f->val, s->val);
+                check_in_range<double, int8_t>(p);
+                value_obj = new object_sbyte{(int8_t)p};
+            } else
+                THROW_BUG("");
+        } else if (value_type.is_ulong()) {
+            auto *f = dynamic_cast<object_ulong*>(casted_1);
+            auto *s = dynamic_cast<object_ulong*>(casted_2);
+
+            if constexpr (op_type == emc_operators::PLUS)
+                value_obj = new object_ulong{(uint64_t)(f->val + s->val)};
+            else if constexpr (op_type == emc_operators::MINUS)
+                value_obj = new object_ulong{(uint64_t)(f->val - s->val)};
+            else if constexpr (op_type == emc_operators::MULT)
+                value_obj = new object_ulong{(uint64_t)(f->val * s->val)};
+            else if constexpr (op_type == emc_operators::RDIV)
+                value_obj = new object_ulong{(uint64_t)(f->val / s->val)};
+            else if constexpr (op_type == emc_operators::REM)
+                value_obj = new object_ulong{(uint64_t)(f->val % s->val)};
+            else if constexpr (op_type == emc_operators::POW) {
+                double p = pow(f->val, s->val);
+                if (p < -9007199254740992 || p > 9007199254740992)
+                    THROW_NOT_IMPLEMENTED("To big answer from Long power operator");
+                value_obj = new object_ulong{(uint64_t)p};
+            } else
+                THROW_BUG("");
+        } else if (value_type.is_uint()) {
+            auto *f = dynamic_cast<object_uint*>(casted_1);
+            auto *s = dynamic_cast<object_uint*>(casted_2);
+
+            if constexpr (op_type == emc_operators::PLUS)
+                value_obj = new object_uint{(uint32_t)(f->val + s->val)};
+            else if constexpr (op_type == emc_operators::MINUS)
+                value_obj = new object_uint{(uint32_t)(f->val - s->val)};
+            else if constexpr (op_type == emc_operators::MULT)
+                value_obj = new object_uint{(uint32_t)(f->val * s->val)};
+            else if constexpr (op_type == emc_operators::RDIV)
+                value_obj = new object_uint{(uint32_t)(f->val / s->val)};
+            else if constexpr (op_type == emc_operators::REM)
+                value_obj = new object_uint{(uint32_t)(f->val % s->val)};
+            else if constexpr (op_type == emc_operators::POW) {
+                double p = pow(f->val, s->val);
+                check_in_range<double, uint32_t>(p);
+                value_obj = new object_uint{(uint32_t)p};
+            } else
+                THROW_BUG("");
+        } else if (value_type.is_ushort()) {
+            auto *f = dynamic_cast<object_ushort*>(casted_1);
+            auto *s = dynamic_cast<object_ushort*>(casted_2);
+
+            if constexpr (op_type == emc_operators::PLUS)
+                value_obj = new object_ushort{(uint16_t)(f->val + s->val)};
+            else if constexpr (op_type == emc_operators::MINUS)
+                value_obj = new object_ushort{(uint16_t)(f->val - s->val)};
+            else if constexpr (op_type == emc_operators::MULT)
+                value_obj = new object_ushort{(uint16_t)(f->val * s->val)};
+            else if constexpr (op_type == emc_operators::RDIV)
+                value_obj = new object_ushort{(uint16_t)(f->val / s->val)};
+            else if constexpr (op_type == emc_operators::REM)
+                value_obj = new object_ushort{(uint16_t)(f->val % s->val)};
+            else if constexpr (op_type == emc_operators::POW) {
+                double p = pow(f->val, s->val);
+                check_in_range<double, uint16_t>(p);
+                value_obj = new object_ushort{(uint16_t)p};
+            } else
+                THROW_BUG("");
+        } else if (value_type.is_byte()) {
+            auto *f = dynamic_cast<object_byte*>(casted_1);
+            auto *s = dynamic_cast<object_byte*>(casted_2);
+            
+            if constexpr (op_type == emc_operators::PLUS)
+                value_obj = new object_byte{(uint8_t)(f->val + s->val)};
+            else if constexpr (op_type == emc_operators::MINUS)
+                value_obj = new object_byte{(uint8_t)(f->val - s->val)};
+            else if constexpr (op_type == emc_operators::MULT)
+                value_obj = new object_byte{(uint8_t)(f->val * s->val)};
+            else if constexpr (op_type == emc_operators::RDIV)
+                value_obj = new object_byte{(uint8_t)(f->val / s->val)};
+            else if constexpr (op_type == emc_operators::REM)
+                value_obj = new object_byte{(uint8_t)(f->val % s->val)};
+            else if constexpr (op_type == emc_operators::POW) {
+                double p = pow(f->val, s->val);
+                check_in_range<double, uint8_t>(p);
+                value_obj = new object_byte{(uint8_t)p};
+            } else
+                THROW_BUG("");
+        } else if (value_type.is_double()) {
+            auto *f = dynamic_cast<object_double*>(casted_1);
+            auto *s = dynamic_cast<object_double*>(casted_2);
+
+            if constexpr (op_type == emc_operators::PLUS)
+                value_obj = new object_double{(double)(f->val + s->val)};
+            else if constexpr (op_type == emc_operators::MINUS)
+                value_obj = new object_double{(double)(f->val - s->val)};
+            else if constexpr (op_type == emc_operators::MULT)
+                value_obj = new object_double{(double)(f->val * s->val)};
+            else if constexpr (op_type == emc_operators::RDIV)
+                value_obj = new object_double{(double)(f->val / s->val)};
+            else if constexpr (op_type == emc_operators::REM)
+                value_obj = new object_double{(double)fmod(f->val, s->val)};
+            else if constexpr (op_type == emc_operators::POW) {
+                double p = pow(f->val, s->val);
+                value_obj = new object_double{p};
+            } else
+                THROW_BUG("");
+        } else if (value_type.is_float()) {
+            auto *f = dynamic_cast<object_float*>(casted_1);
+            auto *s = dynamic_cast<object_float*>(casted_2);
+
+            if constexpr (op_type == emc_operators::PLUS)
+                value_obj = new object_float{(float)(f->val + s->val)};
+            else if constexpr (op_type == emc_operators::MINUS)
+                value_obj = new object_float{(float)(f->val - s->val)};
+            else if constexpr (op_type == emc_operators::MULT)
+                value_obj = new object_float{(float)(f->val * s->val)};
+            else if constexpr (op_type == emc_operators::RDIV)
+                value_obj = new object_float{(float)(f->val / s->val)};
+            else if constexpr (op_type == emc_operators::REM)
+                value_obj = new object_float{(float)fmodf(f->val, s->val)};
+            else if constexpr (op_type == emc_operators::POW) {
+                double p = pow(f->val, s->val);
+                check_in_range<double, float>(p);
+                value_obj = new object_float{(float)p};
+            } else
+                THROW_BUG("");
+        } else
+            THROW_NOT_IMPLEMENTED("");
+        delete casted_1; delete casted_2;
+    }
 };
 
 class ast_node_typedotchain: public ast_node {
@@ -1577,26 +1726,17 @@ public:
     }
 };
 
-class ast_node_add: public ast_node {
+class ast_node_add: public ast_node_bin_op {
 public:
     ast_node_add() :
             ast_node_add(nullptr, nullptr)
     {
     }
     ast_node_add(ast_node *first, ast_node *sec) :
-            first(first), sec(sec)
+            ast_node_bin_op(first, sec)
     {
         type = ast_type::ADD;
     }
-
-    ~ast_node_add()
-    {
-        delete first;
-        delete sec;
-    }
-
-    ast_node *first;
-    ast_node *sec;
 
     emc_type resolve()
     {
@@ -1604,7 +1744,7 @@ public:
 
         /* Create an object from the value of first and sec's objects */
         if (value_type.is_const_expr)
-            MAKE_VALUE_OBJ_FOR_BIN_OP(+);
+            make_value_obj<emc_operators::PLUS>();
 
         return value_type;
     }
@@ -1622,26 +1762,17 @@ public:
     }
 };
 
-class ast_node_sub: public ast_node {
+class ast_node_sub: public ast_node_bin_op {
 public:
     ast_node_sub() :
             ast_node_sub(nullptr, nullptr)
     {
     }
     ast_node_sub(ast_node *first, ast_node *sec) :
-            first(first), sec(sec)
+            ast_node_bin_op(first, sec)
     {
         type = ast_type::SUB;
     }
-
-    ~ast_node_sub()
-    {
-        delete first;
-        delete sec;
-    }
-
-    ast_node *first;
-    ast_node *sec;
 
     ast_node* clone()
     {
@@ -1656,7 +1787,7 @@ public:
 
         /* Create an object from the value of first and sec's objects */
         if (value_type.is_const_expr)
-            MAKE_VALUE_OBJ_FOR_BIN_OP(-);
+            make_value_obj<emc_operators::MINUS>();
 
         return value_type;
     }
@@ -1667,26 +1798,17 @@ public:
     }
 };
 
-class ast_node_mul: public ast_node {
+class ast_node_mul: public ast_node_bin_op {
 public:
     ast_node_mul() :
             ast_node_mul(nullptr, nullptr)
     {
     }
     ast_node_mul(ast_node *first, ast_node *sec) :
-            first(first), sec(sec)
+            ast_node_bin_op(first, sec)
     {
         type = ast_type::MUL;
     }
-
-    ~ast_node_mul()
-    {
-        if (first) delete first;
-        if (sec) delete sec;
-    }
-    
-    ast_node *first;
-    ast_node *sec;
 
     emc_type resolve()
     {
@@ -1694,7 +1816,7 @@ public:
 
         /* Create an object from the value of first and sec's objects */
         if (value_type.is_const_expr)
-            MAKE_VALUE_OBJ_FOR_BIN_OP(*);
+            make_value_obj<emc_operators::MULT>();
 
         return value_type;
     }
@@ -1712,26 +1834,17 @@ public:
     }
 };
 
-class ast_node_rem: public ast_node {
+class ast_node_rem: public ast_node_bin_op {
 public:
     ast_node_rem() :
             ast_node_rem(nullptr, nullptr)
     {
     }
     ast_node_rem(ast_node *first, ast_node *sec) :
-            first(first), sec(sec)
+            ast_node_bin_op(first, sec)
     {
         type = ast_type::REM;
     }
-
-    ~ast_node_rem()
-    {
-        if (first) delete first;
-        if (sec) delete sec;
-    }
-    
-    ast_node *first;
-    ast_node *sec;
 
     emc_type resolve()
     {
@@ -1739,7 +1852,8 @@ public:
 
         /* Create an object from the value of first and sec's objects */
         if (value_type.is_const_expr)
-            MAKE_VALUE_OBJ_FOR_BIN_OP_NO_FLOATS(%);
+            make_value_obj<emc_operators::REM>();
+
         return value_type;
     }
 
@@ -1756,26 +1870,17 @@ public:
     }
 };
 
-class ast_node_rdiv: public ast_node {
+class ast_node_rdiv: public ast_node_bin_op {
 public:
     ast_node_rdiv() :
             ast_node_rdiv(nullptr, nullptr)
     {
     }
     ast_node_rdiv(ast_node *first, ast_node *sec) :
-            first(first), sec(sec)
+            ast_node_bin_op(first, sec)
     {
         type = ast_type::RDIV;
     }
-
-    ~ast_node_rdiv()
-    {
-        if (first) delete first;
-        if (sec) delete sec;
-    }
-    
-    ast_node *first;
-    ast_node *sec;
 
     emc_type resolve()
     {
@@ -1783,7 +1888,7 @@ public:
 
         /* Create an object from the value of first and sec's objects */
         if (value_type.is_const_expr)
-            MAKE_VALUE_OBJ_FOR_BIN_OP(/);
+            make_value_obj<emc_operators::RDIV>();
 
         return value_type;
     }
@@ -1871,26 +1976,18 @@ public:
     }
 };
 
-class ast_node_pow: public ast_node {
+class ast_node_pow: public ast_node_bin_op {
 public:
     ast_node_pow() :
             ast_node_pow(nullptr, nullptr)
     {
     }
     ast_node_pow(ast_node *first, ast_node *sec) :
-            first(first), sec(sec)
+            ast_node_bin_op(first, sec)
     {
         type = ast_type::POW;
     }
 
-    ~ast_node_pow()
-    {
-        if (first) delete first;
-        if (sec) delete sec;
-    }
-    
-    ast_node *first;
-    ast_node *sec;
 
     ast_node* clone()
     {
@@ -1901,7 +1998,17 @@ public:
 
     emc_type resolve()
     {
-        return value_type = standard_type_promotion(first->resolve(), sec->resolve());
+        value_type = standard_type_promotion(first->resolve(), sec->resolve());
+
+        if (value_type.is_const_expr)
+            make_value_obj<emc_operators::POW>();
+
+        return value_type;
+    }
+
+    obj* resolve_value()
+    {
+        return value_obj;
     }
 };
 
@@ -1958,15 +2065,18 @@ public:
         return c;
     }
 
-#define MAKE_VALUE_OBJ(obj_class, obj_ctype) \
-do {auto child_obj_t = dynamic_cast<obj_class*>(child_obj);\
-DEBUG_ASSERT_NOTNULL(child_obj_t);\
-auto obj_t = new obj_class{};\
-if (std::is_integral<obj_ctype>() && child_obj_t->val == std::numeric_limits<obj_ctype>::lowest()) {\
-    THROW_USER_ERROR_LOC("Negating int will be out of range: " + std::to_string(child_obj_t->val));\
-}\
-obj_t->val = -child_obj_t->val;\
-value_obj = obj_t; } while((0))
+    template<class Obj_class, class C_type>
+    void make_value_obj(obj* child_obj)
+    {
+        auto child_obj_t = dynamic_cast<Obj_class*>(child_obj);
+        DEBUG_ASSERT_NOTNULL(child_obj_t);
+        auto obj_t = new Obj_class{};
+        if (std::is_integral<C_type>() && child_obj_t->val == std::numeric_limits<C_type>::lowest()) {
+            THROW_USER_ERROR_LOC("Negating int will be out of range: " + std::to_string(child_obj_t->val));
+        }
+        obj_t->val = -child_obj_t->val;
+        value_obj = obj_t;
+    }
 
     emc_type resolve()
     {
@@ -1977,22 +2087,22 @@ value_obj = obj_t; } while((0))
              
             switch (child_obj->type) {
             case object_type::DOUBLE:
-                MAKE_VALUE_OBJ(object_double, double);
+                make_value_obj<object_double, double>(child_obj);
                 break;
             case object_type::FLOAT:
-                MAKE_VALUE_OBJ(object_float, float);
+                make_value_obj<object_float, float>(child_obj);
                 break;
             case object_type::LONG:
-                MAKE_VALUE_OBJ(object_long, int64_t);
+                make_value_obj<object_long, int64_t>(child_obj);
                 break;
             case object_type::INT:
-                MAKE_VALUE_OBJ(object_int, int32_t);
+                make_value_obj<object_int, int32_t>(child_obj);
                 break;
             case object_type::SHORT:
-                MAKE_VALUE_OBJ(object_short, int16_t);
+                make_value_obj<object_short, int16_t>(child_obj);
                 break;
             case object_type::SBYTE:
-                MAKE_VALUE_OBJ(object_short, int8_t);
+                make_value_obj<object_short, int8_t>(child_obj);
                 break;
             case object_type::ULONG:
             case object_type::UINT:
@@ -2013,11 +2123,6 @@ value_obj = obj_t; } while((0))
     {
         return value_obj;
     }
-
-#undef MAKE_VALUE_OBJ
-
-
-
 };
 
 class ast_node_var: public ast_node {

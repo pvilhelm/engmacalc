@@ -20,6 +20,8 @@ FUNC test1() DO
     println(2 * 2^2.) // 8
     println(2^2. / 2) // 2
     println(2^2. - 2) // 2
+    println(4 % 3 + 1)// 2
+    println(4 % 3 - 1)// 0
 END
 
 test1()

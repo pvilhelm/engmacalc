@@ -70,19 +70,29 @@ std::string type_to_string()
 {
     return "Byte";
 }
+template<double>
+std::string type_to_string()
+{
+    return "Double";
+}
+template<float>
+std::string type_to_string()
+{
+    return "Float";
+}
 
 
 template<class V, class T>
 void check_in_range(V v) 
 {
-    int64_t var = v;
-    if (var > std::numeric_limits<T>::max())
-        THROW_USER_ERROR("Variable with value: " + std::to_string(var) + 
+    if (v > std::numeric_limits<T>::max())
+        THROW_USER_ERROR("Variable with value: " + std::to_string(v) + 
         "too big for casting to a " + type_to_string<T>());
-    if (var < std::numeric_limits<T>::lowest())
-        THROW_USER_ERROR("Variable with value: " + std::to_string(var) + 
+    if (v < std::numeric_limits<T>::lowest())
+        THROW_USER_ERROR("Variable with value: " + std::to_string(v) + 
         "too small for casting to a " + type_to_string<T>());
 }
+
 template<uint64_t, class T>
 void check_in_range(uint64_t v)
 {
