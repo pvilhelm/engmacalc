@@ -35,7 +35,7 @@ typedef void* yyscan_t;
 %right NOT
 %left CMP LEQ GEQ EQU NEQ '>' '<'
 %left '+' '-' 
-%left '*' '/' '%' '.'
+%left '*' '/' '%' '.' INTDIV
 %right '^' '@' '&' 
 
 %nonassoc DO
@@ -346,6 +346,7 @@ exp: exp '+' exp            {$$ = new ast_node_add{$1, $3}; $$->loc = @$;}
     | exp '*' exp           {$$ = new ast_node_mul{$1, $3}; $$->loc = @$;}
     | exp '/' exp           {$$ = new ast_node_rdiv{$1, $3}; $$->loc = @$;}
     | exp '%' exp           {$$ = new ast_node_rem{$1, $3}; $$->loc = @$;}
+    | exp INTDIV exp        {$$ = new ast_node_intdiv{$1, $3}; $$->loc = @$;}
 
     | exp '.' NAME          {$$ = new ast_node_dotop{$1, *$3}; delete $3; $$->loc = @$;}
 

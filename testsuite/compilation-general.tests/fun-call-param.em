@@ -202,26 +202,26 @@ Uint ui2 = 33
 Ushort uh2 = 22
 Byte uc2 = 11
 
-no_param()   //0
-one_long(l1) //-4
-two_longs(l1, l2) //-4 -44
-one_int(i1) //-3
-two_ints(i1, i2) //-3 -33
-one_short(h1) //-2
-two_shorts(h1, h2) //-2 -22
-one_sbyte(c1) //-1
-two_sbyte(c1, c2) //-1 -11
+no_param()          /* 0 */
+one_long(l1)        /* -4 */
+two_longs(l1, l2)   /* -4 -44 */
+one_int(i1)         /* -3 */
+two_ints(i1, i2)    /* -3 -33 */
+one_short(h1)       /* -2 */
+two_shorts(h1, h2)  /* -2 -22 */
+one_sbyte(c1)       /* -1 */
+two_sbyte(c1, c2)   /* -1 -11 */
 
-one_ulong(ul1) //4
-two_ulongs(ul1, ul2) //4 44
-one_uint(ui1) //3
-two_uints(ui1, ui2) //3 33
-one_ushort(uh1) //2
-two_ushorts(uh1, uh2) //2 22
-one_usbyte(uc1) //1
-two_usbyte(uc1, uc2) //1 11
+one_ulong(ul1)          /* 4 */
+two_ulongs(ul1, ul2)    /* 4 44 */
+one_uint(ui1)           /* 3 */
+two_uints(ui1, ui2)     /* 3 33 */
+one_ushort(uh1)         /* 2 */
+two_ushorts(uh1, uh2)   /* 2 22 */
+one_usbyte(uc1)         /* 1 */
+two_usbyte(uc1, uc2)    /* 1 11 */
 
-// Samma utskrifter som ovan
+/* Samma utskrifter som ovan */
 one_ptrto_long(&l1)
 two_ptrto_longs(&l1, &l2)
 one_ptrto_int(&i1)
@@ -240,6 +240,6 @@ two_ptrto_ushorts(&uh1, &uh2)
 one_ptrto_usbyte(&uc1)
 two_ptrto_usbyte(&uc1, &uc2)
 
-// Misc
-one_long_one_int(l1, i1) //-4 -3
-one_int_one_long(i1, l1) //-3 -4
+/* Misc */
+one_long_one_int(l1, i1) /* -4 -3 */
+one_int_one_long(i1, l1) /* -3 -4 */

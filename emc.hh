@@ -96,7 +96,8 @@ enum class ast_type {
     NAMESPACE,
     USINGCHAIN,
     USING,
-    REM
+    REM,
+    INTDIV
 };
 
 enum class object_type {
@@ -295,6 +296,7 @@ struct emc_type {
     }
 };
 
+emc_type cast_to(const emc_type &a, const emc_types &target);
 emc_type standard_type_promotion(const emc_type &a, const emc_type &b);
 emc_type standard_type_promotion_or_invalid(const emc_type &a, const emc_type &b);
 emc_type string_to_type(std::string);
@@ -889,7 +891,8 @@ enum class emc_operators {
     MULT,
     REM,
     RDIV,
-    POW
+    POW,
+    INTDIV
 };
 
 /* Abstract class for binary operators, with a helper function. */
@@ -925,7 +928,7 @@ public:
                 value_obj = new object_long{(int64_t)(f->val - s->val)};
             else if constexpr (op_type == emc_operators::MULT)
                 value_obj = new object_long{(int64_t)(f->val * s->val)};
-            else if constexpr (op_type == emc_operators::RDIV)
+            else if constexpr (op_type == emc_operators::INTDIV)
                 value_obj = new object_long{(int64_t)(f->val / s->val)};
             else if constexpr (op_type == emc_operators::REM)
                 value_obj = new object_long{(int64_t)(f->val % s->val)};
@@ -946,7 +949,7 @@ public:
                 value_obj = new object_int{(int32_t)(f->val - s->val)};
             else if constexpr (op_type == emc_operators::MULT)
                 value_obj = new object_int{(int32_t)(f->val * s->val)};
-            else if constexpr (op_type == emc_operators::RDIV)
+            else if constexpr (op_type == emc_operators::INTDIV)
                 value_obj = new object_int{(int32_t)(f->val / s->val)};
             else if constexpr (op_type == emc_operators::REM)
                 value_obj = new object_int{(int32_t)(f->val % s->val)};
@@ -966,7 +969,7 @@ public:
                 value_obj = new object_short{(int16_t)(f->val - s->val)};
             else if constexpr (op_type == emc_operators::MULT)
                 value_obj = new object_short{(int16_t)(f->val * s->val)};
-            else if constexpr (op_type == emc_operators::RDIV)
+            else if constexpr (op_type == emc_operators::INTDIV)
                 value_obj = new object_short{(int16_t)(f->val / s->val)};
             else if constexpr (op_type == emc_operators::REM)
                 value_obj = new object_short{(int16_t)(f->val % s->val)};
@@ -986,7 +989,7 @@ public:
                 value_obj = new object_sbyte{(int8_t)(f->val - s->val)};
             else if constexpr (op_type == emc_operators::MULT)
                 value_obj = new object_sbyte{(int8_t)(f->val * s->val)};
-            else if constexpr (op_type == emc_operators::RDIV)
+            else if constexpr (op_type == emc_operators::INTDIV)
                 value_obj = new object_sbyte{(int8_t)(f->val / s->val)};
             else if constexpr (op_type == emc_operators::REM)
                 value_obj = new object_sbyte{(int8_t)(f->val % s->val)};
@@ -1006,7 +1009,7 @@ public:
                 value_obj = new object_ulong{(uint64_t)(f->val - s->val)};
             else if constexpr (op_type == emc_operators::MULT)
                 value_obj = new object_ulong{(uint64_t)(f->val * s->val)};
-            else if constexpr (op_type == emc_operators::RDIV)
+            else if constexpr (op_type == emc_operators::INTDIV)
                 value_obj = new object_ulong{(uint64_t)(f->val / s->val)};
             else if constexpr (op_type == emc_operators::REM)
                 value_obj = new object_ulong{(uint64_t)(f->val % s->val)};
@@ -1027,7 +1030,7 @@ public:
                 value_obj = new object_uint{(uint32_t)(f->val - s->val)};
             else if constexpr (op_type == emc_operators::MULT)
                 value_obj = new object_uint{(uint32_t)(f->val * s->val)};
-            else if constexpr (op_type == emc_operators::RDIV)
+            else if constexpr (op_type == emc_operators::INTDIV)
                 value_obj = new object_uint{(uint32_t)(f->val / s->val)};
             else if constexpr (op_type == emc_operators::REM)
                 value_obj = new object_uint{(uint32_t)(f->val % s->val)};
@@ -1047,7 +1050,7 @@ public:
                 value_obj = new object_ushort{(uint16_t)(f->val - s->val)};
             else if constexpr (op_type == emc_operators::MULT)
                 value_obj = new object_ushort{(uint16_t)(f->val * s->val)};
-            else if constexpr (op_type == emc_operators::RDIV)
+            else if constexpr (op_type == emc_operators::INTDIV)
                 value_obj = new object_ushort{(uint16_t)(f->val / s->val)};
             else if constexpr (op_type == emc_operators::REM)
                 value_obj = new object_ushort{(uint16_t)(f->val % s->val)};
@@ -1067,7 +1070,7 @@ public:
                 value_obj = new object_byte{(uint8_t)(f->val - s->val)};
             else if constexpr (op_type == emc_operators::MULT)
                 value_obj = new object_byte{(uint8_t)(f->val * s->val)};
-            else if constexpr (op_type == emc_operators::RDIV)
+            else if constexpr (op_type == emc_operators::INTDIV)
                 value_obj = new object_byte{(uint8_t)(f->val / s->val)};
             else if constexpr (op_type == emc_operators::REM)
                 value_obj = new object_byte{(uint8_t)(f->val % s->val)};
@@ -1094,6 +1097,9 @@ public:
             else if constexpr (op_type == emc_operators::POW) {
                 double p = pow(f->val, s->val);
                 value_obj = new object_double{p};
+            } else if constexpr (op_type == emc_operators::INTDIV) {
+                double p = f->val / s->val;
+                value_obj = new object_double{floor(p)};
             } else
                 THROW_BUG("");
         } else if (value_type.is_float()) {
@@ -1114,6 +1120,9 @@ public:
                 double p = pow(f->val, s->val);
                 check_in_range<double, float>(p);
                 value_obj = new object_float{(float)p};
+            } else if constexpr (op_type == emc_operators::INTDIV) {
+                float p = f->val / s->val;
+                value_obj = new object_float{floorf(p)};
             } else
                 THROW_BUG("");
         } else
@@ -1859,6 +1868,42 @@ public:
     }
 };
 
+class ast_node_intdiv: public ast_node_bin_op {
+public:
+    ast_node_intdiv() :
+            ast_node_intdiv(nullptr, nullptr)
+    {
+    }
+    ast_node_intdiv(ast_node *first, ast_node *sec) :
+            ast_node_bin_op(first, sec)
+    {
+        type = ast_type::INTDIV;
+    }
+
+    emc_type resolve()
+    {
+        value_type = standard_type_promotion(first->resolve(), sec->resolve());
+
+        /* Create an object from the value of first and sec's objects */
+        if (value_type.is_const_expr)
+            make_value_obj<emc_operators::INTDIV>();
+
+        return value_type;
+    }
+
+    obj* resolve_value()
+    {
+        return value_obj;
+    }
+
+    ast_node* clone()
+    {
+        auto c = new ast_node_intdiv { first->clone(), sec->clone() };
+        c->value_type = value_type;
+        return c;
+    }
+};
+
 class ast_node_rdiv: public ast_node_bin_op {
 public:
     ast_node_rdiv() :
@@ -1873,7 +1918,12 @@ public:
 
     emc_type resolve()
     {
-        value_type = standard_type_promotion(first->resolve(), sec->resolve());
+        auto value_type_tmp = standard_type_promotion(first->resolve(), sec->resolve());
+        /* rdiv only operates on floating point types */
+        if (!(value_type_tmp.is_double() || value_type_tmp.is_float()))
+            value_type = cast_to(value_type_tmp, emc_types::DOUBLE);
+        else
+            value_type = value_type_tmp;
 
         /* Create an object from the value of first and sec's objects */
         if (value_type.is_const_expr)

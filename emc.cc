@@ -613,6 +613,17 @@ emc_type standard_type_promotion(const emc_type &a, const emc_type &b)
     return ans;
 }
 
+emc_type cast_to(const emc_type &a, const emc_types &target)
+{
+    emc_type ans{target};
+    if (!ans.is_primitive())
+        THROW_NOT_IMPLEMENTED("");
+
+    ans.is_const_expr = a.is_const_expr;
+
+    return ans;
+}
+
 /* Implicit type conversion for native types. */
 emc_type standard_type_promotion_or_invalid(const emc_type &a, const emc_type &b)
 {

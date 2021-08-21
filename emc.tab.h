@@ -82,7 +82,8 @@ extern int yydebug;
     GEQ = 288,
     EQU = 289,
     NEQ = 290,
-    UMINUS = 291
+    INTDIV = 291,
+    UMINUS = 292
   };
 #endif
 
@@ -96,7 +97,7 @@ union YYSTYPE
     ast_node *node;
     std::string *s;
 
-#line 100 "emc.tab.h" /* yacc.c:1921  */
+#line 101 "emc.tab.h" /* yacc.c:1921  */
 };
 
 typedef union YYSTYPE YYSTYPE;

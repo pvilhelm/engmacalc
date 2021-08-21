@@ -722,6 +722,19 @@ void jit::setup_default_root_environment()
                           0);
           map_fnname_to_gccfnobj["powf"] = p_fnobj;
     }
+    { /* Add: float floorf( float arg) */
+        gcc_jit_param *params[] = {
+            gcc_jit_context_new_param (context, NULL, FLOAT_TYPE, "arg")
+        };
+        auto p_fnobj =
+            gcc_jit_context_new_function (context, NULL,
+                          GCC_JIT_FUNCTION_IMPORTED,
+                          FLOAT_TYPE,
+                          "floorf",
+                          1, params,
+                          0);
+          map_fnname_to_gccfnobj["floorf"] = p_fnobj;
+    }
     { /* Add: float fmodf( float x, float y ) */
         gcc_jit_param *params[] = {
             gcc_jit_context_new_param (context, NULL, FLOAT_TYPE, "x"),
@@ -750,7 +763,7 @@ void jit::setup_default_root_environment()
                           0);
         map_fnname_to_gccfnobj["fmod"] = p_fnobj;
     }
-    { /* Add: float powf( float base, float exponent ) */
+    { /* Add: double pow( double base, double exponent ) */
         gcc_jit_param *params[] = {
             gcc_jit_context_new_param (context, NULL, DOUBLE_TYPE, "base"),
             gcc_jit_context_new_param (context, NULL, DOUBLE_TYPE, "exponent")
@@ -763,6 +776,19 @@ void jit::setup_default_root_environment()
                           2, params,
                           0);
         map_fnname_to_gccfnobj["pow"] = p_fnobj;
+    }
+    { /* Add: double floor( double arg) */
+        gcc_jit_param *params[] = {
+            gcc_jit_context_new_param (context, NULL, DOUBLE_TYPE, "arg")
+        };
+        auto p_fnobj =
+            gcc_jit_context_new_function (context, NULL,
+                          GCC_JIT_FUNCTION_IMPORTED,
+                          DOUBLE_TYPE,
+                          "floor",
+                          1, params,
+                          0);
+          map_fnname_to_gccfnobj["floor"] = p_fnobj;
     }
     { /* Add: void printnl_double(double d) */
         gcc_jit_param *param_d =
@@ -1094,6 +1120,54 @@ void jit::walk_tree_rdiv(ast_node *node,
     DEBUG_ASSERT_NOTNULL(node);
     auto t_node = dynamic_cast<ast_node_rdiv*>(node);
     DEBUG_ASSERT_NOTNULL(t_node);
+
+    /* Get r-value a */
+    emc_type rt = t_node->value_type;
+    gcc_jit_type *result_type_emc = emc_type_to_jit_type(rt);
+
+    gcc_jit_rvalue *a_rv = nullptr;
+    walk_tree(t_node->first, current_block, current_function, &a_rv);
+    DEBUG_ASSERT_NOTNULL(a_rv);
+    gcc_jit_rvalue *b_rv = nullptr;
+    walk_tree(t_node->sec, current_block, current_function, &b_rv);
+    DEBUG_ASSERT_NOTNULL(b_rv);
+
+    gcc_jit_rvalue *a_casted_rv = nullptr;
+    gcc_jit_rvalue *b_casted_rv = nullptr;
+    
+    auto *a_type = gcc_jit_rvalue_get_type(a_rv);
+    auto *b_type = gcc_jit_rvalue_get_type(b_rv);
+
+    gcc_jit_type *result_type = nullptr;
+    if (a_type == DOUBLE_TYPE || b_type == DOUBLE_TYPE)
+        result_type = DOUBLE_TYPE;
+    else if (a_type == FLOAT_TYPE || b_type == FLOAT_TYPE)
+        result_type = FLOAT_TYPE;
+    else
+        result_type = DOUBLE_TYPE;
+
+    a_casted_rv = cast_to(a_rv, result_type);
+    b_casted_rv = cast_to(b_rv, result_type);
+
+    DEBUG_ASSERT_NOTNULL(result_type);
+    DEBUG_ASSERT(result_type_emc == result_type, "Not anticipated type");
+
+    gcc_jit_rvalue *rv_result = gcc_jit_context_new_binary_op(
+                                    context, nullptr, GCC_JIT_BINARY_OP_DIVIDE,
+                                    result_type, a_casted_rv, b_casted_rv);
+    DEBUG_ASSERT_NOTNULL(rv_result);                                
+    *current_rvalue = rv_result;
+}
+
+void jit::walk_tree_intdiv(ast_node *node, 
+                        gcc_jit_block **current_block, 
+                        gcc_jit_function **current_function, 
+                        gcc_jit_rvalue **current_rvalue)
+{
+    DEBUG_ASSERT_NOTNULL(current_rvalue);
+    DEBUG_ASSERT_NOTNULL(node);
+    auto t_node = dynamic_cast<ast_node_intdiv*>(node);
+    DEBUG_ASSERT_NOTNULL(t_node);
     /* Resolve types. */
 
     /* Get r-value a */
@@ -1113,9 +1187,23 @@ void jit::walk_tree_rdiv(ast_node *node,
     DEBUG_ASSERT_NOTNULL(result_type);
     DEBUG_ASSERT(result_type_emc == result_type, "Not anticipated type");
 
-    gcc_jit_rvalue *rv_result = gcc_jit_context_new_binary_op(
-                                    context, nullptr, GCC_JIT_BINARY_OP_DIVIDE,
-                                    result_type, a_casted_rv, b_casted_rv);
+    gcc_jit_rvalue *rv_result = nullptr;
+    if (result_type == DOUBLE_TYPE) {
+        gcc_jit_rvalue *rv_op_result = gcc_jit_context_new_binary_op(
+                        context, nullptr, GCC_JIT_BINARY_OP_DIVIDE,
+                        result_type, a_casted_rv, b_casted_rv);
+        rv_result = gcc_jit_context_new_call(context, 0, 
+            map_fnname_to_gccfnobj["floor"], 1, &rv_op_result);
+    } else if (result_type == FLOAT_TYPE) {
+        gcc_jit_rvalue *rv_op_result = gcc_jit_context_new_binary_op(
+                        context, nullptr, GCC_JIT_BINARY_OP_DIVIDE,
+                        result_type, a_casted_rv, b_casted_rv);
+        rv_result = gcc_jit_context_new_call(context, 0, 
+            map_fnname_to_gccfnobj["floorf"], 1, &rv_op_result);
+    } else
+        rv_result = gcc_jit_context_new_binary_op(
+                        context, nullptr, GCC_JIT_BINARY_OP_DIVIDE,
+                        result_type, a_casted_rv, b_casted_rv);
     DEBUG_ASSERT_NOTNULL(rv_result);                                
     *current_rvalue = rv_result;
 }
@@ -2829,6 +2917,9 @@ void jit::walk_tree(ast_node *node,
         break;
     case ast_type::USING:
         walk_tree_using(node, current_block, current_function, current_rvalue);
+        break;
+    case ast_type::INTDIV:
+        walk_tree_intdiv(node, current_block, current_function, current_rvalue);
         break;
     case ast_type::NAMESPACE:
         /* Do nothing. Only effects the AST buildup */

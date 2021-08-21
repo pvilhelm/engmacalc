@@ -60,6 +60,7 @@ ENDLN "\r\n"|"\n"
 ">="({WS}*{ENDLN})?  return GEQ;
 "=="({WS}*{ENDLN})?  return EQU;
 "!="({WS}*{ENDLN})?  return NEQ;
+"//"({WS}*{ENDLN})?  return INTDIV;
 
 "IF" return IF;
 "DO" return DO;
@@ -119,7 +120,7 @@ ENDLN "\r\n"|"\n"
 <IN_COMMENT>\n         
 <IN_COMMENT>"/" 
 
-"//".*
+
 {WS}                    /* ignore white space */
 \\\n                    /* ignore line continuation */
  /*^{WS}*\n*/           /* ignore empty new lines */

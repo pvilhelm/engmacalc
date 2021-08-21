@@ -278,21 +278,21 @@ DO
 END
 
 DO
-    Double d = 7 / 6
-    Float f = 7 / 6
+    Double d = 7 // 6
+    Float f = 7 // 6
     Double dd = 7. / 6
     Float ff = 7. / 6
 
-    Long l = 7 / 6
-    Int i = 7 / 6
-    Short h = 7 / 6
-    Sbyte c = 7 / 6
+    Long l = 7 // 6
+    Int i = 7 // 6
+    Short h = 7 // 6
+    Sbyte c = 7 // 6
 
     Ulong ul_one = 1
-    Ulong ul = 7 / 6
-    Uint ui = 7 / 6
-    Ushort uh = 7 / 6
-    Byte uc = 7 / 6
+    Ulong ul = 7 // 6
+    Uint ui = 7 // 6
+    Ushort uh = 7 // 6
+    Byte uc = 7 // 6
 
     IF d != 1 DO
         print("FAIL")

@@ -18,56 +18,56 @@ END
 FUNC longs() DO
     Long a = 6
     Long b = 2
-    Long c = a / b
+    Long c = a // b
     print(c)
 END
 
 FUNC ulongs() DO
     Ulong a = 6
     Ulong b = 2
-    Ulong c = a / b
+    Ulong c = a // b
     print(c)
 END
 
 FUNC ints() DO
     Int a = 6
     Int b = 2
-    Int c = a / b
+    Int c = a // b
     print(c)
 END
 
 FUNC uints() DO
     Uint a = 6
     Uint b = 2
-    Uint c = a / b
+    Uint c = a // b
     print(c)
 END
 
 FUNC shorts() DO
     Short a = 6
     Short b = 2
-    Short c = a / b
+    Short c = a // b
     print(c)
 END
 
 FUNC ushorts() DO
     Ushort a = 6
     Ushort b = 2
-    Ushort c = a / b
+    Ushort c = a // b
     print(c)
 END
 
 FUNC sbytes() DO
     Sbyte a = 6
     Sbyte b = 2
-    Sbyte c = a / b
+    Sbyte c = a // b
     print(c)
 END
 
 FUNC bytes() DO
     Byte a = 6
     Byte b = 2
-    Byte c = a / b
+    Byte c = a // b
     print(c)
 END
 

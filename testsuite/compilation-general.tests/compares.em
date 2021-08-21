@@ -455,152 +455,152 @@ Byte byte1 = 1
 Byte byte2 = 2
 
 /* Test some integer literals */
-eq_ints(2,2)                           //true
-eq_ints(2,3)                           //false
-eq_longs(long1, long2)                 //false
-eq_longs(long2, long2)                 //true
-eq_longs(long2, long1)                 //false
-eq_ints(int1, int2)                    //false
-eq_ints(int2, int2)                    //true
-eq_ints(int2, int1)                    //false
-eq_shorts(short1, short2)              //false
-eq_shorts(short2, short2)              //true
-eq_shorts(short2, short1)              //false
-eq_sbytes(sbyte1, sbyte2)              //false
-eq_sbytes(sbyte2, sbyte2)              //true
-eq_sbytes(sbyte2, sbyte1)              //false
-eq_ulongs(ulong1, ulong2)              //false
-eq_ulongs(ulong2, ulong2)              //true
-eq_ulongs(ulong2, ulong1)              //false
-eq_uints(uint1, uint2)                 //false
-eq_uints(uint2, uint2)                 //true
-eq_uints(uint2, uint1)                 //false
-eq_ushorts(ushort1, ushort2)           //false
-eq_ushorts(ushort2, ushort2)           //true
-eq_ushorts(ushort2, ushort1)           //false
-eq_bytes(byte1, byte2)                 //false
-eq_bytes(byte2, byte2)                 //true
-eq_bytes(byte2, byte1)                 //false
-ge_longs(long1, long2)                 //false
-ge_longs(long2, long2)                 //true
-ge_longs(long2, long1)                 //true
-ge_ints(int1, int2)                    //false
-ge_ints(int2, int2)                    //true
-ge_ints(int2, int1)                    //true
-ge_shorts(short1, short2)              //false
-ge_shorts(short2, short2)              //true
-ge_shorts(short2, short1)              //true
-ge_sbytes(sbyte1, sbyte2)              //false
-ge_sbytes(sbyte2, sbyte2)              //true
-ge_sbytes(sbyte2, sbyte1)              //true
-ge_ulongs(ulong1, ulong2)              //false
-ge_ulongs(ulong2, ulong2)              //true
-ge_ulongs(ulong2, ulong1)              //true
-ge_uints(uint1, uint2)                 //false
-ge_uints(uint2, uint2)                 //true
-ge_uints(uint2, uint1)                 //true
-ge_ushorts(ushort1, ushort2)           //false
-ge_ushorts(ushort2, ushort2)           //true
-ge_ushorts(ushort2, ushort1)           //true
-ge_bytes(byte1, byte2)                 //false
-ge_bytes(byte2, byte2)                 //true
-ge_bytes(byte2, byte1)                 //true
-le_longs(long1, long2)                 //true
-le_longs(long2, long2)                 //true
-le_longs(long2, long1)                 //false
-le_ints(int1, int2)                    //true
-le_ints(int2, int2)                    //true
-le_ints(int2, int1)                    //false
-le_shorts(short1, short2)              //true
-le_shorts(short2, short2)              //true
-le_shorts(short2, short1)              //false
-le_sbytes(sbyte1, sbyte2)              //true
-le_sbytes(sbyte2, sbyte2)              //true
-le_sbytes(sbyte2, sbyte1)              //false
-le_ulongs(ulong1, ulong2)              //true
-le_ulongs(ulong2, ulong2)              //true
-le_ulongs(ulong2, ulong1)              //false
-le_uints(uint1, uint2)                 //true
-le_uints(uint2, uint2)                 //true
-le_uints(uint2, uint1)                 //false
-le_ushorts(ushort1, ushort2)           //true
-le_ushorts(ushort2, ushort2)           //true
-le_ushorts(ushort2, ushort1)           //false
-le_bytes(byte1, byte2)                 //true
-le_bytes(byte2, byte2)                 //true
-le_bytes(byte2, byte1)                 //false
-g_longs(long1, long2)                  //false
-g_longs(long2, long2)                  //false
-g_longs(long2, long1)                  //true
-g_ints(int1, int2)                     //false
-g_ints(int2, int2)                     //false
-g_ints(int2, int1)                     //true
-g_shorts(short1, short2)               //false
-g_shorts(short2, short2)               //false
-g_shorts(short2, short1)               //true
-g_sbytes(sbyte1, sbyte2)               //false
-g_sbytes(sbyte2, sbyte2)               //false
-g_sbytes(sbyte2, sbyte1)               //true
-g_ulongs(ulong1, ulong2)               //false
-g_ulongs(ulong2, ulong2)               //false
-g_ulongs(ulong2, ulong1)               //true
-g_uints(uint1, uint2)                  //false
-g_uints(uint2, uint2)                  //false
-g_uints(uint2, uint1)                  //true
-g_ushorts(ushort1, ushort2)            //false
-g_ushorts(ushort2, ushort2)            //false
-g_ushorts(ushort2, ushort1)            //true
-g_bytes(byte1, byte2)                  //false
-g_bytes(byte2, byte2)                  //false
-g_bytes(byte2, byte1)                  //true
-l_longs(long1, long2)                  //true
-l_longs(long2, long2)                  //false
-l_longs(long2, long1)                  //false
-l_ints(int1, int2)                     //true
-l_ints(int2, int2)                     //false
-l_ints(int2, int1)                     //false
-l_shorts(short1, short2)               //true
-l_shorts(short2, short2)               //false
-l_shorts(short2, short1)               //false
-l_sbytes(sbyte1, sbyte2)               //true
-l_sbytes(sbyte2, sbyte2)               //false
-l_sbytes(sbyte2, sbyte1)               //false
-l_ulongs(ulong1, ulong2)               //true
-l_ulongs(ulong2, ulong2)               //false
-l_ulongs(ulong2, ulong1)               //false
-l_uints(uint1, uint2)                  //true
-l_uints(uint2, uint2)                  //false
-l_uints(uint2, uint1)                  //false
-l_ushorts(ushort1, ushort2)            //true
-l_ushorts(ushort2, ushort2)            //false
-l_ushorts(ushort2, ushort1)            //false
-l_bytes(byte1, byte2)                  //true
-l_bytes(byte2, byte2)                  //false
-l_bytes(byte2, byte1)                  //false
-ne_longs(long1, long2)                 //true
-ne_longs(long2, long2)                 //false
-ne_longs(long2, long1)                 //true
-ne_ints(int1, int2)                    //true
-ne_ints(int2, int2)                    //false
-ne_ints(int2, int1)                    //true
-ne_shorts(short1, short2)              //true
-ne_shorts(short2, short2)              //false
-ne_shorts(short2, short1)              //true
-ne_sbytes(sbyte1, sbyte2)              //true
-ne_sbytes(sbyte2, sbyte2)              //false
-ne_sbytes(sbyte2, sbyte1)              //true
-ne_ulongs(ulong1, ulong2)              //true
-ne_ulongs(ulong2, ulong2)              //false
-ne_ulongs(ulong2, ulong1)              //true
-ne_uints(uint1, uint2)                 //true
-ne_uints(uint2, uint2)                 //false
-ne_uints(uint2, uint1)                 //true
-ne_ushorts(ushort1, ushort2)           //true
-ne_ushorts(ushort2, ushort2)           //false
-ne_ushorts(ushort2, ushort1)           //true
-ne_bytes(byte1, byte2)                 //true
-ne_bytes(byte2, byte2)                 //false
-ne_bytes(byte2, byte1)                 //true
+eq_ints(2,2)                           /* true */
+eq_ints(2,3)                           /* false */
+eq_longs(long1, long2)                 /* false */
+eq_longs(long2, long2)                 /* true */
+eq_longs(long2, long1)                 /* false */
+eq_ints(int1, int2)                    /* false */
+eq_ints(int2, int2)                    /* true */
+eq_ints(int2, int1)                    /* false */
+eq_shorts(short1, short2)              /* false */
+eq_shorts(short2, short2)              /* true */
+eq_shorts(short2, short1)              /* false */
+eq_sbytes(sbyte1, sbyte2)              /* false */
+eq_sbytes(sbyte2, sbyte2)              /* true */
+eq_sbytes(sbyte2, sbyte1)              /* false */
+eq_ulongs(ulong1, ulong2)              /* false */
+eq_ulongs(ulong2, ulong2)              /* true */
+eq_ulongs(ulong2, ulong1)              /* false */
+eq_uints(uint1, uint2)                 /* false */
+eq_uints(uint2, uint2)                 /* true */
+eq_uints(uint2, uint1)                 /* false */
+eq_ushorts(ushort1, ushort2)           /* false */
+eq_ushorts(ushort2, ushort2)           /* true */
+eq_ushorts(ushort2, ushort1)           /* false */
+eq_bytes(byte1, byte2)                 /* false */
+eq_bytes(byte2, byte2)                 /* true */
+eq_bytes(byte2, byte1)                 /* false */
+ge_longs(long1, long2)                 /* false */
+ge_longs(long2, long2)                 /* true */
+ge_longs(long2, long1)                 /* true */
+ge_ints(int1, int2)                    /* false */
+ge_ints(int2, int2)                    /* true */
+ge_ints(int2, int1)                    /* true */
+ge_shorts(short1, short2)              /* false */
+ge_shorts(short2, short2)              /* true */
+ge_shorts(short2, short1)              /* true */
+ge_sbytes(sbyte1, sbyte2)              /* false */
+ge_sbytes(sbyte2, sbyte2)              /* true */
+ge_sbytes(sbyte2, sbyte1)              /* true */
+ge_ulongs(ulong1, ulong2)              /* false */
+ge_ulongs(ulong2, ulong2)              /* true */
+ge_ulongs(ulong2, ulong1)              /* true */
+ge_uints(uint1, uint2)                 /* false */
+ge_uints(uint2, uint2)                 /* true */
+ge_uints(uint2, uint1)                 /* true */
+ge_ushorts(ushort1, ushort2)           /* false */
+ge_ushorts(ushort2, ushort2)           /* true */
+ge_ushorts(ushort2, ushort1)           /* true */
+ge_bytes(byte1, byte2)                 /* false */
+ge_bytes(byte2, byte2)                 /* true */
+ge_bytes(byte2, byte1)                 /* true */
+le_longs(long1, long2)                 /* true */
+le_longs(long2, long2)                 /* true */
+le_longs(long2, long1)                 /* false */
+le_ints(int1, int2)                    /* true */
+le_ints(int2, int2)                    /* true */
+le_ints(int2, int1)                    /* false */
+le_shorts(short1, short2)              /* true */
+le_shorts(short2, short2)              /* true */
+le_shorts(short2, short1)              /* false */
+le_sbytes(sbyte1, sbyte2)              /* true */
+le_sbytes(sbyte2, sbyte2)              /* true */
+le_sbytes(sbyte2, sbyte1)              /* false */
+le_ulongs(ulong1, ulong2)              /* true */
+le_ulongs(ulong2, ulong2)              /* true */
+le_ulongs(ulong2, ulong1)              /* false */
+le_uints(uint1, uint2)                 /* true */
+le_uints(uint2, uint2)                 /* true */
+le_uints(uint2, uint1)                 /* false */
+le_ushorts(ushort1, ushort2)           /* true */
+le_ushorts(ushort2, ushort2)           /* true */
+le_ushorts(ushort2, ushort1)           /* false */
+le_bytes(byte1, byte2)                 /* true */
+le_bytes(byte2, byte2)                 /* true */
+le_bytes(byte2, byte1)                 /* false */
+g_longs(long1, long2)                  /* false */
+g_longs(long2, long2)                  /* false */
+g_longs(long2, long1)                  /* true */
+g_ints(int1, int2)                     /* false */
+g_ints(int2, int2)                     /* false */
+g_ints(int2, int1)                     /* true */
+g_shorts(short1, short2)               /* false */
+g_shorts(short2, short2)               /* false */
+g_shorts(short2, short1)               /* true */
+g_sbytes(sbyte1, sbyte2)               /* false */
+g_sbytes(sbyte2, sbyte2)               /* false */
+g_sbytes(sbyte2, sbyte1)               /* true */
+g_ulongs(ulong1, ulong2)               /* false */
+g_ulongs(ulong2, ulong2)               /* false */
+g_ulongs(ulong2, ulong1)               /* true */
+g_uints(uint1, uint2)                  /* false */
+g_uints(uint2, uint2)                  /* false */
+g_uints(uint2, uint1)                  /* true */
+g_ushorts(ushort1, ushort2)            /* false */
+g_ushorts(ushort2, ushort2)            /* false */
+g_ushorts(ushort2, ushort1)            /* true */
+g_bytes(byte1, byte2)                  /* false */
+g_bytes(byte2, byte2)                  /* false */
+g_bytes(byte2, byte1)                  /* true */
+l_longs(long1, long2)                  /* true */
+l_longs(long2, long2)                  /* false */
+l_longs(long2, long1)                  /* false */
+l_ints(int1, int2)                     /* true */
+l_ints(int2, int2)                     /* false */
+l_ints(int2, int1)                     /* false */
+l_shorts(short1, short2)               /* true */
+l_shorts(short2, short2)               /* false */
+l_shorts(short2, short1)               /* false */
+l_sbytes(sbyte1, sbyte2)               /* true */
+l_sbytes(sbyte2, sbyte2)               /* false */
+l_sbytes(sbyte2, sbyte1)               /* false */
+l_ulongs(ulong1, ulong2)               /* true */
+l_ulongs(ulong2, ulong2)               /* false */
+l_ulongs(ulong2, ulong1)               /* false */
+l_uints(uint1, uint2)                  /* true */
+l_uints(uint2, uint2)                  /* false */
+l_uints(uint2, uint1)                  /* false */
+l_ushorts(ushort1, ushort2)            /* true */
+l_ushorts(ushort2, ushort2)            /* false */
+l_ushorts(ushort2, ushort1)            /* false */
+l_bytes(byte1, byte2)                  /* true */
+l_bytes(byte2, byte2)                  /* false */
+l_bytes(byte2, byte1)                  /* false */
+ne_longs(long1, long2)                 /* true */
+ne_longs(long2, long2)                 /* false */
+ne_longs(long2, long1)                 /* true */
+ne_ints(int1, int2)                    /* true */
+ne_ints(int2, int2)                    /* false */
+ne_ints(int2, int1)                    /* true */
+ne_shorts(short1, short2)              /* true */
+ne_shorts(short2, short2)              /* false */
+ne_shorts(short2, short1)              /* true */
+ne_sbytes(sbyte1, sbyte2)              /* true */
+ne_sbytes(sbyte2, sbyte2)              /* false */
+ne_sbytes(sbyte2, sbyte1)              /* true */
+ne_ulongs(ulong1, ulong2)              /* true */
+ne_ulongs(ulong2, ulong2)              /* false */
+ne_ulongs(ulong2, ulong1)              /* true */
+ne_uints(uint1, uint2)                 /* true */
+ne_uints(uint2, uint2)                 /* false */
+ne_uints(uint2, uint1)                 /* true */
+ne_ushorts(ushort1, ushort2)           /* true */
+ne_ushorts(ushort2, ushort2)           /* false */
+ne_ushorts(ushort2, ushort1)           /* true */
+ne_bytes(byte1, byte2)                 /* true */
+ne_bytes(byte2, byte2)                 /* false */
+ne_bytes(byte2, byte1)                 /* true */
 
 
 
