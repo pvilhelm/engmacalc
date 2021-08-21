@@ -1,14 +1,3 @@
-/*
- * object-typerna borde ha en "convert_to(std::string)" virtuel function
- * för att konverta till en viss typ
- *
- * typer borde inte ligga i scope utan i namespaces ... för att ha stöd för
- * lokala typer
- * 
- * Borde finnas en local resolve och en global resolve per ast_node
- * för att det inte ska bli så mkt mek ...
- */
-
 #pragma once
 
 #include <stdexcept>

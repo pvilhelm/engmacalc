@@ -1,7 +1,7 @@
 
 GPP = g++
 GCC = gcc
-CPPFLAGS = -g -std=gnu++20
+CPPFLAGS = -g3 -ggdb3 -std=gnu++20
 CFLAGS = -g
 OBJ = emc.tab.o lex.yy.o compile.o emc.o Io.o util_string.o
 
@@ -37,6 +37,10 @@ Io.o: Std/Io/Io.c
 libjitruntime.so: jit_runtime.cc Io.o
 	$(GPP) $(CPPFLAGS) -fPIC -c jit_runtime.cc
 	$(GPP) $(CPPFLAGS) -shared -o libjitruntime.so jit_runtime.o Io.o
+
+.PHONY : runtest
+runtest :
+	runtest --srcdir testsuite
 
 .PHONY : clean
 clean :

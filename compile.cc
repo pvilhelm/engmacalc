@@ -2202,7 +2202,7 @@ void jit::walk_tree_def(ast_node *node,
         lval = gcc_jit_function_new_local(*current_function, 
             0, 
             var_type, 
-            ast_def->mangled_name.c_str());
+            (ast_def->mangled_name /*+ std::to_string(scope_n_nested())*/).c_str());
     else
         lval = gcc_jit_context_new_global(
             context, 0, GCC_JIT_GLOBAL_EXPORTED,
@@ -2373,23 +2373,15 @@ void jit::walk_tree_doblock(    ast_node *node,
                                 gcc_jit_function **current_function,
                                 gcc_jit_rvalue **current_rvalue)
 {
+    DEBUG_ASSERT_NOTNULL(node);
     auto do_ast = dynamic_cast<ast_node_doblock*>(node);
-
-    gcc_jit_rvalue *rval = nullptr;
-    gcc_jit_block *last_block = *current_block;
+    DEBUG_ASSERT_NOTNULL(do_ast);
     
     push_scope();
-    walk_tree(do_ast->first, &last_block, current_function, &rval);
+    gcc_jit_rvalue* rval = nullptr; /* Discards any rval */
+    walk_tree(do_ast->first, current_block, current_function, &rval);
     pop_scope();
-
-    if (last_block != *current_block) { /* Atleast one block was added */
-        *current_block = last_block; /* Point the head to the last block added */
-    } else if (0 && rval) { /* There was only expressions so add it/them to the current block. */
-        /* TODO: Remove. Is commented out? */
-        gcc_jit_block_add_eval(*current_block, 0, rval);
-    }
-    /* The last rval of the expression list is its value. */
-    *current_rvalue = rval;    
+  
 }
 
 /* TODO: Global, refactor away. */
