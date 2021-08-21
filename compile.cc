@@ -1815,15 +1815,11 @@ void jit::walk_tree_fdefi(ast_node *node,
 
     v_return_type.pop_back(); /* Pop return type stack */
 
-    /* Was the last block terminated? */
-    if (v_block_terminated.back())
-        v_block_terminated.pop_back();
     /* If the return type is void, add a implicit return if there is none */
-    else if (return_type == VOID_TYPE) {
+    if (!v_block_terminated.back() && return_type == VOID_TYPE) {
         gcc_jit_block_end_with_void_return(last_block, 0);
-        v_block_terminated.pop_back();
-    } else
-        THROW_BUG("Function " + ast_funcdec->mangled_name + "'s last block not terminated with return.");
+    }
+    v_block_terminated.pop_back();
 
     /* Check so that we are back to the amount of terminations as when we started. */
     DEBUG_ASSERT(block_depth == v_block_terminated.size(), "Messup in terminations");
@@ -2384,123 +2380,210 @@ void jit::walk_tree_doblock(    ast_node *node,
   
 }
 
-/* TODO: Global, refactor away. */
-gcc_jit_block *active_also_block = nullptr;
-
 void jit::walk_tree_if(ast_node *node, 
                         gcc_jit_block **current_block, 
                         gcc_jit_function **current_function, 
                         gcc_jit_rvalue **current_rvalue)
-{
-    gcc_jit_block *active_also_block_poped = nullptr;
-    
+{    
     auto if_ast = dynamic_cast<ast_node_if*>(node);
-    /* Messy stack of active also block for nested ifs ... TODO: Refactor */
-    if (if_ast->is_root_ifnode) {
-        active_also_block_poped = active_also_block;
-        active_also_block = nullptr;
-    }
-    /* Create the also block (if any)*/
-    gcc_jit_block *also_block = nullptr;
-    /* Walk the tree and append any blocks to the if block or any statements to the block in question */
-    gcc_jit_rvalue *also_rv = nullptr;
-    gcc_jit_block *last_also_block = nullptr;
+    auto elseif_t = dynamic_cast<ast_node_elseiflist*>(if_ast->elseif_el);
 
-    v_block_terminated.push_back(false);
-    if (if_ast->also_el) {
-        also_block = gcc_jit_function_new_block(*current_function, new_unique_name("also_block").c_str());
-        last_also_block = also_block;
-        push_scope();
-        walk_tree(if_ast->also_el, &last_also_block, current_function, &also_rv);
-        pop_scope();
-        /* active_also_block is used by superceeding ifs */
-        active_also_block = also_block;
-    }
-    bool also_was_terminated = v_block_terminated.back();
-    v_block_terminated.pop_back();
+    bool are_all_ifs_terminated = true; /* Keeps track of if all paths RETURN */
 
     /* Create the if-block */
     gcc_jit_block_add_comment(*current_block, 0, "IF");
     gcc_jit_block *if_block = gcc_jit_function_new_block(*current_function, new_unique_name("if_block").c_str());
-    /* Walk the tree and append any blocks to the if block or any statements to the block in question */
-    gcc_jit_rvalue *if_rv = nullptr;
-    gcc_jit_block *last_if_block = if_block;
-    v_block_terminated.push_back(false);
-    push_scope();
-    walk_tree(if_ast->if_el, &last_if_block, current_function, &if_rv);
-    pop_scope();
-    bool if_was_terminated = v_block_terminated.back();
-    v_block_terminated.pop_back();
 
-    /* Create the else block (if any)*/
-    gcc_jit_block *else_block = nullptr;
-    /* Walk the tree and append any blocks to the if block or any statements to the block in question */
-    gcc_jit_rvalue *else_rv = nullptr;
-    gcc_jit_block *last_else_block = nullptr;
-
-    v_block_terminated.push_back(false);
-    if (if_ast->else_el) {
-        else_block = gcc_jit_function_new_block(*current_function, new_unique_name("else_block").c_str());
-        last_else_block = else_block;
-        push_scope();
-        walk_tree(if_ast->else_el, &last_else_block, current_function, &else_rv);
-        pop_scope();
+    /* If there are else if:s, create blocks for each of them.
+       Both for the else if's condition, and code. */
+    std::vector<gcc_jit_block*> v_elseif_block;
+    std::vector<gcc_jit_block*> v_elseif_cond_block;
+    if (elseif_t) {
+        for (int i = 0; i < elseif_t->v_elseif.size(); i++)   
+            v_elseif_cond_block.push_back(gcc_jit_function_new_block(*current_function, new_unique_name("elseif_block_cond").c_str()));
+        for (int i = 0; i < elseif_t->v_elseif.size(); i++)   
+            v_elseif_block.push_back(gcc_jit_function_new_block(*current_function, new_unique_name("elseif_block").c_str()));
     }
-    bool else_was_terminated = v_block_terminated.back();
-    v_block_terminated.pop_back();
 
-    /* With the if and else block created we can end the current block with a conditional jump to either of these. */
-    gcc_jit_rvalue *cond_rv = nullptr;
-    walk_tree(if_ast->cond_e, current_block, current_function, &cond_rv);
-    DEBUG_ASSERT(cond_rv != nullptr, "If condition rvalue is null");
+    /* If there is a else, create the else block */
+    gcc_jit_block *else_block = nullptr;
+    if (if_ast->else_el) 
+        else_block = gcc_jit_function_new_block(*current_function, new_unique_name("else_block").c_str());
 
-    gcc_jit_rvalue *bool_cond_rv = gcc_jit_context_new_cast(
+    /* If there is an also, create the also block */
+    gcc_jit_block *also_block = nullptr;
+    if (if_ast->also_el) 
+        also_block = gcc_jit_function_new_block(*current_function, new_unique_name("also_block").c_str());
+
+    /* Create an after block only if needed, to allow for functions with 
+       IF 1 DO RETURN 1 ELSE DO RETURN 2 END as body, without extra
+       RETURN after */
+    gcc_jit_block *after_block = nullptr;
+    auto create_after_block_if_needed =[&]() {
+        if (!after_block)
+            after_block = gcc_jit_function_new_block(*current_function, 
+                new_unique_name("after_block").c_str()); 
+        return after_block;
+    };
+
+    /* If blocks condition with jump */
+    {
+        /* Begin with making the (first) if's conditation rval */
+        gcc_jit_rvalue *cond_rv = nullptr;
+        walk_tree(if_ast->cond_e, current_block, current_function, &cond_rv);
+        DEBUG_ASSERT(cond_rv != nullptr, "If condition rvalue is null");
+        gcc_jit_rvalue *bool_cond_rv = gcc_jit_context_new_cast(
             context, 0,
             gcc_jit_context_new_cast(context, 0, cond_rv, INT_TYPE),
             BOOL_TYPE);
 
-    gcc_jit_block *after_block = nullptr;
+        /* The if condition controls a jump to either the if block or
+        the elseif block if that exists, otherwise, the else block,
+        if that exists, otherwise the afterblock. */
+    
+        gcc_jit_block *if_false_block = nullptr;
+        gcc_jit_block *if_true_block = if_block;
 
-    if (if_ast->else_el)
-        gcc_jit_block_end_with_conditional(*current_block, 0, bool_cond_rv, if_block, else_block);
-    else {
-        after_block = gcc_jit_function_new_block(*current_function, new_unique_name("after_block").c_str());
-        gcc_jit_block_end_with_conditional(*current_block, 0, bool_cond_rv, if_block, after_block);
+        if (v_elseif_block.size())
+            if_false_block = v_elseif_cond_block.front();
+        else if (if_ast->else_el)
+            if_false_block = else_block;
+        else
+            if_false_block = create_after_block_if_needed();
+
+        /* Now make a jump from current block to where ever the if condition wanna go */
+        gcc_jit_block_end_with_conditional(*current_block, 0, bool_cond_rv, if_true_block, if_false_block);
+    }
+    
+    /* Now do the same for each else if-condition, if any */
+    if (elseif_t)
+    for (int i = 0; i < elseif_t->v_cond_e.size(); i++) {
+        /* Begin with making the if else's conditation rval */
+        gcc_jit_rvalue *cond_rv = nullptr;
+        walk_tree(elseif_t->v_cond_e[i], current_block, current_function, &cond_rv);
+        DEBUG_ASSERT(cond_rv != nullptr, "If else condition rvalue is null");
+
+        gcc_jit_rvalue *bool_cond_rv = gcc_jit_context_new_cast(
+            context, 0,
+            gcc_jit_context_new_cast(context, 0, cond_rv, INT_TYPE),
+            BOOL_TYPE);
+
+        gcc_jit_block *if_false_block = nullptr;
+        gcc_jit_block *if_true_block = v_elseif_block[i];
+
+        /* If the condition is false, fall thought to the next if else condition
+           block, if there are any left. */
+        if (i + 1 < v_elseif_block.size())
+            if_false_block = v_elseif_cond_block[i + 1];
+        /* Otherwise go to the else block, if any */
+        else if (if_ast->else_el)
+            if_false_block = else_block;
+        /* Otherwise go to the after block */
+        else
+            if_false_block = create_after_block_if_needed();;
+
+        /* Now make a jump from conditional block to where ever the if else condition wanna go */
+        gcc_jit_block_end_with_conditional(v_elseif_cond_block[i], 0, bool_cond_rv, if_true_block, if_false_block);
     }
 
-    /* The last block in the if and else part need to jump to the after_block,
-     * unless both the if and else block are terminated. */
-    if (!if_was_terminated || !else_was_terminated || !also_was_terminated) {
-        if (!after_block)
-            after_block = gcc_jit_function_new_block(*current_function, new_unique_name("after_block").c_str());
+    /* The else block and also block have no condition. */
 
-        /* If the also block is not terminated, it need to go to the after block */
-        if (if_ast->also_el && !also_was_terminated) {
-            gcc_jit_block_end_with_jump(last_also_block, 0, after_block);
-        }
-        if (!if_was_terminated) {
-            /* If there is an also block, the if need to go there. */
-            if (if_ast->also_el) {
-                gcc_jit_block_end_with_jump(last_if_block, 0, also_block);
-            /* If the linked if has an active also, we need to go there. */
-            } else if (active_also_block)
-                gcc_jit_block_end_with_jump(last_if_block, 0, active_also_block);
+
+    /* Now, lets populate each block with its 'code' */
+
+    /* We begin with the if block's code */
+    {
+        v_block_terminated.push_back(false); /* Keeps track of if block is terminated */
+        gcc_jit_block *last_block = if_block;
+        gcc_jit_rvalue *rv = nullptr; /* TODO: Remove */
+        push_scope();
+        walk_tree(if_ast->if_el, &last_block, current_function, &rv);
+        pop_scope();
+        bool was_terminated = v_block_terminated.back();
+        are_all_ifs_terminated = are_all_ifs_terminated && was_terminated;
+        v_block_terminated.pop_back();
+
+        /* If the if-block was not terminated, it needs to end with a jump
+       to the also block, if that exists, otherwise to the after block. */
+        if (!was_terminated)
+            if (if_ast->also_el)
+                gcc_jit_block_end_with_jump(last_block, 0, also_block);
             else
-                gcc_jit_block_end_with_jump(last_if_block, 0, after_block);    
-        }
-        if (if_ast->else_el && !else_was_terminated)
-            gcc_jit_block_end_with_jump(last_else_block, 0, after_block);
-        /* Repoint the head block. */
-        *current_block = after_block;
-    } else {
-        /* Both the if and else was terminated so there can be no after-block. I.e.
-         * both returned. */
-        v_block_terminated.back() = true;
+                gcc_jit_block_end_with_jump(last_block, 0, create_after_block_if_needed());
     }
 
-    if (if_ast->is_root_ifnode) {
-        active_also_block = active_also_block_poped;
+    /* Now do the same for all the else if blocks, if any. */
+    if (elseif_t)
+    for (int i = 0; i < elseif_t->v_cond_e.size(); i++) {
+        v_block_terminated.push_back(false); /* Keeps track of if block is terminated */
+        gcc_jit_block *last_block = v_elseif_block[i];
+        gcc_jit_rvalue *rv = nullptr; /* TODO: Remove */
+        push_scope();
+        walk_tree(elseif_t->v_elseif[i], &last_block, current_function, &rv);
+        pop_scope();
+        bool was_terminated = v_block_terminated.back();
+        are_all_ifs_terminated = are_all_ifs_terminated && was_terminated;
+        v_block_terminated.pop_back();
+
+        /* If the if-block was not terminated, it needs to end with a jump
+       to the also block, if that exists, otherwise to the after block. */
+        if (!was_terminated)
+            if (if_ast->also_el)
+                gcc_jit_block_end_with_jump(last_block, 0, also_block);
+            else
+                gcc_jit_block_end_with_jump(last_block, 0, create_after_block_if_needed());
     }
+
+    /* Now do the same for the else block, if any */
+    bool else_was_terminated = false;
+    if (if_ast->else_el) {
+        v_block_terminated.push_back(false); /* Keeps track of if block is terminated */
+        gcc_jit_block *last_block = else_block;
+        gcc_jit_rvalue *rv = nullptr; /* TODO: Remove */
+        push_scope();
+        walk_tree(if_ast->else_el, &last_block, current_function, &rv);
+        pop_scope();
+        else_was_terminated = v_block_terminated.back();
+        v_block_terminated.pop_back();
+
+        /* If the if-block was not terminated, it needs to end with a jump
+       to the also block, if that exists, otherwise to the after block. */
+        if (!else_was_terminated)
+                gcc_jit_block_end_with_jump(last_block, 0, create_after_block_if_needed());
+    }
+
+    /* Now do the same for the also block, if any */
+    bool also_was_terminated = false;
+    if (if_ast->also_el) {
+        if (are_all_ifs_terminated)
+            THROW_USER_ERROR_WITH_LOC("Useless ALSO since all IFs and ELSE IFs have a RETURN", if_ast->also_el->loc);
+
+        v_block_terminated.push_back(false); /* Keeps track of if block is terminated */
+        gcc_jit_block *last_block = also_block;
+        gcc_jit_rvalue *rv = nullptr; /* TODO: Remove */
+        push_scope();
+        walk_tree(if_ast->also_el, &last_block, current_function, &rv);
+        pop_scope();
+        also_was_terminated = v_block_terminated.back();
+        v_block_terminated.pop_back();
+
+        
+        /* If the if-block was not terminated, it needs to end with a jump
+       to the also block, if that exists, otherwise to the after block. */
+        if (!also_was_terminated)
+                gcc_jit_block_end_with_jump(last_block, 0, create_after_block_if_needed());
+    }
+    
+    bool all_paths_terminated = false;
+    /* If the ALSO and the ELSE are terminated, all paths are no matter the IFs. */
+    if ((if_ast->else_el && else_was_terminated) && (if_ast->also_el && also_was_terminated))
+        all_paths_terminated = true;
+    /* If the ifs and the else are terminated, all paths are terminated. */
+    else if ((if_ast->else_el && else_was_terminated) && are_all_ifs_terminated)
+        all_paths_terminated = true;
+    v_block_terminated.back() = all_paths_terminated;
+    /* Set current_block to the after block (which might be null if all paths terminate) */
+    *current_block = after_block;
 }
 
 void jit::walk_tree_while(ast_node *node, 

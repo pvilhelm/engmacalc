@@ -407,7 +407,7 @@ emc_type ast_node_funcdef::resolve()
     compilation_units.get_current_objstack().pop_scope();
 
     /* TODO: code_block is probably uneccesary. */
-    auto fobj = new object_func { code_block->clone(), name, nspace,
+    auto fobj = new object_func { 0, name, nspace,
             parlist->clone() , return_list->clone()};
     /* Resolve the mangled name and write it to this and the function object. */
     /* TODO: ALlow for clinkage, see funcdec */

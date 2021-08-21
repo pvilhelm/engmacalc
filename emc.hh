@@ -2321,18 +2321,61 @@ public:
     }
 };
 
+class ast_node_elseiflist : public ast_node {
+public:
+    ast_node_elseiflist(ast_node *cond_e, ast_node *elseif) 
+    {
+        v_cond_e.push_back(cond_e);
+        v_elseif.push_back(elseif);
+    }
+
+    ~ast_node_elseiflist() 
+    {
+        for (auto cond_e : v_cond_e)
+            delete cond_e;
+        for (auto elseif : v_elseif)
+            delete elseif;
+    }
+
+    void append_elseif(ast_node* cond_e, ast_node* elseif)
+    {
+        v_cond_e.push_back(cond_e);
+        v_elseif.push_back(elseif);
+    }
+
+    emc_type resolve()
+    {
+        for (auto cond_e : v_cond_e)
+            cond_e->resolve();
+        for (auto elseif : v_elseif)
+            elseif->resolve();
+
+        return emc_type{emc_types::NONE};
+    }
+
+    ast_node *clone()
+    {
+        return 0;
+    }
+
+    std::vector<ast_node*> v_cond_e;
+    std::vector<ast_node*> v_elseif;
+};
 
 
 class ast_node_if: public ast_node {
 public:
-    ast_node_if(bool is_root_ifnode, ast_node *cond_e, ast_node *if_el) :
-            ast_node_if(is_root_ifnode, cond_e, if_el, nullptr)
+    ast_node_if(ast_node *cond_e, ast_node *if_el) :
+            ast_node_if(cond_e, if_el, nullptr, nullptr, nullptr)
     {
     }
-    ast_node_if(bool is_root_ifnode, ast_node *cond_e, ast_node *if_el, ast_node *else_el) :
-                ast_node_if(is_root_ifnode, cond_e, if_el, else_el, nullptr) {}
-    ast_node_if(bool is_root_ifnode, ast_node *cond_e, ast_node *if_el, ast_node *else_el, ast_node *also_el) :
-            is_root_ifnode(is_root_ifnode), cond_e(cond_e), if_el(if_el), else_el(else_el), also_el(also_el)
+    ast_node_if(ast_node *cond_e, ast_node *if_el, ast_node *else_el) :
+                ast_node_if(cond_e, if_el, else_el, nullptr, nullptr) {}
+            ast_node_if(ast_node *cond_e, ast_node *if_el, ast_node *else_el, ast_node *also_el) :
+                ast_node_if(cond_e, if_el, else_el, also_el, nullptr) {}
+
+    ast_node_if(ast_node *cond_e, ast_node *if_el, ast_node *else_el, ast_node *also_el, ast_node *elseif_el) :
+            cond_e(cond_e), if_el(if_el), else_el(else_el), also_el(also_el), elseif_el(elseif_el)
     {
         type = ast_type::IF;
     }
@@ -2342,12 +2385,13 @@ public:
         delete if_el;
         delete else_el;
         delete also_el;
+        delete elseif_el;
     }
-    
-    bool is_root_ifnode = false;
-    ast_node *cond_e;
-    ast_node *if_el;
-    ast_node *else_el; /* else_el can be a linked IF or another expression (for IF ELSE ... ) */
+
+    ast_node *cond_e = 0;
+    ast_node *if_el = 0;
+    ast_node *elseif_el = 0;
+    ast_node *else_el = 0;
     ast_node *also_el = 0;
     /* The ALSO statement is assumed to be in
      * the first IF node and not the linked IFs. */
@@ -2359,73 +2403,40 @@ public:
     emc_type resolve()
     {
         cond_e->resolve();
-        if (!else_el && !also_el) {
-            
-            compilation_units.get_current_objstack().push_new_scope();
-            value_type = if_el->resolve();
-            compilation_units.get_current_objstack().pop_scope();
-            return value_type;
-        } else if (else_el && !also_el) {
-            
-            compilation_units.get_current_objstack().push_new_scope();
-            auto value_type_if = if_el->resolve();
-            compilation_units.get_current_objstack().pop_scope();
-            compilation_units.get_current_objstack().push_new_scope();
-            auto value_type_else = else_el->resolve();
-            compilation_units.get_current_objstack().pop_scope();
+        compilation_units.get_current_objstack().push_new_scope();
+        if_el->resolve();
+        compilation_units.get_current_objstack().pop_scope();
 
-            auto t = standard_type_promotion_or_invalid(value_type_if, value_type_else);
-            if (t.is_valid())
-                return value_type = t;
-            else
-                return value_type = emc_type{emc_types::NONE};
-        } else if (!else_el && also_el) {
-            compilation_units.get_current_objstack().push_new_scope();
-            auto value_type_if = if_el->resolve();
-            compilation_units.get_current_objstack().pop_scope();
-            compilation_units.get_current_objstack().push_new_scope();
-            auto value_type_also = also_el->resolve();
-            compilation_units.get_current_objstack().pop_scope();
+        if (elseif_el) {
+            auto *elseif_el_t = dynamic_cast<ast_node_elseiflist*>(elseif_el);
+            DEBUG_ASSERT_NOTNULL(elseif_el_t);
 
-            auto t = standard_type_promotion_or_invalid(value_type_if, value_type_also);
-            if (t.is_valid())
-                return value_type = t;
-            else
-                return value_type = emc_type{emc_types::NONE};
-        } else {
-            compilation_units.get_current_objstack().push_new_scope();
-            auto value_type_if = if_el->resolve();
-            compilation_units.get_current_objstack().pop_scope();
-            compilation_units.get_current_objstack().push_new_scope();
-            auto value_type_else = else_el->resolve();
-            compilation_units.get_current_objstack().pop_scope();
-            compilation_units.get_current_objstack().push_new_scope();
-            auto value_type_also = also_el->resolve();
-            compilation_units.get_current_objstack().pop_scope();
+            for (auto cond_e : elseif_el_t->v_cond_e)
+                cond_e->resolve();
 
-            auto t = standard_type_promotion_or_invalid(value_type_if, value_type_else);
-            t = standard_type_promotion_or_invalid(t, value_type_also);
-            if (t.is_valid())
-                return value_type = t;
-            else
-                return value_type = emc_type{emc_types::NONE};
+            for (auto elseif : elseif_el_t->v_elseif) {
+                compilation_units.get_current_objstack().push_new_scope();
+                elseif->resolve();
+                compilation_units.get_current_objstack().pop_scope();
+            }
         }
-    }
+        if (else_el) {
+            compilation_units.get_current_objstack().push_new_scope();
+            else_el->resolve();
+            compilation_units.get_current_objstack().pop_scope();
+        }
+        if (also_el) {
+            compilation_units.get_current_objstack().push_new_scope();
+            also_el->resolve();
+            compilation_units.get_current_objstack().pop_scope();
+        }
 
-    void append_linked_if(ast_node *node)
-    {
-        auto p = &else_el;
-        while(*p)
-            p = &(dynamic_cast<ast_node_if*>(*p)->else_el);
-        *p = node;
+        return value_type = emc_type{emc_types::NONE};
     }
 
     ast_node* clone()
     {
-        auto c = new ast_node_if {is_root_ifnode, cond_e->clone(), if_el->clone(),
-                else_el ? else_el->clone() : nullptr };
-        c->value_type = value_type;
-        return c;        
+        return 0;        
     }
 };
 
