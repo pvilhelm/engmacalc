@@ -110,6 +110,13 @@ void check_in_range(uint64_t v)
         THROW_USER_ERROR("Variable with value: " + std::to_string(v) + 
         "too big for casting to a " + type_to_string<T>());
 }
+template<int64_t, uint64_t>
+void check_in_range(int64_t v)
+{
+    if (v < 0)
+        THROW_USER_ERROR("Variable with value: " + std::to_string(v) + 
+        "too big for casting to a " + type_to_string<uint64_t>());
+}
 
 template<class T>
 void check_exact_as_double(T v)

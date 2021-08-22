@@ -137,11 +137,7 @@ void verify_obj_fits_in_type(obj* obj, emc_type type)
 auto obj_t = dynamic_cast<obj_class*>(obj);\
 DEBUG_ASSERT_NOTNULL(obj_t);\
 \
-if (obj_t->val > std::numeric_limits<ctype>::max() ||\
-    obj_t->val < std::numeric_limits<ctype>::lowest())\
-    THROW_BUG("Invalid range slipped through to code generation: " <<\
-        obj_t->val << " does not fit in a " #ctype );\
-} while((0))
+check_in_range<decltype(obj_t->val),ctype>(obj_t->val); } while((0))
 
     /* TODO: Floats, only if exact conversion maybe? */
     if (type.is_double()) {
