@@ -34,6 +34,24 @@ extern int ast_node_count;
 extern int value_expr_count;
 #endif
 
+
+struct engma_options {
+    std::string outputfile_name; 
+
+    bool output_to_obj_file = false; /* Output to an object file */
+    bool output_to_so = false; /* Output to shared lib */
+    bool execute = true; /* Execute the compiled program as JIT */
+
+    std::vector<std::string> include_dirs;
+
+    std::vector<std::string> files; /* All the Engma files to process */
+    
+    
+};
+
+/* CLI options parsed into this struct in main() */
+extern struct engma_options opts;
+
 /* compilation_units keeps track of type and objects in scopes for each compilation unit. */
 class ast_compilation_units;
 class typescope_stack;
@@ -2447,6 +2465,7 @@ public:
 
 class ast_node_funcdef: public ast_node {
 public:
+    
     ast_node_funcdef(ast_node *parlist, ast_node *code_block,
             ast_node* typedotnamechain, ast_node *return_list)
     :
@@ -2462,6 +2481,14 @@ public:
         if (!return_list)
             this->return_list = new ast_node_vardef_list{};  
     }
+    ast_node_funcdef(ast_node *parlist, ast_node *code_block,
+            ast_node* typedotnamechain, ast_node *return_list,
+            bool c_linkage)
+    : ast_node_funcdef(parlist, code_block, typedotnamechain, return_list)
+    {
+        this->c_linkage = c_linkage;
+    }
+
     /* fobj äger ast_noderna kanske är dumt? */
     ~ast_node_funcdef()
     {
@@ -2477,7 +2504,8 @@ public:
     ast_node* typedotnamechain = nullptr;
     std::string name;
     std::string nspace;
-    std::string mangled_name; 
+    std::string mangled_name;
+    bool c_linkage = false;
 
     emc_type resolve();
 };
@@ -2666,7 +2694,7 @@ public:
     ~ast_node_les()
     {
     }
-    
+
     emc_type resolve()
     {
         first->resolve(); sec->resolve();

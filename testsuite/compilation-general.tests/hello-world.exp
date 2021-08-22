@@ -1,5 +1,5 @@
 
-spawn ./engmac testsuite/$subdir/hello-world.em
+spawn $objdir/engmac -I../  $srcdir/$subdir/hello-world.em
 
 expect {
     "Hello world!\r\n" {pass "Test passed.\n"}

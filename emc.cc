@@ -490,9 +490,16 @@ emc_type ast_node_funcdef::resolve()
     auto fobj = new object_func { 0, name, nspace,
             parlist->clone() , return_list->clone()};
     /* Resolve the mangled name and write it to this and the function object. */
-    /* TODO: ALlow for clinkage, see funcdec */
-    mangled_name = mangle_emc_fn_name(*fobj);
-    fobj->mangled_name = mangled_name;
+    /* If c linkage is specified there is no name mangleing. */
+    if (c_linkage) { 
+        fobj->c_linkage = true;
+        fobj->mangled_name = name;
+        mangled_name = name;
+    /* Resolve the mangled name and write it to this and the function object. */
+    } else {
+        mangled_name = mangle_emc_fn_name(*fobj);
+        fobj->mangled_name = mangled_name;
+    }
     /* Push the function object to top scope */
     compilation_units.get_current_objstack().get_top_scope().push_object(fobj);
 
@@ -582,9 +589,22 @@ emc_type ast_node_using::resolve()
         namespace fs = std::filesystem;
         /* TODO: add support for looking for "system headers" in some folders */
         /* TODO: add support for Foo.emh (headers) for refering to some object file */
+
+        /* Relative to current dir has first priority */
         bool dir_exists = fs::is_directory(dir_path);
+        if (!dir_exists) {
+            for (std::string dir : opts.include_dirs) {
+                dir_exists = fs::is_directory(dir + "/" + dir_path);
+                if (dir_exists) {
+                    dir_path = dir + "/" + dir_path;
+                    break;
+                }
+            }
+        } 
+        
         if (!dir_exists)
-            THROW_BUG("Using do not resolve to a directory: " + dir_path);
+            THROW_BUG("Using do not resolve to a directory: " + path);
+
         /* Look for .em file in that dir */
         std::string file_path = dir_path + "/" + split_last(dir_path, "/") + ".em";
         bool file_exists = fs::is_regular_file(file_path);

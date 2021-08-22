@@ -177,6 +177,31 @@ se: e                           {$$ = $1; $$->loc = @$;}
                                 auto p = new ast_node_funcdef{$4, $6, $2, nullptr};
                                 $$ = p; $$->loc = @$;
                             }
+    | FUNC vardef_list '=' CLINKAGE typedotnamechain '(' vardef_list ')' code_block
+                            {
+                                auto p = new ast_node_funcdef{$7, $9, $5, $2, true};
+                                $$ = p; $$->loc = @$;
+                            }
+    /* Function definition without parameters that returns something */
+    | FUNC vardef_list '=' CLINKAGE typedotnamechain '(' ')' code_block
+                            {
+                                auto p = new ast_node_funcdef{nullptr, $8, $5, $2, true};
+                                $$ = p; $$->loc = @$;
+                            }
+    /* Function definition without parameters that returns nothing */
+    | FUNC CLINKAGE typedotnamechain '(' ')' code_block
+                            {
+                                auto p = new ast_node_funcdef{nullptr, $6, $3, nullptr, true};
+                                $$ = p; $$->loc = @$;
+                            }
+    /* Function definition with parameters that returns nothing */
+    | FUNC CLINKAGE typedotnamechain '(' vardef_list ')' code_block
+                            {
+                                auto p = new ast_node_funcdef{$5, $7, $3, nullptr, true};
+                                $$ = p; $$->loc = @$;
+                            }
+
+
     /* Function declaration */
     | FUNC vardef_list '=' typedotnamechain '(' vardef_list ')'
                             {

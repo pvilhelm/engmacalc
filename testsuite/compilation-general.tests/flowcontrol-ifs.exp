@@ -1,4 +1,4 @@
-spawn ./engmac testsuite/$subdir/flowcontrol-ifs.em
+spawn $objdir/engmac -I../  $srcdir/$subdir/flowcontrol-ifs.em
 
 set ok 0
 expect {

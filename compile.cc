@@ -650,10 +650,53 @@ void jit::compile()
     /* Close the root_block in root_func */
     gcc_jit_block_end_with_void_return(root_block, 0);
 
-    result = gcc_jit_context_compile(context);
-    if (!result)
-    {
-      std::cerr <<  "NULL result from JIT compilation" << std::endl;
+    if (opts.execute) {
+        DEBUG_ASSERT(gcc_jit_context_get_last_error(context) == 0,"Uncought error");
+        result = gcc_jit_context_compile(context);
+        if (!result)
+        {
+            std::cerr <<  "Jit compilation failed" << std::endl;
+            std::cerr << gcc_jit_context_get_last_error(context) << std::endl;
+            exit(1);
+        }
+    }
+    if (opts.output_to_obj_file) {
+        DEBUG_ASSERT(gcc_jit_context_get_last_error(context) == 0,"Uncought error");
+        
+        std::string obj_file_name = opts.outputfile_name;
+        if (obj_file_name.size() == 0)
+            obj_file_name = "a.o";
+
+        gcc_jit_context_compile_to_file (context,
+				 GCC_JIT_OUTPUT_KIND_OBJECT_FILE,
+				 obj_file_name.c_str());
+
+        const char *c = gcc_jit_context_get_last_error(context);
+        if (c)
+        {
+            std::cerr <<  "Compile to object file failed with message:" << std::endl;
+            std::cerr << c << std::endl;
+            exit(1);
+        }
+    }
+    if (opts.output_to_so) {
+        DEBUG_ASSERT(gcc_jit_context_get_last_error(context) == 0,"Uncought error");
+        
+        std::string obj_file_name = opts.outputfile_name;
+        if (obj_file_name.size() == 0)
+            obj_file_name = "a.so";
+
+        gcc_jit_context_compile_to_file (context,
+				 GCC_JIT_OUTPUT_KIND_DYNAMIC_LIBRARY,
+				 obj_file_name.c_str());
+
+        const char *c = gcc_jit_context_get_last_error(context);
+        if (c)
+        {
+            std::cerr <<  "Compile to shared library failed with message:" << std::endl;
+            std::cerr << c << std::endl;
+            exit(1);
+        }
     }
     /*
     gcc_jit_context_compile_to_file (context,
@@ -1869,11 +1912,11 @@ void jit::walk_tree_fdefi(ast_node *node,
 
     gcc_jit_function *fn = nullptr;
     if (v_params.size())
-        fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_INTERNAL,
+        fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_EXPORTED,
                                     return_type, ast_funcdec->mangled_name.c_str(),
                                     v_params.size(), v_params.data(), 0);
     else 
-        fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_INTERNAL,
+        fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_EXPORTED,
                                     return_type, ast_funcdec->mangled_name.c_str(),
                                     0, 0, 0);
     DEBUG_ASSERT_NOTNULL(fn);

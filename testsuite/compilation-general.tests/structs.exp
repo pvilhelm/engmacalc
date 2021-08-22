@@ -1,4 +1,4 @@
-spawn ./engmac testsuite/$subdir/structs.em
+spawn $objdir/engmac -I../  $srcdir/$subdir/structs.em
 
 expect {
     "FAIL"  {fail "Test failed.\n"}

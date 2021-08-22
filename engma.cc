@@ -1,6 +1,7 @@
 #include <unistd.h>
 #include <iostream>
 #include <stdexcept>
+#include <argp.h>
 
 /* Bison and flex requires this include order. */
 #include "emc.hh"
@@ -21,8 +22,49 @@ ast_compilation_units compilation_units;
 typescope_stack builtin_typestack;
 objscope_stack builtin_objstack;
 
+struct engma_options opts;
+
+#define ARG_SHARED 1000
+struct argp_option options[] = 
+{
+    {0,'o', "FILE", 0, "Specifies output file name"},
+    {0,'I', "FOLDER", 0, "Specifies a include directory"},
+    {0,'c', 0, 0, "Only compile the program, don't link"},
+    {"shared", ARG_SHARED, 0, 0, "Link into a shared library"},
+    {0}
+};
+
+static int parse_opt (int key, char *arg, struct argp_state *state)
+{
+    switch (key) {
+    case 'I':
+        opts.include_dirs.push_back(arg);
+        break;
+    case 'c':
+        opts.output_to_obj_file = true;
+        opts.execute = false;
+        break;
+    case ARG_SHARED:
+        opts.output_to_so = true;
+        opts.execute = false;
+        break;
+    case 'o':
+        opts.outputfile_name = std::string{arg};
+        break;
+    case ARGP_KEY_ARG:
+        opts.files.push_back(arg);
+        break;
+    }
+
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
+    
+    argp argp = {options, parse_opt, "FILES...", 0};
+    argp_parse(&argp, argc, argv, 0, 0, 0);
+
     init_builtin_functions();
     init_standard_variables(); /* pi, e ... */
     init_linked_cfunctions();  /* Initialice function objects for statically linked cfunctions. */
@@ -35,8 +77,8 @@ int main(int argc, char **argv)
 
     FILE *f = nullptr;
 
-    if (argc > 1) {
-        f = fopen(argv[1], "r");
+    if (opts.files.size()) {
+        f = fopen(opts.files[0].c_str(), "r");
         if(!f) {
             throw std::runtime_error("Could not open file: " + std::string{argv[1]});
         }
@@ -70,7 +112,8 @@ int main(int argc, char **argv)
         
         jit.dump("./dump.txt");
         jit.compile();
-        jit.execute();
+        if (opts.execute)
+            jit.execute();
     } else if (isatty(0) && cu.ast_root && err == 0) {
         emc_type type = cu.ast_root->resolve();
         {

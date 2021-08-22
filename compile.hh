@@ -73,8 +73,10 @@ class jit {
 public:
     ~jit()
     {
-        gcc_jit_result_release(result);
-        gcc_jit_context_release(context);
+        if (result)
+            gcc_jit_result_release(result);
+        if (context)
+            gcc_jit_context_release(context);
         delete types;
     }
 

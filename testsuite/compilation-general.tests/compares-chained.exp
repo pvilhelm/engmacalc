@@ -1,4 +1,4 @@
-spawn ./engmac testsuite/$subdir/compares-chained.em
+spawn $objdir/engmac -I../  $srcdir/$subdir/compares-chained.em
 
 expect {
     "FAIL" {fail "Test failed.\n"}

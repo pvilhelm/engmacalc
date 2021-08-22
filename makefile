@@ -40,8 +40,10 @@ libjitruntime.so: jit_runtime.cc Io.o
 
 .PHONY : runtest
 runtest :
-	runtest --srcdir testsuite
+	mkdir -p testrun
+	cd testrun && runtest --srcdir ../testsuite --objdir ../ $(TEST_ARGS)
 
 .PHONY : clean
 clean :
-	rm $(OBJ) engmac
+	rm -f $(OBJ) engmac
+	rm -Rf testrun
