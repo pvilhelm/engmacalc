@@ -1,4 +1,4 @@
-spawn ./engmac testsuite/$subdir/rem-two-vars.em
+spawn ./engmac testsuite/$subdir/op-binary-rem-two-vars.em
 
 expect {
     -re "1.0* -1.0* 1.0* -1.0* 1 1 -1 1 1 -1 1 1 -1 1 1 -1\r\n" {pass "Test passed.\n"}
