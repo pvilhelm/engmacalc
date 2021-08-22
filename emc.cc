@@ -130,6 +130,8 @@ void verify_obj_fits_in_type(obj* obj, emc_type type)
     DEBUG_ASSERT_NOTNULL(obj);
     /* TODO: Verify that ulong and long can be compared like this .. */
     /* TODO: Refactor to a long max and long min, this is stupid. */
+    /* TODO: Use range check in emc_assert.h? */
+    /* TODO: Does this work for float and double and int and long? */
 
 #define DO_CHECK(obj_class, ctype) do {\
 auto obj_t = dynamic_cast<obj_class*>(obj);\
@@ -142,8 +144,48 @@ if (obj_t->val > std::numeric_limits<ctype>::max() ||\
 } while((0))
 
     /* TODO: Floats, only if exact conversion maybe? */
-    if (type.is_long()) {
+    if (type.is_double()) {
         switch (obj->type) {
+        case object_type::DOUBLE:
+        case object_type::FLOAT:
+        case object_type::ULONG:
+        case object_type::LONG:
+        case object_type::INT:
+        case object_type::SHORT:
+        case object_type::SBYTE:
+        case object_type::UINT:
+        case object_type::USHORT:
+        case object_type::BYTE:
+            break; /* These all fits */
+        default:
+            THROW_NOT_IMPLEMENTED("");
+        }
+    } else if (type.is_float()) {
+        switch (obj->type) {
+        case object_type::DOUBLE:
+            DO_CHECK(object_double, float);
+            break;
+        case object_type::FLOAT:
+        case object_type::ULONG:
+        case object_type::LONG:
+        case object_type::INT:
+        case object_type::SHORT:
+        case object_type::SBYTE:
+        case object_type::UINT:
+        case object_type::USHORT:
+        case object_type::BYTE:
+            break; /* These all fits */
+        default:
+            THROW_NOT_IMPLEMENTED("");
+        }
+    } else if (type.is_long()) {
+        switch (obj->type) {
+        case object_type::DOUBLE:
+            DO_CHECK(object_double, int64_t);
+            break;
+        case object_type::FLOAT:
+            DO_CHECK(object_float, int64_t);
+            break;
         case object_type::ULONG:
             DO_CHECK(object_ulong, int64_t);
             break;
@@ -160,6 +202,12 @@ if (obj_t->val > std::numeric_limits<ctype>::max() ||\
         }
     } else if (type.is_int()) {
         switch (obj->type) {
+        case object_type::DOUBLE:
+            DO_CHECK(object_double, int32_t);
+            break;
+        case object_type::FLOAT:
+            DO_CHECK(object_float, int32_t);
+            break;
         case object_type::ULONG:
             DO_CHECK(object_ulong, int32_t);
             break;
@@ -180,6 +228,12 @@ if (obj_t->val > std::numeric_limits<ctype>::max() ||\
         }
     } else if (type.is_short()) {
         switch (obj->type) {
+        case object_type::DOUBLE:
+            DO_CHECK(object_double, int16_t);
+            break;
+        case object_type::FLOAT:
+            DO_CHECK(object_float, int16_t);
+            break;
         case object_type::ULONG:
             DO_CHECK(object_ulong, int16_t);
             break;
@@ -204,6 +258,12 @@ if (obj_t->val > std::numeric_limits<ctype>::max() ||\
         }
     } else if (type.is_sbyte()) {
         switch (obj->type) {
+        case object_type::DOUBLE:
+            DO_CHECK(object_double, int8_t);
+            break;
+        case object_type::FLOAT:
+            DO_CHECK(object_float, int8_t);
+            break;
         case object_type::ULONG:
             DO_CHECK(object_ulong, int8_t);
             break;
@@ -232,6 +292,12 @@ if (obj_t->val > std::numeric_limits<ctype>::max() ||\
         }
     } else if (type.is_ulong())  {
         switch (obj->type) {
+        case object_type::DOUBLE:
+            DO_CHECK(object_double, uint64_t);
+            break;
+        case object_type::FLOAT:
+            DO_CHECK(object_float, uint64_t);
+            break;
         case object_type::LONG:
             DO_CHECK(object_long, uint64_t);
             break;
@@ -254,6 +320,12 @@ if (obj_t->val > std::numeric_limits<ctype>::max() ||\
         }
     } else if (type.is_uint()) {
         switch (obj->type) {
+        case object_type::DOUBLE:
+            DO_CHECK(object_double, uint32_t);
+            break;
+        case object_type::FLOAT:
+            DO_CHECK(object_float, uint32_t);
+            break;
         case object_type::LONG:
             DO_CHECK(object_long, uint32_t);
             break;
@@ -278,6 +350,12 @@ if (obj_t->val > std::numeric_limits<ctype>::max() ||\
         }
     } else if (type.is_ushort()) {
         switch (obj->type) {
+        case object_type::DOUBLE:
+            DO_CHECK(object_double, uint16_t);
+            break;
+        case object_type::FLOAT:
+            DO_CHECK(object_float, uint16_t);
+            break;
         case object_type::LONG:
             DO_CHECK(object_long, uint16_t);
             break;
@@ -304,6 +382,12 @@ if (obj_t->val > std::numeric_limits<ctype>::max() ||\
         }
     } else if (type.is_byte()) {
         switch (obj->type) {
+        case object_type::DOUBLE:
+            DO_CHECK(object_double, uint8_t);
+            break;
+        case object_type::FLOAT:
+            DO_CHECK(object_float, uint8_t);
+            break;
         case object_type::LONG:
             DO_CHECK(object_long, uint8_t);
             break;
