@@ -2714,16 +2714,28 @@ void jit::walk_tree_while(ast_node *node,
     DEBUG_ASSERT_NOTNULL(while_ast);
     /* Create the while-block */
     gcc_jit_block_add_comment(*current_block, 0, "WHILE");
-    /* WHILE needs a condition block to be able to jump back to. */
+    
+    /* If there is and else block, we need an first cond block that either goes
+       to the while block, or goes to the else block. */
     gcc_jit_block *first_cond_block = nullptr;
     if (while_ast->else_el) /* If there is an else we need a first condition block tested only once */
         first_cond_block = gcc_jit_function_new_block(*current_function, new_unique_name("first_while_cond_block").c_str());
-    gcc_jit_block *cond_block = gcc_jit_function_new_block(*current_function, new_unique_name("while_cond_block").c_str());
+    
+    
+    /* If both the WHILE block and ELSE block always returns, there is no need 
+       for the cond block. So create it only if needed. */
+    gcc_jit_block *cond_block = nullptr;
+    auto create_cond_block_if_needed =[&]() {
+        if (!cond_block)
+            cond_block = gcc_jit_function_new_block(*current_function, 
+                new_unique_name("while_cond_block").c_str()); 
+        return cond_block;
+    };
 
     if (while_ast->else_el) {
         gcc_jit_block_end_with_jump(*current_block, 0, first_cond_block);
     } else 
-        gcc_jit_block_end_with_jump(*current_block, 0, cond_block);
+        gcc_jit_block_end_with_jump(*current_block, 0, create_cond_block_if_needed());
 
     gcc_jit_block *while_block = gcc_jit_function_new_block(*current_function, new_unique_name("while_block").c_str());
     /* Walk the tree and append any blocks to the if block or any statements to the block in question */
@@ -2758,14 +2770,14 @@ void jit::walk_tree_while(ast_node *node,
 
     if (while_ast->else_el) {
         gcc_jit_block *after_block = nullptr;
-        if (!while_was_terminated || !else_was_terminated) /* Unless the quite silly while block where all paths return */
+        if (!(while_was_terminated && else_was_terminated)) /* Unless the quite silly while block where all paths return */
             after_block = gcc_jit_function_new_block(*current_function, new_unique_name("after_block").c_str());
         gcc_jit_block_end_with_conditional(first_cond_block, 0, bool_cond_rv, while_block, else_block);
 
         if (after_block)
-            gcc_jit_block_end_with_conditional(cond_block, 0, bool_cond_rv, while_block, after_block);
-        else
-            gcc_jit_block_end_with_jump(cond_block, 0, while_block); /* All paths in the while block return. */ 
+            gcc_jit_block_end_with_conditional(create_cond_block_if_needed(), 0, bool_cond_rv, while_block, after_block);
+        else if (!(while_was_terminated && else_was_terminated))
+            gcc_jit_block_end_with_jump(create_cond_block_if_needed(), 0, while_block); /* All paths in the while block return. */ 
 
         if (!else_was_terminated)
             gcc_jit_block_end_with_jump(else_block, 0, after_block);
@@ -2775,7 +2787,7 @@ void jit::walk_tree_while(ast_node *node,
         else
             v_block_terminated.back() = true;    
     } else {
-        gcc_jit_block_end_with_conditional(cond_block, 0, bool_cond_rv, while_block, else_block);
+        gcc_jit_block_end_with_conditional(create_cond_block_if_needed(), 0, bool_cond_rv, while_block, else_block);
         *current_block = else_block;
     }
 

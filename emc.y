@@ -229,8 +229,8 @@ se: e                           {$$ = $1; $$->loc = @$;}
 
     | WHILE e DO exp_list END 
     						{ $$ = new ast_node_while{$2, $4}; $$->loc = @$;}
-    | WHILE e DO exp_list ELSE exp_list END 
-    						{ $$ = new ast_node_while{$2, $4, $6}; $$->loc = @$;}
+    | WHILE e DO exp_list ELSE DO exp_list END 
+    						{ $$ = new ast_node_while{$2, $4, $7}; $$->loc = @$;}
     | vardef '=' se         { $$ = $1; dynamic_cast<ast_node_def*>($1)->value_node = $3; $$->loc = @$;}
     | vardef                { $$ = $1; $$->loc = @$;}
     | NAMESPACE typedotchain 
