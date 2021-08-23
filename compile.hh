@@ -13,6 +13,8 @@ struct default_types {
     gcc_jit_type *void_ptr_type = 0;
     gcc_jit_type *bool_type = 0;
     gcc_jit_type *char_type = 0;
+    gcc_jit_type *char_ptr_type = 0;
+    gcc_jit_type *const_char_ptr_type = 0;
     gcc_jit_type *schar_type = 0;
     gcc_jit_type *uchar_type = 0;
     gcc_jit_type *short_type = 0;
@@ -41,7 +43,8 @@ struct default_types {
         short_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_SHORT);
         ushort_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_UNSIGNED_SHORT);
         float_type = gcc_jit_context_get_type (context, GCC_JIT_TYPE_FLOAT);
-                
+
+        const_char_ptr_type = gcc_jit_context_get_type(context, GCC_JIT_TYPE_CONST_CHAR_PTR);
         /*
         GCC_JIT_TYPE_VOID,
         GCC_JIT_TYPE_VOID_PTR,
@@ -91,6 +94,7 @@ public:
     /* Add a ast node to the root block */
     void add_ast_node(ast_node *node);
     void init_as_root_context();
+    void postprocess();
     void compile();
     void execute();
     void dump(std::string path);

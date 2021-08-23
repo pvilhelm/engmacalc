@@ -27,16 +27,26 @@ struct engma_options opts;
 #define ARG_SHARED 1000
 struct argp_option options[] = 
 {
+    {"exe",'X', 0, 0, "Compile to an executable."},
     {0,'o', "FILE", 0, "Specifies output file name"},
-    {0,'I', "FOLDER", 0, "Specifies a include directory"},
-    {0,'c', 0, 0, "Only compile the program, don't link"},
+    {0,'I', "FOLDER", 0, "Specifies an include directory"},
+    {0,'c', 0, 0, "Compile the program to object files, don't link"},
     {"shared", ARG_SHARED, 0, 0, "Link into a shared library"},
+    {0, 'O', "LEVEL", OPTION_ARG_OPTIONAL, "Optimization level"},
     {0}
 };
 
 static int parse_opt (int key, char *arg, struct argp_state *state)
 {
     switch (key) {
+    case 'O':
+        opts.optimization_level = "-O" + std::string{arg};
+        std::cout << opts.optimization_level << std::endl;
+        break;
+    case 'X':
+        opts.output_to_exe = true;
+        opts.execute = false;
+        break;
     case 'I':
         opts.include_dirs.push_back(arg);
         break;
@@ -110,6 +120,7 @@ int main(int argc, char **argv)
         for (auto e : cu.v_nodes)
             jit.add_ast_node(e);
         
+        jit.postprocess();
         jit.dump("./dump.txt");
         jit.compile();
         if (opts.execute)

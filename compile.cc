@@ -21,6 +21,7 @@
 #define FLOAT_TYPE this->types->float_type
 #define VOID_TYPE this->types->void_type
 #define BOOL_TYPE this->types->bool_type
+#define CCHARPTR_TYPE this->types->const_char_ptr_type
 
 /* map of gccstructobjects to typename for Engma structs */
 struct struct_wrapper {
@@ -644,12 +645,77 @@ gcc_jit_type* jit::emc_type_to_jit_type(emc_type t)
     return var_type;
 }
 
+void jit::postprocess()
+{
+    /* Close the root_block in root_func */
+    /* TODO: Add support for returning form script (and not add one here) */
+    gcc_jit_block_end_with_return(root_block, 0,
+        gcc_jit_context_new_rvalue_from_int(context, INT_TYPE, 0));
+
+    /* Handle the main function, if any.
+
+       If opts specify that we are compiling to an executable
+       we add a main function that wraps the root_fn function. */
+    if (opts.output_to_exe) {
+
+        /* TODO: Do linking properly... */
+        gcc_jit_context_add_driver_option(context, "-ljitruntime");
+
+        gcc_jit_param *params[] = 
+        {
+            gcc_jit_context_new_param(context, 0, INT_TYPE, "argc"), 
+            gcc_jit_context_new_param(context, 0, 
+                gcc_jit_type_get_pointer(gcc_jit_type_get_pointer(SCHAR_TYPE))
+            , "argv")
+        };
+        auto main_func = gcc_jit_context_new_function (context, NULL,
+            GCC_JIT_FUNCTION_EXPORTED,
+            INT_TYPE,
+            "main",
+            2, params, 0);
+
+        auto main_block = gcc_jit_function_new_block(main_func, 
+            new_unique_name("main_start").c_str());
+
+        auto argc = gcc_jit_function_get_param(main_func, 0);
+        auto argv = gcc_jit_function_get_param(main_func, 1);
+        
+        gcc_jit_rvalue *args[] = {
+            gcc_jit_param_as_rvalue(argc), 
+            gcc_jit_param_as_rvalue(argv)
+        };
+        /* Call the root_fn function */
+        auto root_fn_call = gcc_jit_context_new_call(context, 0, 
+            root_func, 2, args);
+        gcc_jit_block_add_eval(main_block, 0, root_fn_call);
+
+        /* If there is any user specified main() function, call it. */
+        auto main_objects = compilation_units.get_current_objstack().
+            find_objects_by_not_mangled_name("main", "");
+        if (main_objects.size() > 1)
+            THROW_USER_ERROR("Can't have multiple main functions");
+
+        if (main_objects.size() == 1) {
+            auto it = map_fnname_to_gccfnobj.find(main_objects[0]->mangled_name);
+            if (it == map_fnname_to_gccfnobj.end())
+                THROW_BUG("Could not find gcc_jit function main, but user"
+                    " has created one");
+            gcc_jit_function *user_main = it->second;
+            auto user_main_call = gcc_jit_context_new_call(context, 0, 
+            user_main, 2, args);
+            gcc_jit_block_end_with_return(main_block, 0, root_fn_call);
+        /* No user main */
+        } else {
+            gcc_jit_block_end_with_return(main_block, 0,
+                gcc_jit_context_new_rvalue_from_int(context, INT_TYPE, 0));
+        }
+    }
+
+    gcc_jit_context_add_command_line_option(context, opts.optimization_level.c_str());
+}
 
 void jit::compile()
 {
-    /* Close the root_block in root_func */
-    gcc_jit_block_end_with_void_return(root_block, 0);
-
     if (opts.execute) {
         DEBUG_ASSERT(gcc_jit_context_get_last_error(context) == 0,"Uncought error");
         result = gcc_jit_context_compile(context);
@@ -698,6 +764,25 @@ void jit::compile()
             exit(1);
         }
     }
+    if (opts.output_to_exe) {
+        DEBUG_ASSERT(gcc_jit_context_get_last_error(context) == 0,"Uncought error");
+        
+        std::string obj_file_name = opts.outputfile_name;
+        if (obj_file_name.size() == 0)
+            obj_file_name = "a.out";
+
+        gcc_jit_context_compile_to_file (context,
+				 GCC_JIT_OUTPUT_KIND_EXECUTABLE,
+				 obj_file_name.c_str());
+
+        const char *c = gcc_jit_context_get_last_error(context);
+        if (c)
+        {
+            std::cerr <<  "Compile to executable failed with message:" << std::endl;
+            std::cerr << c << std::endl;
+            exit(1);
+        }
+    }
     /*
     gcc_jit_context_compile_to_file (context,
 				 GCC_JIT_OUTPUT_KIND_ASSEMBLER,
@@ -712,19 +797,26 @@ void jit::compile()
 
 void jit::execute()
 {
+    char dummy_arg[] = "";
+    char *dummy_argv[] = {dummy_arg};
+
     /* Begin calling the root_fn that initializes stuff like globals etc */
-    typedef void (*root_fn_p)(void);
-    root_fn_p root_func = (root_fn_p)gcc_jit_result_get_code(result, "root_fn");
+    typedef int (*root_fn_p)(int, char**);
+    root_fn_p root_func = nullptr;
+
+    root_func = (root_fn_p)gcc_jit_result_get_code(result, "root_fn");
+       
     if (!root_func)
         THROW_BUG("NULL root function after JIT compilation");
     else
-        root_func();
+        root_func(1, dummy_argv);
+
 
     for (auto e : v_node_fn_names) {
         root_fn_p root_func = (root_fn_p)gcc_jit_result_get_code(result, e.c_str());
         if (!root_func)
             THROW_BUG("NULL function " + e + " after JIT compilation");
-        root_func();
+        root_func(1, dummy_argv);
     }
 }
 
@@ -880,12 +972,28 @@ void jit::init_as_root_context()
 
     setup_default_root_environment();
 
+    gcc_jit_param *params[] = 
+    {
+        gcc_jit_context_new_param(context, 0, INT_TYPE, "argc"), 
+        gcc_jit_context_new_param(context, 0, 
+            gcc_jit_type_get_pointer(gcc_jit_type_get_pointer(SCHAR_TYPE))
+        , "argv")
+    };
+
     root_func =
         gcc_jit_context_new_function (context, NULL,
-                      GCC_JIT_FUNCTION_EXPORTED,
-                      VOID_TYPE,
-                      "root_fn",
-                      0, 0, 0);
+                    GCC_JIT_FUNCTION_EXPORTED,
+                    INT_TYPE,
+                    "root_fn",
+                    2, params, 0);
+/*
+    root_func =
+        gcc_jit_context_new_function (context, NULL,
+                    GCC_JIT_FUNCTION_EXPORTED,
+                    VOID_TYPE,
+                    "main",
+                    2, params, 0);
+*/
     root_block = gcc_jit_function_new_block(root_func, "root_block");
 }
 
@@ -899,48 +1007,12 @@ void jit::add_ast_node(ast_node *node)
         node->type == ast_type::FUNCTION_DECL) {
         gcc_jit_rvalue *rval = nullptr;
         walk_tree(node, 0, 0, &rval, 0);
-    } else {
+    } else { /* TODO: Readd support for REPL here somehow */
         gcc_jit_rvalue *rval = nullptr;
-        std::string node_fn_name = new_unique_name("node_fn");
-
-        gcc_jit_function *node_func = gcc_jit_context_new_function (
-                                            context, NULL,
-                                            GCC_JIT_FUNCTION_EXPORTED,
-                                            VOID_TYPE,
-                                            node_fn_name.c_str(),
-                                            0, 0, 0);
-        DEBUG_ASSERT_NOTNULL(node_func);
-
-        int block_depth = v_block_terminated.size();
-        v_block_terminated.push_back(false);                                    
-        gcc_jit_block *node_block = gcc_jit_function_new_block(node_func, new_unique_name("node_block").c_str());
-        walk_tree(node, &node_block, &node_func, &rval, 0);
-
-        if (rval) { /* We just print top level rvals to stdout */
-            gcc_jit_type *t = gcc_jit_rvalue_get_type(rval);
-            /* TODO: Lägg i en fin global istället? */
-            gcc_jit_rvalue *rv_call = nullptr;
-            if (t == INT_TYPE)
-                rv_call = gcc_jit_context_new_call(context, 0, map_fnname_to_gccfnobj["printnl_int"], 1, &rval);
-            else if (t == DOUBLE_TYPE)
-                rv_call = gcc_jit_context_new_call(context, 0, map_fnname_to_gccfnobj["printnl_double"], 1, &rval);
-            else if (t == BOOL_TYPE) {
-                gcc_jit_rvalue *casted_rv = cast_to(rval, INT_TYPE);
-                rv_call = gcc_jit_context_new_call(context, 0, map_fnname_to_gccfnobj["printnl_int"], 1, &casted_rv);
-            }
-            if (rv_call)
-                gcc_jit_block_add_eval(node_block, 0, rv_call);
-            else
-                gcc_jit_block_add_eval(node_block, 0, rval);
+        walk_tree(node, &root_block, &root_func, &rval, 0);
+        if (rval) { /* There was only expressions so add it/them to the current block. */
+            gcc_jit_block_add_eval(root_block, 0, rval);
         }
-
-        /* End the root block with a "return;" */
-        if (v_block_terminated.back() == false)
-            gcc_jit_block_end_with_void_return(node_block, 0);
-        v_block_terminated.pop_back();
-        DEBUG_ASSERT(block_depth == v_block_terminated.size(), "Messed up block terminations");
-        /* TODO: Push only function declarations. Expressions should be stored as there rvalues and be globals. */
-        v_node_fn_names.push_back(node_fn_name);
     }
 }
 

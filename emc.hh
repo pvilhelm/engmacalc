@@ -41,12 +41,13 @@ struct engma_options {
     bool output_to_obj_file = false; /* Output to an object file */
     bool output_to_so = false; /* Output to shared lib */
     bool execute = true; /* Execute the compiled program as JIT */
+    bool output_to_exe = false;
 
     std::vector<std::string> include_dirs;
 
     std::vector<std::string> files; /* All the Engma files to process */
     
-    
+    std::string optimization_level;
 };
 
 /* CLI options parsed into this struct in main() */
