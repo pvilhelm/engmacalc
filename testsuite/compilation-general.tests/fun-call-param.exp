@@ -1,4 +1,4 @@
-spawn $objdir/engmac -I../  $srcdir/$subdir/fun-call-param.em
+spawn $objdir/engmac -X  -I../  $srcdir/$subdir/fun-call-param.em
 
 expect {
     -re "0\r

@@ -3,6 +3,30 @@
 
 #include "util_string.hh"
 
+bool ends_with(std::string const &s, std::string const &ending)
+{
+    auto it_ending = ending.crbegin();
+    if (it_ending == ending.crend())
+        return true;
+
+    auto it_s = s.crbegin();
+    if (it_s == s.crend())
+        return false;
+
+    while (it_s != s.crend() && it_ending != ending.crend())
+        if (*it_s++ != *it_ending++)
+            return false; 
+    return true;
+}
+
+bool ends_with(std::string const &s, std::vector<std::string> const &endings)
+{
+    for (auto ending : endings)
+        if (ends_with(s, ending))
+            return true;
+    return false;
+}
+
 std::string split_last(std::string const &s, std::string const split_at)
 {
     auto pos = s.find_last_of(split_at);

@@ -34,20 +34,31 @@ extern int ast_node_count;
 extern int value_expr_count;
 #endif
 
+enum class engma_run_type {
+    OUTPUT_TO_OBJ_FILE,
+    OUTPUT_TO_SO,
+    EXECUTE,
+    OUTPUT_TO_EXE,
+};
 
 struct engma_options {
     std::string outputfile_name; 
 
-    bool output_to_obj_file = false; /* Output to an object file */
-    bool output_to_so = false; /* Output to shared lib */
-    bool execute = true; /* Execute the compiled program as JIT */
-    bool output_to_exe = false;
+    engma_run_type run_type = engma_run_type::OUTPUT_TO_EXE;
+
+    std::vector<std::string> nonengma_files;
 
     std::vector<std::string> include_dirs;
 
+    std::vector<std::string> l_folders;
+
+    std::vector<std::string> L_folders;
+
     std::vector<std::string> files; /* All the Engma files to process */
     
-    std::string optimization_level;
+    std::string optimization_level = "-O0";
+
+    std::string debug_flag;
 };
 
 /* CLI options parsed into this struct in main() */

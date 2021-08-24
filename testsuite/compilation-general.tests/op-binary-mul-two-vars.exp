@@ -1,4 +1,4 @@
-spawn $objdir/engmac -I../  $srcdir/$subdir/op-binary-mul-two-vars.em
+spawn $objdir/engmac -X  -I../  $srcdir/$subdir/op-binary-mul-two-vars.em
 
 expect {
     -re "6.0* 6.0* 6 6 6 6 6 6 6 6\r\n" {pass "Test passed.\n"}

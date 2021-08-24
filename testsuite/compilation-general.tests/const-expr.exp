@@ -1,4 +1,4 @@
-spawn $objdir/engmac -I../  $srcdir/$subdir/const-expr.em
+spawn $objdir/engmac -X  -I../  $srcdir/$subdir/const-expr.em
 
 expect {
     "FAIL"  {fail "Test failed.\n"}

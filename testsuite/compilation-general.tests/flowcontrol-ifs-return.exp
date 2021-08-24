@@ -1,4 +1,4 @@
-spawn $objdir/engmac -I../  $srcdir/$subdir/flowcontrol-ifs-return.em
+spawn $objdir/engmac -X  -I../  $srcdir/$subdir/flowcontrol-ifs-return.em
 
 expect {
     "FAIL" {fail "Test failed.\n"}

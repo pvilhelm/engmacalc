@@ -1,5 +1,5 @@
 
-spawn $objdir/engmac -I../  $srcdir/$subdir/op-precedence.em
+spawn $objdir/engmac -X  -I../  $srcdir/$subdir/op-precedence.em
 
 expect {
     -re "8\r

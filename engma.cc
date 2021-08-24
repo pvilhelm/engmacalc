@@ -27,48 +27,60 @@ struct engma_options opts;
 #define ARG_SHARED 1000
 struct argp_option options[] = 
 {
-    {"exe",'X', 0, 0, "Compile to an executable."},
-    {0,'o', "FILE", 0, "Specifies output file name"},
-    {0,'I', "FOLDER", 0, "Specifies an include directory"},
-    {0,'c', 0, 0, "Compile the program to object files, don't link"},
-    {"shared", ARG_SHARED, 0, 0, "Link into a shared library"},
-    {0, 'O', "LEVEL", OPTION_ARG_OPTIONAL, "Optimization level"},
+    {"exe",     'X', 0, 0, "Execute as a JIT compilation."},
+    {0,         'o', "FILE", 0, "Specifies output file name"},
+    {0,         'I', "FOLDER", 0, "Specifies an include directory"},
+    {0,         'c', 0, 0, "Compile the program to object files, don't link"},
+    {"shared",  ARG_SHARED, 0, 0, "Link into a shared library"},
+    {0,         'l',"LIB",0,"Link to library"},
+    {0,         'O', "LEVEL", OPTION_ARG_OPTIONAL, "Optimization level"},
+    {0,         'g',"LEVEL", OPTION_ARG_OPTIONAL, "Debugging flag"},
+    {0,         'L', "FOLDER", 0, "Specifies a folder to look for shared objects"},
     {0}
 };
 
 static int parse_opt (int key, char *arg, struct argp_state *state)
 {
     switch (key) {
+    case 'g':
+        opts.debug_flag = "-g" + std::string{arg};
+        break;
+    case 'L':
+        opts.l_folders.push_back("-L" + std::string{arg});
+        break;
+    case 'l':
+        opts.l_folders.push_back("-l" + std::string{arg});
+        break;
     case 'O':
         opts.optimization_level = "-O" + std::string{arg};
-        std::cout << opts.optimization_level << std::endl;
         break;
     case 'X':
-        opts.output_to_exe = true;
-        opts.execute = false;
+        opts.run_type = engma_run_type::EXECUTE;
         break;
     case 'I':
         opts.include_dirs.push_back(arg);
         break;
     case 'c':
-        opts.output_to_obj_file = true;
-        opts.execute = false;
+        opts.run_type = engma_run_type::OUTPUT_TO_OBJ_FILE;
         break;
     case ARG_SHARED:
-        opts.output_to_so = true;
-        opts.execute = false;
+        opts.run_type = engma_run_type::OUTPUT_TO_SO;
         break;
     case 'o':
         opts.outputfile_name = std::string{arg};
         break;
     case ARGP_KEY_ARG:
-        opts.files.push_back(arg);
+        if (ends_with(arg, ".em"))
+            opts.files.push_back(arg);
+        else
+            opts.nonengma_files.push_back(arg);
         break;
     }
 
     return 0;
 }
 
+/* TODO: Refactor this messy main function */
 int main(int argc, char **argv)
 {
     
@@ -93,6 +105,13 @@ int main(int argc, char **argv)
             throw std::runtime_error("Could not open file: " + std::string{argv[1]});
         }
         yyset_in(f, scanner);
+    } else if (opts.nonengma_files.size()) {
+        jit jit; 
+        jit.init_as_dummy_context();
+        jit.postprocess();
+        jit.dump("./dump.txt");
+        jit.compile();
+        return 0;
     }
 
     redo:
@@ -123,7 +142,7 @@ int main(int argc, char **argv)
         jit.postprocess();
         jit.dump("./dump.txt");
         jit.compile();
-        if (opts.execute)
+        if (opts.run_type == engma_run_type::EXECUTE)
             jit.execute();
     } else if (isatty(0) && cu.ast_root && err == 0) {
         emc_type type = cu.ast_root->resolve();
@@ -158,6 +177,7 @@ int main(int argc, char **argv)
     } else if (std::cin)
             goto redo;
 
+end:
     yylex_destroy(scanner);
 
     /* Clear some globals so we can see that all nodes are freed for

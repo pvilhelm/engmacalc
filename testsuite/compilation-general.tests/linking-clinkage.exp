@@ -1,3 +1,7 @@
+file delete "e.o"
+file delete "c.o"
+file delete "a.out"
+
 exec gcc -c -fPIC -o c.o $srcdir/$subdir/linking-clinkage.exporting.c
 exec $objdir/engmac -I../  -c $srcdir/$subdir/linking-clinkage.em -o e.o
 exec gcc c.o e.o $srcdir/$subdir/linking-clinkage.importing.c
@@ -9,6 +13,10 @@ expect {
     "DONE"  {pass "Test passed.\n"}
     default {fail "Test failed.\n"}
 }
+
+file delete "e.so"
+file delete "c.o"
+file delete "a.out"
 
 exec gcc -c -fPIC -o c.o $srcdir/$subdir/linking-clinkage.exporting.c
 exec $objdir/engmac --shared -I../  -c $srcdir/$subdir/linking-clinkage.em -o e.so

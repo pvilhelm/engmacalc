@@ -5,6 +5,8 @@
 #include <sstream>
 #include <iomanip>
 #include <map>
+#include <cstring>
+#include <stdlib.h>
 
 #include "compile.hh"
 #include "common.hh"
@@ -649,14 +651,23 @@ void jit::postprocess()
 {
     /* Close the root_block in root_func */
     /* TODO: Add support for returning form script (and not add one here) */
-    gcc_jit_block_end_with_return(root_block, 0,
-        gcc_jit_context_new_rvalue_from_int(context, INT_TYPE, 0));
+    if (root_block)
+        gcc_jit_block_end_with_return(root_block, 0,
+            gcc_jit_context_new_rvalue_from_int(context, INT_TYPE, 0));
+
+    /* libgccjit default to -fPIC, so lets undo that. */
+    gcc_jit_context_add_driver_option(context, "-fno-PIC");
+    gcc_jit_context_add_driver_option(context, "-fno-pic");
 
     /* Handle the main function, if any.
 
        If opts specify that we are compiling to an executable
-       we add a main function that wraps the root_fn function. */
-    if (opts.output_to_exe) {
+       we add a main function that wraps the root_fn function,
+       as long as there is atleast one .em file among the file 
+       arguments (in that case we are just linking object files
+       or compiling some c or cpp file) */
+    if (opts.run_type == engma_run_type::OUTPUT_TO_EXE && opts.files.size() ||  
+        opts.run_type == engma_run_type::EXECUTE) {
 
         /* TODO: Do linking properly... */
         gcc_jit_context_add_driver_option(context, "-ljitruntime");
@@ -711,12 +722,34 @@ void jit::postprocess()
         }
     }
 
+    if (opts.run_type == engma_run_type::EXECUTE || 
+        opts.run_type == engma_run_type::OUTPUT_TO_SO) {
+        /* If we are going to execute the code by "JIT" or do a shared lib, 
+           the Engma code and any c or c++ files need to be compiled with 
+           position independent code. */
+        gcc_jit_context_add_driver_option(context, "-fPIC");
+    }
+
+    if (opts.debug_flag.size())
+        gcc_jit_context_add_command_line_option(context, opts.debug_flag.c_str());
+
     gcc_jit_context_add_command_line_option(context, opts.optimization_level.c_str());
+
+
+    
+    for (std::string file : opts.nonengma_files) {
+        gcc_jit_context_add_driver_option(context, file.c_str());
+    }
+    /* Add linker options */
+    for (std::string lib_arg : opts.L_folders)
+        gcc_jit_context_add_driver_option(context, lib_arg.c_str());
+    for (std::string lib_arg : opts.l_folders)
+        gcc_jit_context_add_driver_option(context, lib_arg.c_str());
 }
 
 void jit::compile()
 {
-    if (opts.execute) {
+    if (opts.run_type == engma_run_type::EXECUTE) {
         DEBUG_ASSERT(gcc_jit_context_get_last_error(context) == 0,"Uncought error");
         result = gcc_jit_context_compile(context);
         if (!result)
@@ -726,12 +759,20 @@ void jit::compile()
             exit(1);
         }
     }
-    if (opts.output_to_obj_file) {
+
+    if (opts.run_type == engma_run_type::OUTPUT_TO_OBJ_FILE &&
+        opts.files.size()) {
         DEBUG_ASSERT(gcc_jit_context_get_last_error(context) == 0,"Uncought error");
         
         std::string obj_file_name = opts.outputfile_name;
-        if (obj_file_name.size() == 0)
-            obj_file_name = "a.o";
+        if (obj_file_name.size() == 0) {
+            if (opts.files.size())
+                obj_file_name = strip_last(opts.files[0],".") + ".o";
+            else if (opts.nonengma_files.size())
+                obj_file_name = strip_last(opts.nonengma_files[0],".") + ".o";
+            else
+                THROW_BUG("No files seems to be specified");
+        }
 
         gcc_jit_context_compile_to_file (context,
 				 GCC_JIT_OUTPUT_KIND_OBJECT_FILE,
@@ -744,13 +785,44 @@ void jit::compile()
             std::cerr << c << std::endl;
             exit(1);
         }
-    }
-    if (opts.output_to_so) {
+    } else if (opts.run_type == engma_run_type::OUTPUT_TO_OBJ_FILE &&
+        opts.nonengma_files.size()) {
+        
+        std::string args = "gcc -c ";
+        for (auto file : opts.nonengma_files)
+            args += file + " ";
+
+        if (opts.outputfile_name.size()) {
+            if (opts.nonengma_files.size() > 1) {
+                std::cerr << "Multiple files specified together with -o option" <<
+                std::endl;
+                exit(1);
+            }
+                
+            args += " -o " + opts.outputfile_name;
+        }
+        for (std::string lib_arg : opts.L_folders)
+            args += lib_arg + " ";
+        for (std::string lib_arg : opts.l_folders)
+            args += lib_arg + " ";
+        if (opts.debug_flag.size())
+            args += " " + opts.debug_flag + " ";
+
+        int status = system(args.c_str());
+        if (status) {
+            std::cerr << "Could not invoke gcc to make object files" << std::endl;
+            exit(1);
+        }
+    } else if (opts.run_type == engma_run_type::OUTPUT_TO_OBJ_FILE)
+        THROW_BUG("");
+
+
+    if (opts.run_type == engma_run_type::OUTPUT_TO_SO) {
         DEBUG_ASSERT(gcc_jit_context_get_last_error(context) == 0,"Uncought error");
         
         std::string obj_file_name = opts.outputfile_name;
         if (obj_file_name.size() == 0)
-            obj_file_name = "a.so";
+            obj_file_name = "a.out";
 
         gcc_jit_context_compile_to_file (context,
 				 GCC_JIT_OUTPUT_KIND_DYNAMIC_LIBRARY,
@@ -764,7 +836,7 @@ void jit::compile()
             exit(1);
         }
     }
-    if (opts.output_to_exe) {
+    if (opts.run_type == engma_run_type::OUTPUT_TO_EXE) {
         DEBUG_ASSERT(gcc_jit_context_get_last_error(context) == 0,"Uncought error");
         
         std::string obj_file_name = opts.outputfile_name;
@@ -782,17 +854,7 @@ void jit::compile()
             std::cerr << c << std::endl;
             exit(1);
         }
-    }
-    /*
-    gcc_jit_context_compile_to_file (context,
-				 GCC_JIT_OUTPUT_KIND_ASSEMBLER,
-				 "./ass.out");
-    gcc_jit_context_compile_to_file (context,
-				 GCC_JIT_OUTPUT_KIND_EXECUTABLE,
-				 "./a.out");
-    gcc_jit_context_compile_to_file (context,
-				 GCC_JIT_OUTPUT_KIND_OBJECT_FILE,
-				 "./a.o");   */        
+    }      
 }
 
 void jit::execute()
@@ -804,13 +866,12 @@ void jit::execute()
     typedef int (*root_fn_p)(int, char**);
     root_fn_p root_func = nullptr;
 
-    root_func = (root_fn_p)gcc_jit_result_get_code(result, "root_fn");
+    root_func = (root_fn_p)gcc_jit_result_get_code(result, "main");
        
     if (!root_func)
         THROW_BUG("NULL root function after JIT compilation");
     else
         root_func(1, dummy_argv);
-
 
     for (auto e : v_node_fn_names) {
         root_fn_p root_func = (root_fn_p)gcc_jit_result_get_code(result, e.c_str());
@@ -951,6 +1012,13 @@ void jit::setup_default_root_environment()
     }
 }
 
+void jit::init_as_dummy_context()
+{
+    context = gcc_jit_context_acquire ();
+    if (!context)
+        THROW_BUG("Could not acquire jit context");
+}
+
 void jit::init_as_root_context()
 {
     /* Init a context */
@@ -958,14 +1026,9 @@ void jit::init_as_root_context()
     if (!context)
         THROW_BUG("Could not acquire jit context");
 
-
-    /* Optimazation level. O3 == 3 O0 == 0 */
-    gcc_jit_context_set_int_option(context, GCC_JIT_INT_OPTION_OPTIMIZATION_LEVEL, 0);
-
     /* Dump gimple to stderr  */
     gcc_jit_context_set_bool_option(context, GCC_JIT_BOOL_OPTION_DUMP_INITIAL_GIMPLE, 0);
-    gcc_jit_context_set_bool_option(context,
-                                            GCC_JIT_BOOL_OPTION_DUMP_GENERATED_CODE,
+    gcc_jit_context_set_bool_option(context, GCC_JIT_BOOL_OPTION_DUMP_GENERATED_CODE,
                                             0);
     /* Initialize the default types for this context (e.g. int etc) and put them in this->types */
     types = new default_types(context);
@@ -984,16 +1047,9 @@ void jit::init_as_root_context()
         gcc_jit_context_new_function (context, NULL,
                     GCC_JIT_FUNCTION_EXPORTED,
                     INT_TYPE,
-                    "root_fn",
+                    "root_fn", /* TODO: Will collide if linking multiple engma objects. */
                     2, params, 0);
-/*
-    root_func =
-        gcc_jit_context_new_function (context, NULL,
-                    GCC_JIT_FUNCTION_EXPORTED,
-                    VOID_TYPE,
-                    "main",
-                    2, params, 0);
-*/
+
     root_block = gcc_jit_function_new_block(root_func, "root_block");
 }
 

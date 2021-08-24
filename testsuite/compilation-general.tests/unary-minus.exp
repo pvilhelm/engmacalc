@@ -1,4 +1,4 @@
-spawn $objdir/engmac -I../  $srcdir/$subdir/unary-minus.em
+spawn $objdir/engmac -X  -I../  $srcdir/$subdir/unary-minus.em
 
 expect {
     -re "-1.0* -1.0* -1 -1 -1 -1\r\n"   {pass "Test passed.\n"}

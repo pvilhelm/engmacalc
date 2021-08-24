@@ -94,6 +94,7 @@ public:
     /* Add a ast node to the root block */
     void add_ast_node(ast_node *node);
     void init_as_root_context();
+    void init_as_dummy_context();
     void postprocess();
     void compile();
     void execute();
@@ -109,7 +110,7 @@ private:
 
     void setup_default_root_environment();
 
-    default_types *types;
+    default_types *types = nullptr;
     std::map<std::string, gcc_jit_type*> map_typename_to_gcctypeobj;
 
     std::map<std::string, gcc_jit_function*> map_fnname_to_gccfnobj;

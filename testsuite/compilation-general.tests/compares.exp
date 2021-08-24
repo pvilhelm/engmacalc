@@ -1,4 +1,4 @@
-spawn $objdir/engmac -I../  $srcdir/$subdir/compares.em
+spawn $objdir/engmac -X  -I../  $srcdir/$subdir/compares.em
 
 expect {
     -re "true\r

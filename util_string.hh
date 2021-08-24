@@ -2,6 +2,9 @@
 #include <string>
 #include <vector>
 
+bool ends_with(std::string const &s, std::string const &ending);
+bool ends_with(std::string const &s, std::vector<std::string> const &ending);
+
 std::string split_last(std::string const &s, std::string const split_at);
 std::string strip_last(std::string const &s, std::string const split_at);
 
