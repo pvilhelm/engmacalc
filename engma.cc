@@ -80,113 +80,218 @@ static int parse_opt (int key, char *arg, struct argp_state *state)
     return 0;
 }
 
+void verify_opts()
+{
+
+}
+
 /* TODO: Refactor this messy main function */
 int main(int argc, char **argv)
 {
     
     argp argp = {options, parse_opt, "FILES...", 0};
     argp_parse(&argp, argc, argv, 0, 0, 0);
-
-    init_builtin_functions();
-    init_standard_variables(); /* pi, e ... */
-    init_linked_cfunctions();  /* Initialice function objects for statically linked cfunctions. */
-    init_builtin_types();
-
-    yyscan_t scanner;
+    verify_opts();
     yydebug = 0;
 
-    yylex_init(&scanner);
+    init_builtin_types();
 
-    FILE *f = nullptr;
-
-    if (opts.files.size()) {
-        f = fopen(opts.files[0].c_str(), "r");
-        if(!f) {
-            throw std::runtime_error("Could not open file: " + std::string{argv[1]});
+    if (opts.run_type == engma_run_type::OUTPUT_TO_OBJ_FILE) {
+        if (opts.nonengma_files.size()) {
+            compile_c_obj_files();
         }
-        yyset_in(f, scanner);
-    } else if (opts.nonengma_files.size()) {
-        jit jit; 
-        jit.init_as_dummy_context();
-        jit.postprocess();
-        jit.dump("./dump.txt");
-        jit.compile();
-        return 0;
-    }
+        if (opts.files.size()) {
+            for (std::string file : opts.files) {
+                yyscan_t scanner;
+                yylex_init(&scanner);
 
-    redo:
-    int err = yyparse(scanner);
+                FILE *f = nullptr;
+                f = fopen(file.c_str(), "r");
+                if(!f) {
+                    throw std::runtime_error("Could not open file: " + std::string{argv[1]});
+                }
+                yyset_in(f, scanner);
 
-    if (err) {
-        std::cerr << "error" << std::endl;
-        if (!isatty(0))
-            return 1;
-    }
+                    bool parsed_eol;
 
-    auto &cu = compilation_units.get_current_compilation_unit();
+                do {
+                    int err = yyparse(scanner);
 
-    if (!isatty(0) || f) {
-        if (cu.ast_root) {
-            cu.ast_root->resolve(), 
-            cu.v_nodes.push_back(cu.ast_root);
-            cu.ast_root = nullptr;
-        }
-        if (!cu.parsed_eol)
-            goto redo;
-        jit jit;
-        jit.init_as_root_context();
+                    if (err) {
+                        std::cerr << "error" << std::endl;
+                        if (!isatty(0))
+                            return 1;
+                    }
 
-        for (auto e : cu.v_nodes)
-            jit.add_ast_node(e);
-        
-        jit.postprocess();
-        jit.dump("./dump.txt");
-        jit.compile();
-        if (opts.run_type == engma_run_type::EXECUTE)
-            jit.execute();
-    } else if (isatty(0) && cu.ast_root && err == 0) {
-        emc_type type = cu.ast_root->resolve();
-        {
+                    auto &cu = compilation_units.get_current_compilation_unit();
 
-            jit jit;
-            jit.init_as_root_context();
+                    if (cu.ast_root) {
+                        cu.ast_root->resolve(), 
+                        cu.v_nodes.push_back(cu.ast_root);
+                        cu.ast_root = nullptr;
+                    }
 
-            for (auto e : cu.v_nodes)
-                jit.add_ast_node(e);
-            jit.add_ast_node(ast_root);
-           
-            jit.dump("./dump.txt");
-            jit.compile();
-            jit.execute();
+                    parsed_eol = cu.parsed_eol;
 
-            /* Save variable declarations and definitions. */
-            /*TODO: add persistens env. var. values somehow between CLI
-             * and the JIT.
-             */
-            if (ast_root->type == ast_type::FUNCTION_DEF ||
-                ast_root->type == ast_type::DEF) {
-                cu.v_nodes.push_back(cu.ast_root);
-                cu.ast_root = nullptr;
-            } else {
-                delete cu.ast_root;
-                cu.ast_root = nullptr;
+                } while (!parsed_eol);
+
+                jit jit;
+                jit.init_as_root_context();
+
+                auto &cu = compilation_units.get_current_compilation_unit();
+                for (auto e : cu.v_nodes)
+                    jit.add_ast_node(e);
+                
+                jit.postprocess();
+                jit.dump("./dump.txt");
+                jit.compile();
+                if (opts.run_type == engma_run_type::EXECUTE)
+                    jit.execute();
+
+                yylex_destroy(scanner);
+
+                /* Clear some globals so we can see that all nodes are freed for
+                * debugging purposes. */
+                compilation_units.clear();
+                builtin_typestack.clear();
+                builtin_objstack.clear();
+
+                DEBUG_ASSERT(ast_node_count == 0, "ast nodes seems to be leaking: " << ast_node_count);
+                DEBUG_ASSERT(value_expr_count == 0, "value_expr seems to be leaking: " << value_expr_count);
             }
         }
-        if (std::cin && !cu.parsed_eol)
-            goto redo;
-    } else if (std::cin)
-            goto redo;
+    } else if (opts.run_type == engma_run_type::OUTPUT_TO_SO || 
+                opts.run_type == engma_run_type::OUTPUT_TO_EXE) 
+    {
+        if (opts.files.size()) {
+            if (opts.files.size() != 1)
+                THROW_NOT_IMPLEMENTED("");
 
-end:
-    yylex_destroy(scanner);
+            for (std::string file : opts.files) {
+                yyscan_t scanner;
+                yylex_init(&scanner);
 
-    /* Clear some globals so we can see that all nodes are freed for
-     * debugging purposes. */
-    compilation_units.clear();
-    builtin_typestack.clear();
-    builtin_objstack.clear();
+                FILE *f = nullptr;
+                f = fopen(file.c_str(), "r");
+                if(!f) {
+                    throw std::runtime_error("Could not open file: " + std::string{argv[1]});
+                }
+                yyset_in(f, scanner);
 
-    DEBUG_ASSERT(ast_node_count == 0, "ast nodes seems to be leaking: " << ast_node_count);
-    DEBUG_ASSERT(value_expr_count == 0, "value_expr seems to be leaking: " << value_expr_count);
+                    bool parsed_eol;
+
+                do {
+                    int err = yyparse(scanner);
+
+                    if (err) {
+                        std::cerr << "error" << std::endl;
+                        if (!isatty(0))
+                            return 1;
+                    }
+
+                    auto &cu = compilation_units.get_current_compilation_unit();
+
+                    if (cu.ast_root) {
+                        cu.ast_root->resolve(), 
+                        cu.v_nodes.push_back(cu.ast_root);
+                        cu.ast_root = nullptr;
+                    }
+
+                    parsed_eol = cu.parsed_eol;
+
+                } while (!parsed_eol);
+
+                jit jit;
+                jit.init_as_root_context();
+
+                auto &cu = compilation_units.get_current_compilation_unit();
+                for (auto e : cu.v_nodes)
+                    jit.add_ast_node(e);
+                
+                jit.postprocess();
+                jit.dump("./dump.txt");
+                jit.compile();
+                if (opts.run_type == engma_run_type::EXECUTE)
+                    jit.execute();
+
+                yylex_destroy(scanner);
+
+                /* Clear some globals so we can see that all nodes are freed for
+                * debugging purposes. */
+                compilation_units.clear();
+                builtin_typestack.clear();
+                builtin_objstack.clear();
+
+                DEBUG_ASSERT(ast_node_count == 0, "ast nodes seems to be leaking: " << ast_node_count);
+                DEBUG_ASSERT(value_expr_count == 0, "value_expr seems to be leaking: " << value_expr_count);
+            }
+        }
+    } else if (opts.run_type == engma_run_type::EXECUTE) {
+        if (opts.files.size()) {
+
+            if (opts.files.size() != 1)
+                THROW_NOT_IMPLEMENTED("");
+                
+            for (std::string file : opts.files) {
+                yyscan_t scanner;
+                yylex_init(&scanner);
+
+                FILE *f = nullptr;
+                f = fopen(file.c_str(), "r");
+                if(!f) {
+                    throw std::runtime_error("Could not open file: " + std::string{argv[1]});
+                }
+                yyset_in(f, scanner);
+
+                    bool parsed_eol;
+
+                do {
+                    int err = yyparse(scanner);
+
+                    if (err) {
+                        std::cerr << "error" << std::endl;
+                        if (!isatty(0))
+                            return 1;
+                    }
+
+                    auto &cu = compilation_units.get_current_compilation_unit();
+
+                    if (cu.ast_root) {
+                        cu.ast_root->resolve(), 
+                        cu.v_nodes.push_back(cu.ast_root);
+                        cu.ast_root = nullptr;
+                    }
+
+                    parsed_eol = cu.parsed_eol;
+
+                } while (!parsed_eol);
+
+                jit jit;
+                jit.init_as_root_context();
+
+                auto &cu = compilation_units.get_current_compilation_unit();
+                for (auto e : cu.v_nodes)
+                    jit.add_ast_node(e);
+                
+                jit.postprocess();
+                jit.dump("./dump.txt");
+                jit.compile();
+                if (opts.run_type == engma_run_type::EXECUTE)
+                    jit.execute();
+
+                yylex_destroy(scanner);
+
+                /* Clear some globals so we can see that all nodes are freed for
+                * debugging purposes. */
+                compilation_units.clear();
+                builtin_typestack.clear();
+                builtin_objstack.clear();
+
+                DEBUG_ASSERT(ast_node_count == 0, "ast nodes seems to be leaking: " << ast_node_count);
+                DEBUG_ASSERT(value_expr_count == 0, "value_expr seems to be leaking: " << value_expr_count);
+            }
+        }
+    }
+
     return 0;
 }

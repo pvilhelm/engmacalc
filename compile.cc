@@ -785,34 +785,6 @@ void jit::compile()
             std::cerr << c << std::endl;
             exit(1);
         }
-    } else if (opts.run_type == engma_run_type::OUTPUT_TO_OBJ_FILE &&
-        opts.nonengma_files.size()) {
-        
-        std::string args = "gcc -c ";
-        for (auto file : opts.nonengma_files)
-            args += file + " ";
-
-        if (opts.outputfile_name.size()) {
-            if (opts.nonengma_files.size() > 1) {
-                std::cerr << "Multiple files specified together with -o option" <<
-                std::endl;
-                exit(1);
-            }
-                
-            args += " -o " + opts.outputfile_name;
-        }
-        for (std::string lib_arg : opts.L_folders)
-            args += lib_arg + " ";
-        for (std::string lib_arg : opts.l_folders)
-            args += lib_arg + " ";
-        if (opts.debug_flag.size())
-            args += " " + opts.debug_flag + " ";
-
-        int status = system(args.c_str());
-        if (status) {
-            std::cerr << "Could not invoke gcc to make object files" << std::endl;
-            exit(1);
-        }
     } else if (opts.run_type == engma_run_type::OUTPUT_TO_OBJ_FILE)
         THROW_BUG("");
 
@@ -3109,5 +3081,33 @@ void jit::walk_tree(ast_node *node,
         break;
     default:
         THROW_NOT_IMPLEMENTED("walk_tree not implemented: " + std::to_string((int)node->type));
+    }
+}
+
+void compile_c_obj_files() {
+    std::string args = "gcc -c ";
+    for (auto file : opts.nonengma_files)
+        args += file + " ";
+
+    if (opts.outputfile_name.size()) {
+        if (opts.nonengma_files.size() > 1) {
+            std::cerr << "Multiple files specified together with -o option" <<
+            std::endl;
+            exit(1);
+        }
+            
+        args += " -o " + opts.outputfile_name;
+    }
+    for (std::string lib_arg : opts.L_folders)
+        args += lib_arg + " ";
+    for (std::string lib_arg : opts.l_folders)
+        args += lib_arg + " ";
+    if (opts.debug_flag.size())
+        args += " " + opts.debug_flag + " ";
+
+    int status = system(args.c_str());
+    if (status) {
+        std::cerr << "Could not invoke gcc to make object files" << std::endl;
+        exit(1);
     }
 }

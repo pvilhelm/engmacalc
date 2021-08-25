@@ -339,9 +339,6 @@ class obj;
 class object_func;
 
 /* Functions */
-void init_linked_cfunctions();
-void init_standard_variables();
-void init_builtin_functions();
 void init_builtin_types();
 std::string mangle_emc_fn_name(const object_func &fn_obj);
 std::string demangle_emc_fn_name(std::string c_fn_name);

@@ -950,11 +950,6 @@ std::vector<obj*> objscope_stack::find_objects_by_not_mangled_name(std::string n
     return ans;
 }
 
-void init_linked_cfunctions()
-{
-
-}
-
 /* Helper function for init_linked_cfunctions */
 void register_double_var(std::string name, double d)
 {
@@ -963,19 +958,6 @@ void register_double_var(std::string name, double d)
     compilation_units.get_current_objstack().get_top_scope().push_object(obj);
 }
 
-void init_standard_variables()
-{   /* TODO: Fixa så att detta görs som ast nod kanske? */
-    /*
-    register_double_var("pi", 3.14159265358979323846);
-    register_double_var("e", 2.7182818284590452354);
-    register_double_var("nan", NAN); 
-    */
-}
-
-void init_builtin_functions()
-{
-
-}
 
 void init_builtin_types()
 {

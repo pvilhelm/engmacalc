@@ -243,3 +243,5 @@ private:
                           gcc_jit_lvalue *lval);
 };
 
+void compile_c_obj_files();
+
