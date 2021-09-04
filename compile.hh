@@ -117,7 +117,7 @@ private:
     int call_depth = 0;
 
     
-
+    gcc_jit_location *ast_node_to_gccloc(const ast_node *node);
 
     /* Cast a and b according to promotion rules. The casted values can be
      * pointing to the original rvalues if no cast was done. 

@@ -655,10 +655,12 @@ void jit::postprocess()
         gcc_jit_block_end_with_return(root_block, 0,
             gcc_jit_context_new_rvalue_from_int(context, INT_TYPE, 0));
 
+    gcc_jit_context_dump_reproducer_to_file(context, "./reprod.c");
+    gcc_jit_context_dump_to_file(context, "./dump.c", 1);
     /* libgccjit default to -fPIC, so lets undo that. */
     gcc_jit_context_add_driver_option(context, "-fno-PIC");
     gcc_jit_context_add_driver_option(context, "-fno-pic");
-
+    
     /* Handle the main function, if any.
 
        If opts specify that we are compiling to an executable
@@ -816,8 +818,8 @@ void jit::compile()
             obj_file_name = "a.out";
 
         gcc_jit_context_compile_to_file (context,
-				 GCC_JIT_OUTPUT_KIND_EXECUTABLE,
-				 obj_file_name.c_str());
+                GCC_JIT_OUTPUT_KIND_EXECUTABLE,
+                obj_file_name.c_str());
 
         const char *c = gcc_jit_context_get_last_error(context);
         if (c)
@@ -826,7 +828,26 @@ void jit::compile()
             std::cerr << c << std::endl;
             exit(1);
         }
-    }      
+    }
+    if (opts.run_type == engma_run_type::OUTPUT_ASSEMBLER) {
+        DEBUG_ASSERT(gcc_jit_context_get_last_error(context) == 0,"Uncought error");
+        
+        std::string obj_file_name = opts.outputfile_name;
+        if (obj_file_name.size() == 0)
+            obj_file_name = "a.s";
+
+        gcc_jit_context_compile_to_file (context,
+                GCC_JIT_OUTPUT_KIND_ASSEMBLER,
+                obj_file_name.c_str());
+
+        const char *c = gcc_jit_context_get_last_error(context);
+        if (c)
+        {
+            std::cerr <<  "Compile to executable failed with message:" << std::endl;
+            std::cerr << c << std::endl;
+            exit(1);
+        }
+    }  
 }
 
 void jit::execute()
@@ -1071,7 +1092,8 @@ void jit::walk_tree_add(ast_node *node, gcc_jit_block **current_block, gcc_jit_f
     DEBUG_ASSERT(result_type_emc == result_type, "Not anticipated type");
 
     gcc_jit_rvalue *rv_result = gcc_jit_context_new_binary_op(
-                                    context, nullptr, GCC_JIT_BINARY_OP_PLUS,
+                                    context, ast_node_to_gccloc(node), 
+                                    GCC_JIT_BINARY_OP_PLUS,
                                     result_type, a_casted_rv, b_casted_rv);
     DEBUG_ASSERT_NOTNULL(rv_result);
     *current_rvalue = rv_result;
@@ -1104,8 +1126,10 @@ void jit::walk_tree_sub(ast_node *node, gcc_jit_block **current_block, gcc_jit_f
     DEBUG_ASSERT(result_type_emc == result_type, "Not anticipated type");
 
     gcc_jit_rvalue *rv_result = gcc_jit_context_new_binary_op(
-                                    context, nullptr, GCC_JIT_BINARY_OP_MINUS,
-                                    result_type, a_casted_rv, b_casted_rv);
+        context, 
+        ast_node_to_gccloc(node), 
+        GCC_JIT_BINARY_OP_MINUS,
+        result_type, a_casted_rv, b_casted_rv);
     DEBUG_ASSERT_NOTNULL(rv_result);
     *current_rvalue = rv_result;
 }
@@ -1139,7 +1163,9 @@ void jit::walk_tree_mul(ast_node *node,
     DEBUG_ASSERT(result_type_emc == result_type, "Not anticipated type");
 
     gcc_jit_rvalue *rv_result = gcc_jit_context_new_binary_op(
-                                    context, nullptr, GCC_JIT_BINARY_OP_MULT,
+                                    context, 
+                                    ast_node_to_gccloc(node), 
+                                    GCC_JIT_BINARY_OP_MULT,
                                     result_type, a_casted_rv, b_casted_rv);
     DEBUG_ASSERT_NOTNULL(rv_result);
     *current_rvalue = rv_result;
@@ -1182,7 +1208,7 @@ void jit::walk_tree_rem(ast_node *node,
         gcc_jit_function *func = it->second;
 
         gcc_jit_rvalue *args[2] = {a_casted_rv, b_casted_rv};
-        rv_result = gcc_jit_context_new_call(context, 0, func, 2, args);
+        rv_result = gcc_jit_context_new_call(context, ast_node_to_gccloc(node), func, 2, args);
     } else if (result_type == DOUBLE_TYPE) {
         auto it = map_fnname_to_gccfnobj.find("fmod");
         if (it == map_fnname_to_gccfnobj.end())
@@ -1190,11 +1216,11 @@ void jit::walk_tree_rem(ast_node *node,
         gcc_jit_function *func = it->second;
 
         gcc_jit_rvalue *args[2] = {a_casted_rv, b_casted_rv};
-        rv_result = gcc_jit_context_new_call(context, 0, func, 2, args);
+        rv_result = gcc_jit_context_new_call(context, ast_node_to_gccloc(node), func, 2, args);
     } else {
         rv_result = gcc_jit_context_new_binary_op(
-                        context, nullptr, GCC_JIT_BINARY_OP_MODULO,
-                        result_type, a_casted_rv, b_casted_rv);
+            context, ast_node_to_gccloc(node), GCC_JIT_BINARY_OP_MODULO,
+            result_type, a_casted_rv, b_casted_rv);
     }
     DEBUG_ASSERT_NOTNULL(rv_result);
     *current_rvalue = rv_result;
@@ -1238,7 +1264,7 @@ void jit::walk_tree_pow(ast_node *node,
         gcc_jit_function *func = it->second;
 
         gcc_jit_rvalue *args[2] = {a_casted_rv, b_casted_rv};
-        rv_result = gcc_jit_context_new_call(context, 0, func, 2, args);
+        rv_result = gcc_jit_context_new_call(context, ast_node_to_gccloc(node), func, 2, args);
     } else if (result_type == FLOAT_TYPE) {
         auto it = map_fnname_to_gccfnobj.find("powf");
         if (it == map_fnname_to_gccfnobj.end())
@@ -1246,7 +1272,7 @@ void jit::walk_tree_pow(ast_node *node,
         gcc_jit_function *func = it->second;
 
         gcc_jit_rvalue *args[2] = {a_casted_rv, b_casted_rv};
-        rv_result = gcc_jit_context_new_call(context, 0, func, 2, args);
+        rv_result = gcc_jit_context_new_call(context, ast_node_to_gccloc(node), func, 2, args);
     } else
         THROW_NOT_IMPLEMENTED("Only floating point x^y is implemented");
 
@@ -1296,8 +1322,8 @@ void jit::walk_tree_rdiv(ast_node *node,
     DEBUG_ASSERT(result_type_emc == result_type, "Not anticipated type");
 
     gcc_jit_rvalue *rv_result = gcc_jit_context_new_binary_op(
-                                    context, nullptr, GCC_JIT_BINARY_OP_DIVIDE,
-                                    result_type, a_casted_rv, b_casted_rv);
+        context, ast_node_to_gccloc(node), GCC_JIT_BINARY_OP_DIVIDE,
+        result_type, a_casted_rv, b_casted_rv);
     DEBUG_ASSERT_NOTNULL(rv_result);                                
     *current_rvalue = rv_result;
 }
@@ -1333,15 +1359,19 @@ void jit::walk_tree_intdiv(ast_node *node,
     gcc_jit_rvalue *rv_result = nullptr;
     if (result_type == DOUBLE_TYPE) {
         gcc_jit_rvalue *rv_op_result = gcc_jit_context_new_binary_op(
-                        context, nullptr, GCC_JIT_BINARY_OP_DIVIDE,
+                        context, 
+                        ast_node_to_gccloc(node), 
+                        GCC_JIT_BINARY_OP_DIVIDE,
                         result_type, a_casted_rv, b_casted_rv);
-        rv_result = gcc_jit_context_new_call(context, 0, 
+        rv_result = gcc_jit_context_new_call(context, ast_node_to_gccloc(node), 
             map_fnname_to_gccfnobj["floor"], 1, &rv_op_result);
     } else if (result_type == FLOAT_TYPE) {
         gcc_jit_rvalue *rv_op_result = gcc_jit_context_new_binary_op(
-                        context, nullptr, GCC_JIT_BINARY_OP_DIVIDE,
+                        context, 
+                        ast_node_to_gccloc(node), 
+                        GCC_JIT_BINARY_OP_DIVIDE,
                         result_type, a_casted_rv, b_casted_rv);
-        rv_result = gcc_jit_context_new_call(context, 0, 
+        rv_result = gcc_jit_context_new_call(context, ast_node_to_gccloc(node), 
             map_fnname_to_gccfnobj["floorf"], 1, &rv_op_result);
     } else
         rv_result = gcc_jit_context_new_binary_op(
@@ -1376,9 +1406,9 @@ void jit::walk_tree_and(ast_node *node,
     gcc_jit_rvalue *b_casted_rv = cast_to(b_rv, INT_TYPE);
     
     /* Create locals to store the rvals (to only eval them once) */
-    gcc_jit_lvalue *temp_a_lv = gcc_jit_function_new_local(*current_function, 0,
+    gcc_jit_lvalue *temp_a_lv = gcc_jit_function_new_local(*current_function, ast_node_to_gccloc(t_node->first),
                                         INT_TYPE, new_unique_name("and_a_tmp").c_str());
-    gcc_jit_lvalue *temp_b_lv = gcc_jit_function_new_local(*current_function, 0,
+    gcc_jit_lvalue *temp_b_lv = gcc_jit_function_new_local(*current_function, ast_node_to_gccloc(t_node->sec),
                                         INT_TYPE, new_unique_name("and_b_tmp").c_str());
     gcc_jit_block_add_assignment(*current_block, 0, temp_a_lv, a_casted_rv);
     gcc_jit_block_add_assignment(*current_block, 0, temp_b_lv, b_casted_rv);
@@ -1386,7 +1416,8 @@ void jit::walk_tree_and(ast_node *node,
     gcc_jit_rvalue *temp_b_rv = gcc_jit_lvalue_as_rvalue(temp_b_lv);
 
     gcc_jit_rvalue *rv_result = gcc_jit_context_new_binary_op(
-                                    context, nullptr, GCC_JIT_BINARY_OP_LOGICAL_AND,
+                                    context, ast_node_to_gccloc(node), 
+                                    GCC_JIT_BINARY_OP_LOGICAL_AND,
                                     INT_TYPE, temp_a_rv, temp_b_rv);
     DEBUG_ASSERT_NOTNULL(rv_result);                                
     *current_rvalue = rv_result;
@@ -1413,14 +1444,15 @@ void jit::walk_tree_not(ast_node *node,
     gcc_jit_rvalue *a_casted_rv = cast_to(a_rv, INT_TYPE);
     
     /* Create locals to store the rvals (to only eval them once) */
-    gcc_jit_lvalue *temp_a_lv = gcc_jit_function_new_local(*current_function, 0,
-                                        INT_TYPE, new_unique_name("not_a_tmp").c_str());
+    gcc_jit_lvalue *temp_a_lv = gcc_jit_function_new_local(*current_function, ast_node_to_gccloc(node),
+        INT_TYPE, new_unique_name("not_a_tmp").c_str());
     gcc_jit_block_add_assignment(*current_block, 0, temp_a_lv, a_casted_rv);
     gcc_jit_rvalue *temp_a_rv = gcc_jit_lvalue_as_rvalue(temp_a_lv);
 
-    gcc_jit_rvalue *rv_result = gcc_jit_context_new_unary_op(
-                                    context, nullptr, GCC_JIT_UNARY_OP_LOGICAL_NEGATE,
-                                    INT_TYPE, temp_a_rv);
+    gcc_jit_rvalue *rv_result = gcc_jit_context_new_unary_op(context, 
+        ast_node_to_gccloc(node), 
+        GCC_JIT_UNARY_OP_LOGICAL_NEGATE,
+        INT_TYPE, temp_a_rv);
     DEBUG_ASSERT_NOTNULL(rv_result);                                
     *current_rvalue = rv_result;
 }
@@ -1450,18 +1482,20 @@ void jit::walk_tree_or(ast_node *node,
     gcc_jit_rvalue *b_casted_rv = cast_to(b_rv, INT_TYPE);
 
     /* Create locals to store the rvals (to only eval them once) */
-    gcc_jit_lvalue *temp_a_lv = gcc_jit_function_new_local(*current_function, 0,
+    gcc_jit_lvalue *temp_a_lv = gcc_jit_function_new_local(*current_function, ast_node_to_gccloc(t_node->first),
                                         INT_TYPE, new_unique_name("or_a_tmp").c_str());
-    gcc_jit_lvalue *temp_b_lv = gcc_jit_function_new_local(*current_function, 0,
+    gcc_jit_lvalue *temp_b_lv = gcc_jit_function_new_local(*current_function, ast_node_to_gccloc(t_node->sec),
                                         INT_TYPE, new_unique_name("or_b_tmp").c_str());
-    gcc_jit_block_add_assignment(*current_block, 0, temp_a_lv, a_casted_rv);
-    gcc_jit_block_add_assignment(*current_block, 0, temp_b_lv, b_casted_rv);
+    gcc_jit_block_add_assignment(*current_block, ast_node_to_gccloc(t_node->first), temp_a_lv, a_casted_rv);
+    gcc_jit_block_add_assignment(*current_block, ast_node_to_gccloc(t_node->sec), temp_b_lv, b_casted_rv);
     gcc_jit_rvalue *temp_a_rv = gcc_jit_lvalue_as_rvalue(temp_a_lv);
     gcc_jit_rvalue *temp_b_rv = gcc_jit_lvalue_as_rvalue(temp_b_lv);
 
     gcc_jit_rvalue *rv_result = gcc_jit_context_new_binary_op(
-                                    context, nullptr, GCC_JIT_BINARY_OP_LOGICAL_OR,
-                                    INT_TYPE, temp_a_rv, temp_b_rv);
+        context, 
+        ast_node_to_gccloc(node), 
+        GCC_JIT_BINARY_OP_LOGICAL_OR,
+        INT_TYPE, temp_a_rv, temp_b_rv);
     DEBUG_ASSERT_NOTNULL(rv_result);                                
     *current_rvalue = rv_result;
 }
@@ -1496,9 +1530,9 @@ void jit::walk_tree_xor( ast_node *node,
     gcc_jit_rvalue *b_casted_rv = cast_to(b_rv, INT_TYPE);
 
     /* Create locals to store the rvals (to only eval them once) */
-    gcc_jit_lvalue *temp_a_lv = gcc_jit_function_new_local(*current_function, 0,
+    gcc_jit_lvalue *temp_a_lv = gcc_jit_function_new_local(*current_function, ast_node_to_gccloc(t_node->first),
                                         INT_TYPE, new_unique_name("xor_a_tmp").c_str());
-    gcc_jit_lvalue *temp_b_lv = gcc_jit_function_new_local(*current_function, 0,
+    gcc_jit_lvalue *temp_b_lv = gcc_jit_function_new_local(*current_function, ast_node_to_gccloc(t_node->sec),
                                         INT_TYPE, new_unique_name("xor_b_tmp").c_str());
     gcc_jit_block_add_assignment(*current_block, 0, temp_a_lv, a_casted_rv);
     gcc_jit_block_add_assignment(*current_block, 0, temp_b_lv, b_casted_rv);
@@ -1508,15 +1542,18 @@ void jit::walk_tree_xor( ast_node *node,
     gcc_jit_rvalue *temp_b_rv = gcc_jit_lvalue_as_rvalue(temp_b_lv);
 
     
-    gcc_jit_rvalue *aorb_rv = gcc_jit_context_new_binary_op(context, nullptr, GCC_JIT_BINARY_OP_LOGICAL_OR, 
-                                        INT_TYPE, temp_a_rv, temp_b_rv);
-    gcc_jit_rvalue *aandb_rv = gcc_jit_context_new_binary_op(context, nullptr, GCC_JIT_BINARY_OP_LOGICAL_AND, 
-                                        INT_TYPE, temp_a_rv, temp_b_rv);
-    gcc_jit_rvalue *not_aandb_rv = gcc_jit_context_new_unary_op(context, 0, GCC_JIT_UNARY_OP_LOGICAL_NEGATE, 
-                                        INT_TYPE, aandb_rv);
-    gcc_jit_rvalue *rv_result = gcc_jit_context_new_binary_op(
-                                    context, nullptr, GCC_JIT_BINARY_OP_LOGICAL_AND,
-                                    INT_TYPE, aorb_rv, not_aandb_rv);
+    gcc_jit_rvalue *aorb_rv = gcc_jit_context_new_binary_op(context, 
+        ast_node_to_gccloc(node), GCC_JIT_BINARY_OP_LOGICAL_OR, 
+        INT_TYPE, temp_a_rv, temp_b_rv);
+    gcc_jit_rvalue *aandb_rv = gcc_jit_context_new_binary_op(context, 
+        ast_node_to_gccloc(node), GCC_JIT_BINARY_OP_LOGICAL_AND, 
+        INT_TYPE, temp_a_rv, temp_b_rv);
+    gcc_jit_rvalue *not_aandb_rv = gcc_jit_context_new_unary_op(context, 
+        ast_node_to_gccloc(node), GCC_JIT_UNARY_OP_LOGICAL_NEGATE, 
+        INT_TYPE, aandb_rv);
+    gcc_jit_rvalue *rv_result = gcc_jit_context_new_binary_op(context, 
+        ast_node_to_gccloc(node), GCC_JIT_BINARY_OP_LOGICAL_AND,
+        INT_TYPE, aorb_rv, not_aandb_rv);
     DEBUG_ASSERT_NOTNULL(rv_result);                                
     *current_rvalue = rv_result;
 }
@@ -1551,21 +1588,21 @@ void jit::walk_tree_nor( ast_node *node,
     gcc_jit_rvalue *b_casted_rv = cast_to(b_rv, INT_TYPE);
 
     /* Create locals to store the rvals (to only eval them once) */
-    gcc_jit_lvalue *temp_a_lv = gcc_jit_function_new_local(*current_function, 0,
+    gcc_jit_lvalue *temp_a_lv = gcc_jit_function_new_local(*current_function, ast_node_to_gccloc(t_node->first),
                                         INT_TYPE, new_unique_name("nor_a_tmp").c_str());
-    gcc_jit_lvalue *temp_b_lv = gcc_jit_function_new_local(*current_function, 0,
+    gcc_jit_lvalue *temp_b_lv = gcc_jit_function_new_local(*current_function, ast_node_to_gccloc(t_node->sec),
                                         INT_TYPE, new_unique_name("nor_b_tmp").c_str());
-    gcc_jit_block_add_assignment(*current_block, 0, temp_a_lv, a_casted_rv);
-    gcc_jit_block_add_assignment(*current_block, 0, temp_b_lv, b_casted_rv);
+    gcc_jit_block_add_assignment(*current_block, ast_node_to_gccloc(t_node->first), temp_a_lv, a_casted_rv);
+    gcc_jit_block_add_assignment(*current_block, ast_node_to_gccloc(t_node->sec), temp_b_lv, b_casted_rv);
 
     /* a XOR b = (a OR b) AND NOT (a AND b) */
     gcc_jit_rvalue *temp_a_rv = gcc_jit_lvalue_as_rvalue(temp_a_lv);
     gcc_jit_rvalue *temp_b_rv = gcc_jit_lvalue_as_rvalue(temp_b_lv);
 
     
-    gcc_jit_rvalue *aorb_rv = gcc_jit_context_new_binary_op(context, nullptr, GCC_JIT_BINARY_OP_LOGICAL_OR, 
+    gcc_jit_rvalue *aorb_rv = gcc_jit_context_new_binary_op(context, ast_node_to_gccloc(node), GCC_JIT_BINARY_OP_LOGICAL_OR, 
                                         INT_TYPE, temp_a_rv, temp_b_rv);
-    gcc_jit_rvalue *rv_result = gcc_jit_context_new_unary_op(context, 0, GCC_JIT_UNARY_OP_LOGICAL_NEGATE, 
+    gcc_jit_rvalue *rv_result = gcc_jit_context_new_unary_op(context, ast_node_to_gccloc(node), GCC_JIT_UNARY_OP_LOGICAL_NEGATE, 
                                         INT_TYPE, aorb_rv);
     DEBUG_ASSERT_NOTNULL(rv_result);                                
     *current_rvalue = rv_result;
@@ -1602,21 +1639,27 @@ void jit::walk_tree_nand( ast_node *node,
     /* TODO: Should be bool? */
 
     /* Create locals to store the rvals (to only eval them once) */
-    gcc_jit_lvalue *temp_a_lv = gcc_jit_function_new_local(*current_function, 0,
+    gcc_jit_lvalue *temp_a_lv = gcc_jit_function_new_local(*current_function, 
+                                        ast_node_to_gccloc(t_node->first),
                                         INT_TYPE, new_unique_name("nand_a_tmp").c_str());
-    gcc_jit_lvalue *temp_b_lv = gcc_jit_function_new_local(*current_function, 0,
+    gcc_jit_lvalue *temp_b_lv = gcc_jit_function_new_local(*current_function, 
+                                        ast_node_to_gccloc(t_node->sec),
                                         INT_TYPE, new_unique_name("nand_b_tmp").c_str());
-    gcc_jit_block_add_assignment(*current_block, 0, temp_a_lv, a_casted_rv);
-    gcc_jit_block_add_assignment(*current_block, 0, temp_b_lv, b_casted_rv);
+    gcc_jit_block_add_assignment(*current_block, ast_node_to_gccloc(t_node->first), temp_a_lv, a_casted_rv);
+    gcc_jit_block_add_assignment(*current_block, ast_node_to_gccloc(t_node->sec), temp_b_lv, b_casted_rv);
  
     gcc_jit_rvalue *temp_a_rv = gcc_jit_lvalue_as_rvalue(temp_a_lv);
     gcc_jit_rvalue *temp_b_rv = gcc_jit_lvalue_as_rvalue(temp_b_lv);
 
     
-    gcc_jit_rvalue *aandb_rv = gcc_jit_context_new_binary_op(context, nullptr, GCC_JIT_BINARY_OP_LOGICAL_AND, 
-                                        INT_TYPE, temp_a_rv, temp_b_rv);
-    gcc_jit_rvalue *rv_result = gcc_jit_context_new_unary_op(context, 0, GCC_JIT_UNARY_OP_LOGICAL_NEGATE, 
-                                        INT_TYPE, aandb_rv);
+    gcc_jit_rvalue *aandb_rv = gcc_jit_context_new_binary_op(context, 
+        ast_node_to_gccloc(node), 
+        GCC_JIT_BINARY_OP_LOGICAL_AND, 
+        INT_TYPE, temp_a_rv, temp_b_rv);
+    gcc_jit_rvalue *rv_result = gcc_jit_context_new_unary_op(context, 
+        ast_node_to_gccloc(node), 
+        GCC_JIT_UNARY_OP_LOGICAL_NEGATE, 
+        INT_TYPE, aandb_rv);
     DEBUG_ASSERT_NOTNULL(rv_result);                                
     *current_rvalue = rv_result;
 }
@@ -1651,27 +1694,36 @@ void jit::walk_tree_xnor( ast_node *node,
     gcc_jit_rvalue *b_casted_rv = cast_to(b_rv, INT_TYPE);
 
     /* Create locals to store the rvals (to only eval them once) */
-    gcc_jit_lvalue *temp_a_lv = gcc_jit_function_new_local(*current_function, 0,
-                                        INT_TYPE, new_unique_name("xor_a_tmp").c_str());
-    gcc_jit_lvalue *temp_b_lv = gcc_jit_function_new_local(*current_function, 0,
-                                        INT_TYPE, new_unique_name("xor_b_tmp").c_str());
-    gcc_jit_block_add_assignment(*current_block, 0, temp_a_lv, a_casted_rv);
-    gcc_jit_block_add_assignment(*current_block, 0, temp_b_lv, b_casted_rv);
+    gcc_jit_lvalue *temp_a_lv = gcc_jit_function_new_local(*current_function, 
+        ast_node_to_gccloc(t_node->first),
+        INT_TYPE, new_unique_name("xor_a_tmp").c_str());
+    gcc_jit_lvalue *temp_b_lv = gcc_jit_function_new_local(*current_function, 
+        ast_node_to_gccloc(t_node->sec),
+        INT_TYPE, new_unique_name("xor_b_tmp").c_str());
+    gcc_jit_block_add_assignment(*current_block, ast_node_to_gccloc(t_node->first), temp_a_lv, a_casted_rv);
+    gcc_jit_block_add_assignment(*current_block, ast_node_to_gccloc(t_node->sec), temp_b_lv, b_casted_rv);
 
     /* a XNOR b = (a AND b) OR NOT (a OR b) */
     gcc_jit_rvalue *temp_a_rv = gcc_jit_lvalue_as_rvalue(temp_a_lv);
     gcc_jit_rvalue *temp_b_rv = gcc_jit_lvalue_as_rvalue(temp_b_lv);
 
     
-    gcc_jit_rvalue *aorb_rv = gcc_jit_context_new_binary_op(context, nullptr, GCC_JIT_BINARY_OP_LOGICAL_OR, 
-                                        INT_TYPE, temp_a_rv, temp_b_rv);
-    gcc_jit_rvalue *aandb_rv = gcc_jit_context_new_binary_op(context, nullptr, GCC_JIT_BINARY_OP_LOGICAL_AND, 
-                                        INT_TYPE, temp_a_rv, temp_b_rv);
-    gcc_jit_rvalue *not_aorb_rv = gcc_jit_context_new_unary_op(context, 0, GCC_JIT_UNARY_OP_LOGICAL_NEGATE, 
-                                        INT_TYPE, aorb_rv);
-    gcc_jit_rvalue *rv_result = gcc_jit_context_new_binary_op(
-                                    context, nullptr, GCC_JIT_BINARY_OP_LOGICAL_OR,
-                                    INT_TYPE, aandb_rv, not_aorb_rv);
+    gcc_jit_rvalue *aorb_rv = gcc_jit_context_new_binary_op(context, 
+        ast_node_to_gccloc(node), 
+        GCC_JIT_BINARY_OP_LOGICAL_OR, 
+        INT_TYPE, temp_a_rv, temp_b_rv);
+    gcc_jit_rvalue *aandb_rv = gcc_jit_context_new_binary_op(context, 
+        ast_node_to_gccloc(node), 
+        GCC_JIT_BINARY_OP_LOGICAL_AND, 
+        INT_TYPE, temp_a_rv, temp_b_rv);
+    gcc_jit_rvalue *not_aorb_rv = gcc_jit_context_new_unary_op(context, 
+        ast_node_to_gccloc(node),
+        GCC_JIT_UNARY_OP_LOGICAL_NEGATE, 
+        INT_TYPE, aorb_rv);
+    gcc_jit_rvalue *rv_result = gcc_jit_context_new_binary_op(context, 
+        ast_node_to_gccloc(node), 
+        GCC_JIT_BINARY_OP_LOGICAL_OR,
+        INT_TYPE, aandb_rv, not_aorb_rv);
     DEBUG_ASSERT_NOTNULL(rv_result);                                
     *current_rvalue = rv_result;
 }
@@ -1710,7 +1762,7 @@ void jit::walk_tree_andchain(ast_node *node,
             gcc_jit_rvalue *a_rv = nullptr; 
             walk_tree(t_node->v_children[0]->first.get(), current_block, current_function, &a_rv);
             DEBUG_ASSERT_NOTNULL(a_rv);
-            gcc_jit_lvalue *a_lv = gcc_jit_function_new_local(*current_function, 0, 
+            gcc_jit_lvalue *a_lv = gcc_jit_function_new_local(*current_function, ast_node_to_gccloc(node), 
                                         gcc_jit_rvalue_get_type(a_rv), 
                                         new_unique_name("cmp_chain_tmp").c_str());
             gcc_jit_block_add_assignment(*current_block, 0, a_lv, a_rv);
@@ -1722,7 +1774,7 @@ void jit::walk_tree_andchain(ast_node *node,
             gcc_jit_rvalue *b_rv = nullptr; 
             walk_tree(e->sec.get(), current_block, current_function, &b_rv);
             DEBUG_ASSERT_NOTNULL(b_rv);
-            gcc_jit_lvalue *b_lv = gcc_jit_function_new_local(*current_function, 0, 
+            gcc_jit_lvalue *b_lv = gcc_jit_function_new_local(*current_function, ast_node_to_gccloc(node), 
                                         gcc_jit_rvalue_get_type(b_rv), 
                                         new_unique_name("cmp_chain_tmp").c_str());
             gcc_jit_block_add_assignment(*current_block, 0, b_lv, b_rv);
@@ -1746,11 +1798,11 @@ void jit::walk_tree_andchain(ast_node *node,
         /* Iterate over v_rvals backwards (v_rvals is in it self "backwards")
          * and create &&:s.
          */
-        gcc_jit_rvalue *rv_and_head = gcc_jit_context_new_binary_op(context, 0,
+        gcc_jit_rvalue *rv_and_head = gcc_jit_context_new_binary_op(context, ast_node_to_gccloc(node),
                                         GCC_JIT_BINARY_OP_LOGICAL_AND, BOOL_TYPE, *v_rvals.rbegin(), *(v_rvals.rbegin() + 1));
         for (auto e = v_rvals.rbegin() + 2; e != v_rvals.rend(); e++) {
             gcc_jit_rvalue *rv = *e;
-            rv_and_head = gcc_jit_context_new_binary_op(context, 0,
+            rv_and_head = gcc_jit_context_new_binary_op(context, ast_node_to_gccloc(node),
                                         GCC_JIT_BINARY_OP_LOGICAL_AND, BOOL_TYPE, rv_and_head, rv);
         }
         *current_rvalue = rv_and_head;
@@ -1786,7 +1838,7 @@ gcc_jit_rvalue *b_casted_rv = nullptr; \
 promote_rvals_for_compare(a_rv, b_rv, &a_casted_rv, &b_casted_rv); \
 \
 gcc_jit_rvalue *rv_result = gcc_jit_context_new_comparison(\
-                                context, nullptr, gcc_jit_type,\
+                                context, ast_node_to_gccloc(node), gcc_jit_type,\
                                 a_casted_rv, b_casted_rv);\
 DEBUG_ASSERT_NOTNULL(rv_result); \
 *current_rvalue = rv_result;\
@@ -1865,8 +1917,10 @@ void jit::walk_tree_uminus(ast_node *node,
     walk_tree(t_node->first, current_block, current_function, &a_rv);
     DEBUG_ASSERT(a_rv != nullptr, "sub a is null");
 
-    gcc_jit_rvalue *rv_result = gcc_jit_context_new_unary_op(context, nullptr,
-            GCC_JIT_UNARY_OP_MINUS, result_type, a_rv);
+    gcc_jit_rvalue *rv_result = gcc_jit_context_new_unary_op(context, 
+        ast_node_to_gccloc(node),
+        GCC_JIT_UNARY_OP_MINUS, 
+        result_type, a_rv);
     *current_rvalue = rv_result;
 }
 
@@ -1891,7 +1945,8 @@ void jit::walk_tree_abs(ast_node *node,
     DEBUG_ASSERT_NOTNULL(a_rv);
 
     /* TODO: Only allow ABS to bigger int types? To cover for |MIN|? */
-    gcc_jit_rvalue *rv_result = gcc_jit_context_new_unary_op(context, nullptr,
+    gcc_jit_rvalue *rv_result = gcc_jit_context_new_unary_op(context, 
+            ast_node_to_gccloc(node),
             GCC_JIT_UNARY_OP_ABS, result_type, a_rv);
     *current_rvalue = rv_result;
 }
@@ -1977,7 +2032,8 @@ void jit::walk_tree_fcall(ast_node *node,
         v_arg_rv.push_back(casted_rv);
     }
 
-    gcc_jit_rvalue *fncall_rval = gcc_jit_context_new_call(context, 0, func, v_arg_rv.size(), v_arg_rv.data());
+    gcc_jit_rvalue *fncall_rval = gcc_jit_context_new_call(context, 
+        ast_node_to_gccloc(node), func, v_arg_rv.size(), v_arg_rv.data());
 
     *current_rvalue = fncall_rval;
 }
@@ -2012,11 +2068,13 @@ void jit::walk_tree_fdefi(ast_node *node,
 
     gcc_jit_function *fn = nullptr;
     if (v_params.size())
-        fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_EXPORTED,
+        fn = gcc_jit_context_new_function(context, ast_node_to_gccloc(node), 
+                                    GCC_JIT_FUNCTION_EXPORTED,
                                     return_type, ast_funcdec->mangled_name.c_str(),
                                     v_params.size(), v_params.data(), 0);
     else 
-        fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_EXPORTED,
+        fn = gcc_jit_context_new_function(context, ast_node_to_gccloc(node), 
+                                    GCC_JIT_FUNCTION_EXPORTED,
                                     return_type, ast_funcdec->mangled_name.c_str(),
                                     0, 0, 0);
     DEBUG_ASSERT_NOTNULL(fn);
@@ -2048,7 +2106,7 @@ void jit::walk_tree_fdefi(ast_node *node,
 
     /* If the return type is void, add a implicit return if there is none */
     if (!v_block_terminated.back() && return_type == VOID_TYPE) {
-        gcc_jit_block_end_with_void_return(last_block, 0);
+        gcc_jit_block_end_with_void_return(last_block, ast_node_to_gccloc(node));
     }
     v_block_terminated.pop_back();
 
@@ -2082,11 +2140,14 @@ void jit::walk_tree_fdecl(ast_node *node,
 
     gcc_jit_function *fn = nullptr;
     if (v_params.size())
-        fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_IMPORTED,
+        fn = gcc_jit_context_new_function(context, ast_node_to_gccloc(node), 
+                                    GCC_JIT_FUNCTION_IMPORTED,
                                     return_type, ast_funcdec->mangled_name.c_str(),
                                     v_params.size(), v_params.data(), 0);
     else 
-        fn = gcc_jit_context_new_function(context, 0, GCC_JIT_FUNCTION_IMPORTED,
+        fn = gcc_jit_context_new_function(context, 
+                                    ast_node_to_gccloc(node), 
+                                    GCC_JIT_FUNCTION_IMPORTED,
                                     return_type, ast_funcdec->mangled_name.c_str(),
                                     0, 0, 0);
     DEBUG_ASSERT_NOTNULL(fn);
@@ -2123,13 +2184,13 @@ void jit::walk_tree_ret(ast_node *node,
             casted_rval = rval;
         else {
             casted_rval = gcc_jit_context_new_cast(
-                                context, 0, rval, return_type);
+                context, ast_node_to_gccloc(node), rval, return_type);
         }
         
-        gcc_jit_block_end_with_return(*current_block, 0, casted_rval);
+        gcc_jit_block_end_with_return(*current_block, ast_node_to_gccloc(node), casted_rval);
         /* TODO: Ensure there are no more returns in the block ... */
     } else { /* void return */
-        gcc_jit_block_end_with_void_return(*current_block, 0);
+        gcc_jit_block_end_with_void_return(*current_block, ast_node_to_gccloc(node));
     }
 
     v_block_terminated.back() = true;
@@ -2170,7 +2231,7 @@ void jit::walk_tree_assign(ast_node *node,
                     THROW_BUG("Cant find struct type: " + dotop_node->first->value_type.mangled_name);
         /* Get the field */
         gcc_jit_field *field = gcc_struct_it->second.get_field(dotop_node->field_name);
-        assign_lv = gcc_jit_lvalue_access_field(left_lv, 0, field);
+        assign_lv = gcc_jit_lvalue_access_field(left_lv, ast_node_to_gccloc(ass_node->first), field);
     } else if (ass_node->first->type == ast_type::VAR) {
         auto lval = dynamic_cast<ast_node_var*>(ass_node->first);
         DEBUG_ASSERT_NOTNULL(lval);
@@ -2191,10 +2252,10 @@ void jit::walk_tree_assign(ast_node *node,
     if (lv_as_rv_t == rv_t)
         casted_rval = rval;
     else {
-        casted_rval = gcc_jit_context_new_cast(context, 0, rval, lv_as_rv_t);
+        casted_rval = gcc_jit_context_new_cast(context, ast_node_to_gccloc(node), rval, lv_as_rv_t);
     }
     /* Add the assignment */
-    gcc_jit_block_add_assignment(*current_block, 0, assign_lv, casted_rval);
+    gcc_jit_block_add_assignment(*current_block, ast_node_to_gccloc(node), assign_lv, casted_rval);
 
     /* The value of an assignment is the rvalue */
     /* TODO: This makes exprlist add the rh two times which messes up stuff if there is a call ... */
@@ -2235,9 +2296,9 @@ void jit::walk_tree_dotop(  ast_node *node,
         gcc_jit_field *field = gcc_struct_it->second.get_field(var_dotop->field_name);
 
         if (current_lvalue) /* Caller wants a lvalue */
-            *current_lvalue = gcc_jit_lvalue_access_field(left_lv, 0, field);
+            *current_lvalue = gcc_jit_lvalue_access_field(left_lv, ast_node_to_gccloc(node), field);
         else /* Caller wants a rvalue */
-            *current_rvalue = gcc_jit_rvalue_access_field(left_rv, 0, field); 
+            *current_rvalue = gcc_jit_rvalue_access_field(left_rv, ast_node_to_gccloc(node), field); 
     } else
         THROW_NOT_IMPLEMENTED("walk_tree_dotop(): Not implemented");
 }
@@ -2277,7 +2338,7 @@ void jit::walk_tree_deref(  ast_node *node,
     walk_tree(var_deref->first, current_block, current_function, &rv);
     DEBUG_ASSERT_NOTNULL(rv);
 
-    gcc_jit_lvalue *deref_lv = gcc_jit_rvalue_dereference(rv, 0);
+    gcc_jit_lvalue *deref_lv = gcc_jit_rvalue_dereference(rv, ast_node_to_gccloc(node));
     DEBUG_ASSERT_NOTNULL(deref_lv);
     if (current_lvalue) /* Caller wants a lvalue */
         *current_lvalue = deref_lv;
@@ -2300,7 +2361,7 @@ void jit::walk_tree_address(  ast_node *node,
     walk_tree(address_node->first, current_block, current_function, 0, &lv);
     DEBUG_ASSERT_NOTNULL(lv);
 
-    *current_rvalue = gcc_jit_lvalue_get_address(lv, 0);
+    *current_rvalue = gcc_jit_lvalue_get_address(lv, ast_node_to_gccloc(node));
     DEBUG_ASSERT_NOTNULL(current_rvalue);
 }
 
@@ -2338,10 +2399,10 @@ void jit::walk_tree_type(   ast_node *node,
         for (auto e : var_struct->v_fields) {
             const char *field_name = e->var_name.c_str();
             gcc_jit_type *field_type = emc_type_to_jit_type(e->value_type);
-            gcc_jit_field *field = gcc_jit_context_new_field(context, 0, field_type, field_name);
+            gcc_jit_field *field = gcc_jit_context_new_field(context, ast_node_to_gccloc(e), field_type, field_name);
             sw.add_field(field_name, field);
         }
-        gcc_jit_struct *str = gcc_jit_context_new_struct_type(context, 0, 
+        gcc_jit_struct *str = gcc_jit_context_new_struct_type(context, ast_node_to_gccloc(node), 
                             walk_tree_type_typename.c_str(), 
                             sw.gccjit_fields.size(), sw.gccjit_fields.data());
         sw.gccjit_struct = str;
@@ -2427,12 +2488,12 @@ void jit::walk_tree_def(ast_node *node,
 
     if (!is_file_scope) /* local */
         lval = gcc_jit_function_new_local(*current_function, 
-            0, 
+            ast_node_to_gccloc(node), 
             var_type, 
             (ast_def->mangled_name /*+ std::to_string(scope_n_nested())*/).c_str());
     else
         lval = gcc_jit_context_new_global(
-            context, 0, GCC_JIT_GLOBAL_EXPORTED,
+            context, ast_node_to_gccloc(node), GCC_JIT_GLOBAL_EXPORTED,
             var_type,
             ast_def->mangled_name.c_str());
 
@@ -2452,7 +2513,9 @@ void jit::walk_tree_def(ast_node *node,
                    Should be cought in the ast tree but check here anyways */
                 verify_obj_fits_in_type(rh_obj, ast_def->value_type);
                 /* Do a forcing cast (since it fits) */
-                cast_rv = gcc_jit_context_new_cast(context, 0, rv_assignment, var_type); 
+                cast_rv = gcc_jit_context_new_cast(context, 
+                    ast_node_to_gccloc(ast_def->value_node), 
+                    rv_assignment, var_type); 
             } else {
                 walk_tree(ast_def->value_node, current_block, current_function, &rv_assignment);
                 /* Cast to the local's type */
@@ -2460,9 +2523,9 @@ void jit::walk_tree_def(ast_node *node,
             }
             /* Assign the value */
             if (is_file_scope)
-                gcc_jit_block_add_assignment(root_block, 0, lval, cast_rv); /* TODO: USe new initializer in gcc_jit instead? */
+                gcc_jit_block_add_assignment(root_block, ast_node_to_gccloc(node), lval, cast_rv); /* TODO: USe new initializer in gcc_jit instead? */
             else
-                gcc_jit_block_add_assignment(*current_block, 0, lval, cast_rv);
+                gcc_jit_block_add_assignment(*current_block, ast_node_to_gccloc(node), lval, cast_rv);
 
         /* For structs */
         } else if (ast_def->value_type.is_struct()) {
@@ -2473,7 +2536,8 @@ void jit::walk_tree_def(ast_node *node,
                 auto arglist = dynamic_cast<ast_node_arglist*>(listlit->first);
                 DEBUG_ASSERT_NOTNULL(arglist);
 
-                auto gcc_struct_it = map_structtypename_to_gccstructobj.find(ast_def->value_type.mangled_name);
+                auto gcc_struct_it = map_structtypename_to_gccstructobj.find(
+                    ast_def->value_type.mangled_name);
                 if (gcc_struct_it == map_structtypename_to_gccstructobj.end())
                     THROW_BUG("Cant find struct type: " + ast_def->value_type.mangled_name);
                 
@@ -2483,8 +2547,10 @@ void jit::walk_tree_def(ast_node *node,
                     ast_node *arg = arglist->v_ast_args[i];
                     gcc_jit_field *field = gcc_struct_it->second.gccjit_fields[i];
 
-                    gcc_jit_lvalue *field_lv = gcc_jit_lvalue_access_field(lval, 0, field);
-                    gcc_jit_type *field_type = gcc_jit_rvalue_get_type(gcc_jit_lvalue_as_rvalue(field_lv));
+                    gcc_jit_lvalue *field_lv = gcc_jit_lvalue_access_field(lval, 
+                        ast_node_to_gccloc(node), field);
+                    gcc_jit_type *field_type = gcc_jit_rvalue_get_type(
+                        gcc_jit_lvalue_as_rvalue(field_lv));
 
                     gcc_jit_rvalue *rv_arg = nullptr;
                     gcc_jit_rvalue *rv_arg_casted = nullptr;
@@ -2498,16 +2564,18 @@ void jit::walk_tree_def(ast_node *node,
                            Should be cought in the ast tree but check here anyways */
                         verify_obj_fits_in_type(rh_obj, ast_def->value_type.children_types[i]);
                         /* Do a forcing cast (since it fits) */
-                        rv_arg_casted = gcc_jit_context_new_cast(context, 0, rv_arg, field_type); 
+                        rv_arg_casted = gcc_jit_context_new_cast(context, ast_node_to_gccloc(node), rv_arg, field_type); 
                     } else {
                         walk_tree(arg, current_block, current_function, &rv_arg);
                         promote_rval(field_type, rv_arg, &rv_arg_casted);
                     }
 
                     if (is_file_scope)
-                        gcc_jit_block_add_assignment(root_block, 0, field_lv, rv_arg_casted); /* TODO: USe new initializer in gcc_jit instead? */
+                        gcc_jit_block_add_assignment(root_block, 
+                            ast_node_to_gccloc(node), field_lv, rv_arg_casted); /* TODO: USe new initializer in gcc_jit instead? */
                     else
-                        gcc_jit_block_add_assignment(*current_block, 0, field_lv, rv_arg_casted);
+                        gcc_jit_block_add_assignment(*current_block, 
+                            ast_node_to_gccloc(node), field_lv, rv_arg_casted);
                 }
             /* Copy "constructor". */
             } else if (ast_def->value_node->value_type.is_struct()) {
@@ -2521,9 +2589,11 @@ void jit::walk_tree_def(ast_node *node,
                 
                 /* Assign the value */
                 if (is_file_scope)
-                    gcc_jit_block_add_assignment(root_block, 0, lval, rv_assignment); /* TODO: USe new initializer in gcc_jit instead? */
+                    gcc_jit_block_add_assignment(root_block, 
+                        ast_node_to_gccloc(node), lval, rv_assignment); /* TODO: USe new initializer in gcc_jit instead? */
                 else
-                    gcc_jit_block_add_assignment(*current_block, 0, lval, rv_assignment);
+                    gcc_jit_block_add_assignment(*current_block, 
+                        ast_node_to_gccloc(node), lval, rv_assignment);
             } else
                 THROW_NOT_IMPLEMENTED(""); 
         } else 
@@ -2538,9 +2608,11 @@ void jit::walk_tree_def(ast_node *node,
                 rv_assignment = gcc_jit_context_zero(context, var_type);
             /* Assign the value */
             if (is_file_scope)
-                gcc_jit_block_add_assignment(root_block, 0, lval, rv_assignment);
+                gcc_jit_block_add_assignment(root_block, 
+                    ast_node_to_gccloc(node), lval, rv_assignment);
             else
-                gcc_jit_block_add_assignment(*current_block, 0, lval, rv_assignment);
+                gcc_jit_block_add_assignment(*current_block, 
+                    ast_node_to_gccloc(node), lval, rv_assignment);
         } else if (ast_def->value_type.is_struct()) {
             std::string mangled_name = ast_def->value_type.mangled_name;
 
@@ -2572,6 +2644,14 @@ void jit::walk_tree_def(ast_node *node,
 
 }
 
+gcc_jit_location *jit::ast_node_to_gccloc(const ast_node *node)
+{
+    return gcc_jit_context_new_location (context,
+				  compilation_units.get_current_compilation_unit().file_name.c_str(),
+				  node->loc.first_line,
+				  node->loc.first_column);
+}
+
 void jit::walk_tree_explist( ast_node *node, 
                              gcc_jit_block **current_block, 
                              gcc_jit_function **current_function,
@@ -2588,7 +2668,7 @@ void jit::walk_tree_explist( ast_node *node,
         if (last_block != *current_block) { /* Atleast one block was added */
             *current_block = last_block; /* Point the head to the last block added */
         } else if (rval) { /* There was only expressions so add it/them to the current block. */
-            gcc_jit_block_add_eval(*current_block, 0, rval);
+            gcc_jit_block_add_eval(*current_block, ast_node_to_gccloc(node), rval);
         }
     }
     /* The last rval of the expression list is its value. */
@@ -2664,8 +2744,8 @@ void jit::walk_tree_if(ast_node *node,
         walk_tree(if_ast->cond_e, current_block, current_function, &cond_rv);
         DEBUG_ASSERT(cond_rv != nullptr, "If condition rvalue is null");
         gcc_jit_rvalue *bool_cond_rv = gcc_jit_context_new_cast(
-            context, 0,
-            gcc_jit_context_new_cast(context, 0, cond_rv, INT_TYPE),
+            context, ast_node_to_gccloc(node),
+            gcc_jit_context_new_cast(context, ast_node_to_gccloc(node), cond_rv, INT_TYPE),
             BOOL_TYPE);
 
         /* The if condition controls a jump to either the if block or
@@ -2683,7 +2763,9 @@ void jit::walk_tree_if(ast_node *node,
             if_false_block = create_after_block_if_needed();
 
         /* Now make a jump from current block to where ever the if condition wanna go */
-        gcc_jit_block_end_with_conditional(*current_block, 0, bool_cond_rv, if_true_block, if_false_block);
+        gcc_jit_block_end_with_conditional(*current_block, 
+            ast_node_to_gccloc(if_ast->cond_e), 
+            bool_cond_rv, if_true_block, if_false_block);
     }
     
     /* Now do the same for each else if-condition, if any */
@@ -2695,8 +2777,8 @@ void jit::walk_tree_if(ast_node *node,
         DEBUG_ASSERT(cond_rv != nullptr, "If else condition rvalue is null");
 
         gcc_jit_rvalue *bool_cond_rv = gcc_jit_context_new_cast(
-            context, 0,
-            gcc_jit_context_new_cast(context, 0, cond_rv, INT_TYPE),
+            context, ast_node_to_gccloc(node),
+            gcc_jit_context_new_cast(context, ast_node_to_gccloc(node), cond_rv, INT_TYPE),
             BOOL_TYPE);
 
         gcc_jit_block *if_false_block = nullptr;
@@ -2714,7 +2796,9 @@ void jit::walk_tree_if(ast_node *node,
             if_false_block = create_after_block_if_needed();;
 
         /* Now make a jump from conditional block to where ever the if else condition wanna go */
-        gcc_jit_block_end_with_conditional(v_elseif_cond_block[i], 0, bool_cond_rv, if_true_block, if_false_block);
+        gcc_jit_block_end_with_conditional(v_elseif_cond_block[i], 
+            ast_node_to_gccloc(elseif_t->v_cond_e[i]), 
+            bool_cond_rv, if_true_block, if_false_block);
     }
 
     /* The else block and also block have no condition. */
@@ -2738,9 +2822,11 @@ void jit::walk_tree_if(ast_node *node,
        to the also block, if that exists, otherwise to the after block. */
         if (!was_terminated)
             if (if_ast->also_el)
-                gcc_jit_block_end_with_jump(last_block, 0, also_block);
+                gcc_jit_block_end_with_jump(last_block, 
+                    ast_node_to_gccloc(if_ast->if_el), also_block);
             else
-                gcc_jit_block_end_with_jump(last_block, 0, create_after_block_if_needed());
+                gcc_jit_block_end_with_jump(last_block, 
+                    ast_node_to_gccloc(if_ast->if_el), create_after_block_if_needed());
     }
 
     /* Now do the same for all the else if blocks, if any. */
@@ -2760,9 +2846,11 @@ void jit::walk_tree_if(ast_node *node,
        to the also block, if that exists, otherwise to the after block. */
         if (!was_terminated)
             if (if_ast->also_el)
-                gcc_jit_block_end_with_jump(last_block, 0, also_block);
+                gcc_jit_block_end_with_jump(last_block, 
+                    ast_node_to_gccloc(elseif_t), also_block);
             else
-                gcc_jit_block_end_with_jump(last_block, 0, create_after_block_if_needed());
+                gcc_jit_block_end_with_jump(last_block, 
+                    ast_node_to_gccloc(elseif_t), create_after_block_if_needed());
     }
 
     /* Now do the same for the else block, if any */
@@ -2780,7 +2868,8 @@ void jit::walk_tree_if(ast_node *node,
         /* If the if-block was not terminated, it needs to end with a jump
        to the also block, if that exists, otherwise to the after block. */
         if (!else_was_terminated)
-                gcc_jit_block_end_with_jump(last_block, 0, create_after_block_if_needed());
+                gcc_jit_block_end_with_jump(last_block, 
+                    ast_node_to_gccloc(if_ast->else_el), create_after_block_if_needed());
     }
 
     /* Now do the same for the also block, if any */
@@ -2802,7 +2891,8 @@ void jit::walk_tree_if(ast_node *node,
         /* If the if-block was not terminated, it needs to end with a jump
        to the also block, if that exists, otherwise to the after block. */
         if (!also_was_terminated)
-                gcc_jit_block_end_with_jump(last_block, 0, create_after_block_if_needed());
+                gcc_jit_block_end_with_jump(last_block, 
+                    ast_node_to_gccloc(if_ast->also_el), create_after_block_if_needed());
     }
     
     bool all_paths_terminated = false;
@@ -2856,7 +2946,7 @@ void jit::walk_tree_while(ast_node *node,
     auto while_ast = dynamic_cast<ast_node_while*>(node);
     DEBUG_ASSERT_NOTNULL(while_ast);
     /* Create the while-block */
-    gcc_jit_block_add_comment(*current_block, 0, "WHILE");
+    gcc_jit_block_add_comment(*current_block, ast_node_to_gccloc(node), "WHILE");
     
     /* If there is and else block, we need an first cond block that either goes
        to the while block, or goes to the else block. */
@@ -2876,9 +2966,9 @@ void jit::walk_tree_while(ast_node *node,
     };
 
     if (while_ast->else_el) {
-        gcc_jit_block_end_with_jump(*current_block, 0, first_cond_block);
+        gcc_jit_block_end_with_jump(*current_block, ast_node_to_gccloc(node), first_cond_block);
     } else 
-        gcc_jit_block_end_with_jump(*current_block, 0, create_cond_block_if_needed());
+        gcc_jit_block_end_with_jump(*current_block, ast_node_to_gccloc(node), create_cond_block_if_needed());
 
     gcc_jit_block *while_block = gcc_jit_function_new_block(*current_function, new_unique_name("while_block").c_str());
     /* Walk the tree and append any blocks to the if block or any statements to the block in question */
@@ -2907,36 +2997,39 @@ void jit::walk_tree_while(ast_node *node,
     DEBUG_ASSERT(cond_rv != nullptr, "If condition rvalue is null");
 
     gcc_jit_rvalue *bool_cond_rv = gcc_jit_context_new_cast(
-            context, 0,
-            gcc_jit_context_new_cast(context, 0, cond_rv, INT_TYPE),
+            context, ast_node_to_gccloc(while_ast->cond_e),
+            gcc_jit_context_new_cast(context, ast_node_to_gccloc(while_ast->cond_e), cond_rv, INT_TYPE),
             BOOL_TYPE);
 
     if (while_ast->else_el) {
         gcc_jit_block *after_block = nullptr;
         if (!(while_was_terminated && else_was_terminated)) /* Unless the quite silly while block where all paths return */
-            after_block = gcc_jit_function_new_block(*current_function, new_unique_name("after_block").c_str());
-        gcc_jit_block_end_with_conditional(first_cond_block, 0, bool_cond_rv, while_block, else_block);
+            after_block = gcc_jit_function_new_block(*current_function, 
+                new_unique_name("after_block").c_str());
+        gcc_jit_block_end_with_conditional(first_cond_block, 
+            ast_node_to_gccloc(while_ast->cond_e),
+            bool_cond_rv, while_block, else_block);
 
         if (after_block)
-            gcc_jit_block_end_with_conditional(create_cond_block_if_needed(), 0, bool_cond_rv, while_block, after_block);
+            gcc_jit_block_end_with_conditional(create_cond_block_if_needed(), ast_node_to_gccloc(while_ast->cond_e), bool_cond_rv, while_block, after_block);
         else if (!(while_was_terminated && else_was_terminated))
-            gcc_jit_block_end_with_jump(create_cond_block_if_needed(), 0, while_block); /* All paths in the while block return. */ 
+            gcc_jit_block_end_with_jump(create_cond_block_if_needed(), ast_node_to_gccloc(while_ast->cond_e), while_block); /* All paths in the while block return. */ 
 
         if (!else_was_terminated)
-            gcc_jit_block_end_with_jump(else_block, 0, after_block);
+            gcc_jit_block_end_with_jump(else_block, ast_node_to_gccloc(while_ast->else_el), after_block);
         
         if (after_block)            
             *current_block = after_block;
         else
             v_block_terminated.back() = true;    
     } else {
-        gcc_jit_block_end_with_conditional(create_cond_block_if_needed(), 0, bool_cond_rv, while_block, else_block);
+        gcc_jit_block_end_with_conditional(create_cond_block_if_needed(), ast_node_to_gccloc(while_ast), bool_cond_rv, while_block, else_block);
         *current_block = else_block;
     }
 
     /* Unless all paths in the while block are terminted it need to end in an jump back to the cond block. */
     if (!while_was_terminated)
-        gcc_jit_block_end_with_jump(while_block, 0, cond_block);    
+        gcc_jit_block_end_with_jump(while_block, ast_node_to_gccloc(while_ast), cond_block);    
 }
 
 void jit::walk_tree(ast_node *node, 

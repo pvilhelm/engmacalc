@@ -36,14 +36,18 @@ struct argp_option options[] =
     {0,         'O', "LEVEL", OPTION_ARG_OPTIONAL, "Optimization level"},
     {0,         'g',"LEVEL", OPTION_ARG_OPTIONAL, "Debugging flag"},
     {0,         'L', "FOLDER", 0, "Specifies a folder to look for shared objects"},
+    {0,         's', 0, 0, "Just output assembler"},
     {0}
 };
 
 static int parse_opt (int key, char *arg, struct argp_state *state)
 {
     switch (key) {
+    case 's':
+        opts.run_type = engma_run_type::OUTPUT_ASSEMBLER;
+        break;
     case 'g':
-        opts.debug_flag = "-g" + std::string{arg};
+        opts.debug_flag = "-g" + (arg ? std::string{arg} : "");
         break;
     case 'L':
         opts.l_folders.push_back("-L" + std::string{arg});
@@ -52,7 +56,7 @@ static int parse_opt (int key, char *arg, struct argp_state *state)
         opts.l_folders.push_back("-l" + std::string{arg});
         break;
     case 'O':
-        opts.optimization_level = "-O" + std::string{arg};
+        opts.optimization_level = "-O" + (arg ? std::string{arg} : "");
         break;
     case 'X':
         opts.run_type = engma_run_type::EXECUTE;
@@ -96,7 +100,8 @@ int main(int argc, char **argv)
 
     init_builtin_types();
 
-    if (opts.run_type == engma_run_type::OUTPUT_TO_OBJ_FILE) {
+    if (opts.run_type == engma_run_type::OUTPUT_TO_OBJ_FILE ||
+        opts.run_type == engma_run_type::OUTPUT_ASSEMBLER ) {
         if (opts.nonengma_files.size()) {
             compile_c_obj_files();
         }
@@ -110,9 +115,10 @@ int main(int argc, char **argv)
                 if(!f) {
                     throw std::runtime_error("Could not open file: " + std::string{argv[1]});
                 }
+                compilation_units.get_current_compilation_unit().file_name = file;
                 yyset_in(f, scanner);
 
-                    bool parsed_eol;
+                bool parsed_eol;
 
                 do {
                     int err = yyparse(scanner);
@@ -176,6 +182,7 @@ int main(int argc, char **argv)
                 if(!f) {
                     throw std::runtime_error("Could not open file: " + std::string{argv[1]});
                 }
+                compilation_units.get_current_compilation_unit().file_name = file;
                 yyset_in(f, scanner);
 
                     bool parsed_eol;
@@ -231,7 +238,7 @@ int main(int argc, char **argv)
 
             if (opts.files.size() != 1)
                 THROW_NOT_IMPLEMENTED("");
-                
+
             for (std::string file : opts.files) {
                 yyscan_t scanner;
                 yylex_init(&scanner);
@@ -241,6 +248,7 @@ int main(int argc, char **argv)
                 if(!f) {
                     throw std::runtime_error("Could not open file: " + std::string{argv[1]});
                 }
+                compilation_units.get_current_compilation_unit().file_name = file;
                 yyset_in(f, scanner);
 
                     bool parsed_eol;

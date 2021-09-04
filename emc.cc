@@ -631,7 +631,8 @@ emc_type ast_node_using::resolve()
             if (!f)
                 THROW_BUG("Could not open file: " + file_path);
             yyset_in(f, scanner);
-
+            cu.file_name = file_path;
+            
             do {
                 int err = yyparse(scanner);
                 if (cu.ast_root) {

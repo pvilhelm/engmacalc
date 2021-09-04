@@ -286,7 +286,8 @@ vardef_list: vardef                         {
            | vardef_list ',' vardef         {
                                                 auto p = dynamic_cast<ast_node_vardef_list*>($$);
                                                 p->append($3); $$->loc = @$;
-                                            }                                    
+                                            }   
+                                                                        
  
 ptrdef_list: '&'                            {
                                                 auto p = new ast_node_ptrdef_list;
@@ -304,6 +305,19 @@ vardef: typedotchain typedotnamechain       {
         | ptrdef_list typedotchain typedotnamechain         
                                             {
                                                 auto node = new ast_node_def{$2, $3, nullptr}; 
+                                                auto node_pdl = dynamic_cast<ast_node_ptrdef_list*>($1);
+                                                node->ptrdef_node = node_pdl;
+                                                $$ = node; $$->loc = @$;
+                                            }
+        | typedotchain CLINKAGE typedotnamechain       
+                                            {
+                                                auto node = new ast_node_def{$1, $3, nullptr};
+                                                node->clinkage = true; $$ = node;$$->loc = @$;
+                                            }
+        | ptrdef_list typedotchain CLINKAGE typedotnamechain         
+                                            {
+                                                auto node = new ast_node_def{$2, $4, nullptr}; 
+                                                node->clinkage = true;
                                                 auto node_pdl = dynamic_cast<ast_node_ptrdef_list*>($1);
                                                 node->ptrdef_node = node_pdl;
                                                 $$ = node; $$->loc = @$;

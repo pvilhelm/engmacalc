@@ -39,6 +39,7 @@ enum class engma_run_type {
     OUTPUT_TO_SO,
     EXECUTE,
     OUTPUT_TO_EXE,
+    OUTPUT_ASSEMBLER
 };
 
 struct engma_options {
@@ -675,6 +676,8 @@ public:
     /* Set to true by tree walk so that we only walk a unit once
        if included multiple times. */
     bool is_compiled = false;
+
+    std::string file_name;
 
     ~compilation_unit()
     {
@@ -2872,6 +2875,7 @@ public:
     ast_node *typedotchain = nullptr; /* The type: *Foo* Bar.name */
     ast_node *typedotnamechain = nullptr; /* The name with ns: Foo *Bar.name* */
     int n_pointer_indirections = 0;
+    bool clinkage = false;
 
     ast_node* clone()
     {
@@ -2958,11 +2962,11 @@ public:
         full_name = (nspace.size() ? nspace + ".": "") + var_name;
         
         /* Only filescope variables need mangling. TODO: Static variables */
-        if (compilation_units.get_current_objstack().is_in_global_scope()) {
+        if (!clinkage && compilation_units.get_current_objstack().is_in_global_scope()) {
             mangled_name = mangle_emc_var_name( var_name, 
                                                 nspace);
             od->mangled_name = mangled_name;
-        /* Local variables have the same mangled name as their name */
+        /* Local variables and c-linkage variables have the same mangled name as their name */
         } else {
             od->mangled_name = mangled_name = var_name;
         }
