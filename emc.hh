@@ -1481,6 +1481,8 @@ public:
 
     emc_type resolve()
     {
+    	first->resolve();
+    	sec->resolve();
         return value_type = emc_type{emc_types::INT};
     }
 };
@@ -1508,6 +1510,8 @@ public:
 
     emc_type resolve()
     {
+    	first->resolve();
+    	sec->resolve();
         return value_type = emc_type{emc_types::INT};
     }
 };
@@ -1535,6 +1539,8 @@ public:
 
     emc_type resolve()
     {
+    	first->resolve();
+    	sec->resolve();
         return value_type = emc_type{emc_types::INT};
     }
 };
@@ -1562,6 +1568,8 @@ public:
 
     emc_type resolve()
     {
+    	first->resolve();
+    	sec->resolve();
         return value_type = emc_type{emc_types::INT};
     }
 };
@@ -1621,6 +1629,8 @@ public:
 
     emc_type resolve()
     {
+    	first->resolve();
+    	sec->resolve();
         return value_type = emc_type{emc_types::INT};
     }
 };
@@ -1648,6 +1658,8 @@ public:
 
     emc_type resolve()
     {
+    	first->resolve();
+    	sec->resolve();
         return value_type = emc_type{emc_types::INT};
     }
 };
@@ -1673,6 +1685,7 @@ public:
 
     emc_type resolve()
     {
+    	first->resolve();
         return value_type = emc_type{emc_types::INT};
     }
 };

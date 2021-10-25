@@ -1,8 +1,8 @@
-/* A Bison parser, made by GNU Bison 3.3.2.  */
+/* A Bison parser, made by GNU Bison 3.7.5.  */
 
 /* Bison interface for Yacc-like parsers in C
 
-   Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2019 Free Software Foundation,
+   Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2021 Free Software Foundation,
    Inc.
 
    This program is free software: you can redistribute it and/or modify
@@ -31,8 +31,9 @@
    This special exception was added by the Free Software Foundation in
    version 2.2 of Bison.  */
 
-/* Undocumented macros, especially those whose name start with YY_,
-   are private implementation details.  Do not rely on them.  */
+/* DO NOT RELY ON FEATURES THAT ARE NOT DOCUMENTED in the manual,
+   especially those whose name start with YY_ or yy_.  They are
+   private implementation details that can be changed or removed.  */
 
 #ifndef YY_YY_EMC_TAB_H_INCLUDED
 # define YY_YY_EMC_TAB_H_INCLUDED
@@ -44,62 +45,66 @@
 extern int yydebug;
 #endif
 
-/* Token type.  */
+/* Token kinds.  */
 #ifndef YYTOKENTYPE
 # define YYTOKENTYPE
   enum yytokentype
   {
-    NUMBER = 258,
-    NAME = 259,
-    TYPENAME = 260,
-    ESC_STRING = 261,
-    EOL = 262,
-    IF = 263,
-    DO = 264,
-    END = 265,
-    ELSE = 266,
-    WHILE = 267,
-    ENDOFFILE = 268,
-    FUNC = 269,
-    ELSEIF = 270,
-    ALSO = 271,
-    RETURN = 272,
-    STRUCT = 273,
-    TYPE = 274,
-    CLINKAGE = 275,
-    NAMESPACE = 276,
-    USING = 277,
-    IMPORT = 278,
-    OR = 279,
-    NOR = 280,
-    XOR = 281,
-    XNOR = 282,
-    AND = 283,
-    NAND = 284,
-    NOT = 285,
-    CMP = 286,
-    LEQ = 287,
-    GEQ = 288,
-    EQU = 289,
-    NEQ = 290,
-    INTDIV = 291,
-    UMINUS = 292
+    YYEMPTY = -2,
+    YYEOF = 0,                     /* "end of file"  */
+    YYerror = 256,                 /* error  */
+    YYUNDEF = 257,                 /* "invalid token"  */
+    NUMBER = 258,                  /* NUMBER  */
+    NAME = 259,                    /* NAME  */
+    TYPENAME = 260,                /* TYPENAME  */
+    ESC_STRING = 261,              /* ESC_STRING  */
+    EOL = 262,                     /* EOL  */
+    IF = 263,                      /* IF  */
+    DO = 264,                      /* DO  */
+    END = 265,                     /* END  */
+    ELSE = 266,                    /* ELSE  */
+    WHILE = 267,                   /* WHILE  */
+    ENDOFFILE = 268,               /* ENDOFFILE  */
+    FUNC = 269,                    /* FUNC  */
+    ELSEIF = 270,                  /* ELSEIF  */
+    ALSO = 271,                    /* ALSO  */
+    RETURN = 272,                  /* RETURN  */
+    STRUCT = 273,                  /* STRUCT  */
+    TYPE = 274,                    /* TYPE  */
+    CLINKAGE = 275,                /* CLINKAGE  */
+    NAMESPACE = 276,               /* NAMESPACE  */
+    USING = 277,                   /* USING  */
+    IMPORT = 278,                  /* IMPORT  */
+    OR = 279,                      /* OR  */
+    NOR = 280,                     /* NOR  */
+    XOR = 281,                     /* XOR  */
+    XNOR = 282,                    /* XNOR  */
+    AND = 283,                     /* AND  */
+    NAND = 284,                    /* NAND  */
+    NOT = 285,                     /* NOT  */
+    CMP = 286,                     /* CMP  */
+    LEQ = 287,                     /* LEQ  */
+    GEQ = 288,                     /* GEQ  */
+    EQU = 289,                     /* EQU  */
+    NEQ = 290,                     /* NEQ  */
+    INTDIV = 291,                  /* INTDIV  */
+    UMINUS = 292                   /* UMINUS  */
   };
+  typedef enum yytokentype yytoken_kind_t;
 #endif
 
 /* Value type.  */
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
-
 union YYSTYPE
 {
-#line 20 "emc.y" /* yacc.c:1921  */
+#line 20 "emc.y"
 
     ast_node *node;
     std::string *s;
 
-#line 101 "emc.tab.h" /* yacc.c:1921  */
-};
+#line 106 "emc.tab.h"
 
+};
 typedef union YYSTYPE YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define YYSTYPE_IS_DECLARED 1

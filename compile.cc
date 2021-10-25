@@ -1849,7 +1849,7 @@ void jit::walk_tree_geq(ast_node *node,
                         gcc_jit_rvalue **current_rvalue)
 {
     DEBUG_ASSERT_NOTNULL(current_rvalue);
-    DEBUG_ASSERT_NOTNULL(node); 
+    DEBUG_ASSERT_NOTNULL(node);
     CMP_FNC(ast_node_geq, GCC_JIT_COMPARISON_GE)
 }
 
